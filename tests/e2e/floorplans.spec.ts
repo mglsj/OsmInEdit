@@ -231,3 +231,57 @@ test("scales a plan to a measured distance", async ({ page }) => {
 		bottom: cy + 150 * s,
 	});
 });
+
+test("keeps plans, where they were placed, after a reload", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const { cx, cy, scale } = await initialLayout(page, 300);
+	await page.getByRole("radio", { name: "Measure" }).click();
+	const x1 = cx + (10 - 200) * scale;
+	await page.mouse.click(x1, cy);
+	await page.mouse.click(cx + (390 - 200) * scale, cy);
+	await page.getByLabel("Real distance (m)").fill("38");
+	await page.getByRole("button", { name: "Scale" }).click();
+	const metresPerPixel =
+		(2 * Math.PI * 6378137 * Math.cos((LAT * Math.PI) / 180)) / WORLD;
+	const s = 40 / 400 / metresPerPixel;
+	const scaled = {
+		left: x1 - 10 * s,
+		top: cy - 150 * s,
+		right: x1 + 390 * s,
+		bottom: cy + 150 * s,
+	};
+	await expectPlanAt(page, scaled);
+
+	await page.reload();
+
+	await expectPlanAt(page, scaled);
+	await page.getByRole("button", { name: "Floor plans" }).click();
+	await expect(
+		page.getByRole("list", { name: "Floor plans" }).getByRole("listitem"),
+	).toContainText(["plan 400 × 300 px"]);
+});
+
+test("shows a plan only on its level", async ({ page }) => {
+	await importPlan(page, "plan.png");
+	const box = await mapLocator(page).boundingBox();
+	if (!box) throw new Error("No map");
+	const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	const plan = blend(RED, 0.5, BACKGROUND);
+	// Imported on the level shown, 0.
+	await expect(
+		page.getByRole("textbox", { name: "Level", exact: true }),
+	).toHaveValue("0");
+	await expectPixel(page, centre.x, centre.y, plan);
+
+	await page.getByRole("textbox", { name: "Level", exact: true }).fill("1");
+	await page
+		.getByRole("textbox", { name: "Level", exact: true })
+		.press("Enter");
+	await expectPixel(page, centre.x, centre.y, BACKGROUND);
+
+	await page.getByRole("button", { name: "Level up" }).click();
+	await expect(page.getByTestId("level")).toHaveText("1");
+	await expectPixel(page, centre.x, centre.y, plan);
+});

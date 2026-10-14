@@ -1,5 +1,6 @@
 <script lang="ts">
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
+	import Download from "@lucide/svelte/icons/download";
 	import Eye from "@lucide/svelte/icons/eye";
 	import EyeOff from "@lucide/svelte/icons/eye-off";
 	import FileImage from "@lucide/svelte/icons/file-image";
@@ -26,6 +27,11 @@
 		type PdfDocument,
 		planName,
 	} from "#lib/floorplans/import.ts";
+	import {
+		exportPlans,
+		parsePlansFile,
+		transformOf,
+	} from "#lib/floorplans/plan-file.ts";
 	import {
 		type FloorPlans,
 		MIN_POINTS,
@@ -113,8 +119,12 @@
 				case "pdf":
 					pdf = { document: await openPdf(file), name };
 					break;
+				case "plans":
+					await importPlansFile(file);
+					break;
 				default:
-					error = "IndoorID can import PNG, JPEG, WebP, SVG and PDF plans.";
+					error =
+						"IndoorID can import PNG, JPEG, WebP, SVG and PDF plans, and plan files (.json).";
 			}
 		} catch (e) {
 			error = (e as Error).message;
@@ -140,6 +150,64 @@
 		} catch (e) {
 			error = (e as Error).message;
 		}
+	}
+
+	/** Adds the plans of an IndoorID or OsmInEdit 1.x plan file, placed as saved. */
+	async function importPlansFile(file: File) {
+		for (const entry of parsePlansFile(await file.text())) {
+			const blob = await (await fetch(entry.image)).blob();
+			const image =
+				blob.type === "image/svg+xml"
+					? await importSvg(blob)
+					: await importRaster(blob);
+			floorplans.insert({
+				name: entry.name,
+				image,
+				transform: transformOf(entry, image.width, image.height),
+				controlPoints: entry.controlPoints,
+				fitKind:
+					"transform" in entry.placement
+						? entry.placement.transform.kind
+						: "projective",
+				opacity: entry.opacity,
+				level: entry.level,
+				visible: entry.visible,
+			});
+		}
+	}
+
+	/** Downloads every plan, images included, as an IndoorID plan file. */
+	async function exportFile() {
+		const entries = await Promise.all(
+			floorplans.plans.map(async (plan) => ({
+				name: plan.name,
+				image: await dataUrl(plan.image.blob),
+				width: plan.image.width,
+				height: plan.image.height,
+				level: plan.level,
+				opacity: plan.opacity,
+				visible: plan.visible,
+				placement: { transform: plan.transform },
+				controlPoints: plan.controlPoints,
+			})),
+		);
+		const url = URL.createObjectURL(
+			new Blob([exportPlans(entries)], { type: "application/json" }),
+		);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = "indoorid-floorplans.json";
+		link.click();
+		URL.revokeObjectURL(url);
+	}
+
+	function dataUrl(blob: Blob): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(reader.result as string);
+			reader.onerror = () => reject(reader.error);
+			reader.readAsDataURL(blob);
+		});
 	}
 
 	function closePdf() {
@@ -183,6 +251,16 @@
 					{/if}
 					Import
 				</Button>
+				{#if floorplans.plans.length > 0}
+					<Button
+						size="icon-sm"
+						variant="outline"
+						aria-label="Export floor plans"
+						onclick={exportFile}
+					>
+						<Download />
+					</Button>
+				{/if}
 				<input
 					bind:this={input}
 					type="file"
@@ -199,6 +277,12 @@
 				<Alert.Root variant="destructive">
 					<CircleAlert />
 					<Alert.Description>{error}</Alert.Description>
+				</Alert.Root>
+			{/if}
+			{#if floorplans.storageError}
+				<Alert.Root variant="destructive">
+					<CircleAlert />
+					<Alert.Description>{floorplans.storageError}</Alert.Description>
 				</Alert.Root>
 			{/if}
 
@@ -259,6 +343,24 @@
 			{/if}
 
 			{#if selected}
+				<Field.Field>
+					<Field.Label for="plan-level">Level</Field.Label>
+					<Input
+						id="plan-level"
+						type="text"
+						autocomplete="off"
+						placeholder="Every level"
+						value={selected.level ?? ""}
+						onchange={(event) =>
+							floorplans.update(selected.id, {
+								level: event.currentTarget.value.trim() || null,
+							})}
+					/>
+					<Field.Description>
+						The plan only shows on this level, like 0 or -1.
+					</Field.Description>
+				</Field.Field>
+
 				<Field.Field>
 					<Field.Label for="plan-opacity">Opacity</Field.Label>
 					<Slider

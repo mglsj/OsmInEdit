@@ -6,6 +6,7 @@
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
 import { type LngLat, type Pixel, project } from "#lib/floorplans/georef.ts";
 import { tileCorners } from "#lib/floorplans/tiling.ts";
+import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
 import type { FloorPlan, Tool } from "#lib/state/floorplans.svelte.ts";
 import type {
 	GeoJSONSource,
@@ -25,6 +26,7 @@ export class FloorPlanLayers {
 	readonly #map: MapLibreMap;
 	#ready = false;
 	#plans: readonly FloorPlan[] = [];
+	#level = 0;
 	readonly #shown = new Map<string, Shown>();
 
 	constructor(map: MapLibreMap) {
@@ -43,12 +45,20 @@ export class FloorPlanLayers {
 		if (this.#ready) this.#sync();
 	}
 
+	/** Shows only the plans of this level, and those not assigned to any. */
+	setLevel(level: number): void {
+		this.#level = level;
+		if (this.#ready) this.#sync();
+	}
+
 	remove(): void {
 		for (const id of [...this.#shown.keys()]) this.#hide(id);
 	}
 
 	#sync(): void {
-		const wanted = this.#plans.filter((p) => p.visible);
+		const wanted = this.#plans.filter(
+			(p) => p.visible && isPlanOnLevel(p, this.#level),
+		);
 		const wantedIds = new Set(wanted.map((p) => p.id));
 		for (const [id, shown] of this.#shown) {
 			if (!wantedIds.has(id) || shown.plan.image !== this.#find(id)?.image) {
@@ -235,3 +245,12 @@ export class PlanToolLayer {
 
 /** Colour of the alignment marks: magenta stands out on plans, imagery and the indoor style. */
 const TOOL_COLOR = "#d6249f";
+
+/**
+ * Whether a plan shows on a level: plans without a level, or with one that can't be read, show
+ * everywhere rather than vanish.
+ */
+function isPlanOnLevel(plan: FloorPlan, level: number): boolean {
+	const levels = plan.level === null ? null : parseLevels(plan.level);
+	return levels === null || isOnLevel(levels, level);
+}

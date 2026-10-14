@@ -12,6 +12,7 @@
 	import * as Tooltip from "#lib/components/shadcn/tooltip/index.ts";
 	import type { EditorConfig } from "#lib/config.ts";
 	import { groundDistance, type LngLat } from "#lib/floorplans/georef.ts";
+	import { importRaster } from "#lib/floorplans/import.ts";
 	import { setBackground } from "#lib/map/background.ts";
 	import {
 		FloorPlanLayers,
@@ -32,6 +33,7 @@
 		type MapMouseEvent,
 	} from "#lib/map/maplibre.ts";
 	import type { EntityId } from "#lib/osm/entity.ts";
+	import { IndexedDbPlanStore } from "#lib/persist/plan-store.ts";
 	import { Editor } from "#lib/state/editor.svelte.ts";
 	import {
 		FloorPlans,
@@ -73,7 +75,12 @@
 		return { session, editor, websiteUrl };
 	});
 	let saving = $state(false);
-	const floorplans = new FloorPlans();
+	// Plans saved in earlier visits come back once their images are decoded.
+	const floorplans = new FloorPlans({
+		store: new IndexedDbPlanStore(),
+		decode: importRaster,
+	});
+	void floorplans.restore();
 	/** Snapping distance for alignment clicks, in screen pixels. */
 	const SNAP_DISTANCE = 8;
 
@@ -117,6 +124,7 @@
 		const layers = new FloorPlanLayers(instance);
 		const marks = new PlanToolLayer(instance);
 		$effect(() => layers.setPlans(floorplans.plans));
+		$effect(() => layers.setLevel(level));
 		$effect(() =>
 			marks.setData(toolFeatures(floorplans.selected, floorplans.tool)),
 		);

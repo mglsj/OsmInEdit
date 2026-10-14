@@ -18,6 +18,7 @@ import {
 	unproject,
 } from "#lib/floorplans/georef.ts";
 import type { PlanImage } from "#lib/floorplans/import.ts";
+import type { PlanStore, StoredPlan } from "#lib/persist/plan-store.ts";
 
 export interface FloorPlan {
 	readonly id: string;
@@ -63,8 +64,17 @@ export interface View {
 	readonly heightMetres: number;
 }
 
+export interface FloorPlansOptions {
+	/** Where plans are saved; without it they last until the page is closed. */
+	readonly store?: PlanStore;
+	/** Decodes a saved image. */
+	readonly decode?: (image: Blob) => Promise<PlanImage>;
+}
+
 export class FloorPlans {
 	plans = $state.raw<readonly FloorPlan[]>([]);
+	/** Set when plans could not be saved or restored. */
+	storageError = $state<string | null>(null);
 	selectedId = $state<string | null>(null);
 	readonly selected = $derived(
 		this.plans.find((p) => p.id === this.selectedId) ?? null,
@@ -78,6 +88,33 @@ export class FloorPlans {
 		return fitPlan(plan.controlPoints, usableKind(plan));
 	});
 
+	readonly #store: PlanStore | undefined;
+	readonly #decode: FloorPlansOptions["decode"];
+
+	constructor({ store, decode }: FloorPlansOptions = {}) {
+		this.#store = store;
+		this.#decode = decode;
+	}
+
+	/** Brings back the plans saved in earlier visits. */
+	async restore(): Promise<void> {
+		const decode = this.#decode;
+		if (!this.#store || !decode) return;
+		try {
+			const saved = await this.#store.load();
+			const restored = await Promise.all(
+				saved.map(async ({ plan, image }) => ({
+					...plan,
+					image: await decode(image),
+				})),
+			);
+			// Plans added while restoring stay on top.
+			this.plans = [...restored, ...this.plans];
+		} catch (e) {
+			this.storageError = `Saved floor plans could not be restored: ${(e as Error).message}`;
+		}
+	}
+
 	/** Adds a plan north up in the middle of the view, 60% of its height tall, and selects it. */
 	add(image: PlanImage, name: string, view: View, level: string | null): void {
 		const transform = place(
@@ -89,8 +126,7 @@ export class FloorPlans {
 			image.width,
 			image.height,
 		);
-		const plan: FloorPlan = {
-			id: crypto.randomUUID(),
+		this.insert({
 			name,
 			image,
 			transform,
@@ -99,9 +135,16 @@ export class FloorPlans {
 			opacity: DEFAULT_OPACITY,
 			level,
 			visible: true,
-		};
+		});
+	}
+
+	/** Adds an already placed plan (from a file) on top of the others, and selects it. */
+	insert(fields: Omit<FloorPlan, "id">): void {
+		const plan: FloorPlan = { id: crypto.randomUUID(), ...fields };
 		this.plans = [...this.plans, plan];
 		this.select(plan.id);
+		this.#persist(this.#store?.saveImage(plan.id, plan.image.blob));
+		this.#save(plan);
 	}
 
 	select(id: string | null): void {
@@ -226,12 +269,12 @@ export class FloorPlans {
 
 	#replace(plan: FloorPlan): void {
 		this.plans = this.plans.map((p) => (p.id === plan.id ? plan : p));
+		this.#save(plan);
 	}
 
 	update(id: string, changes: Partial<Omit<FloorPlan, "id" | "image">>): void {
-		this.plans = this.plans.map((p) =>
-			p.id === id ? { ...p, ...changes } : p,
-		);
+		const plan = this.plans.find((p) => p.id === id);
+		if (plan) this.#replace({ ...plan, ...changes });
 	}
 
 	remove(id: string): void {
@@ -239,6 +282,23 @@ export class FloorPlans {
 		this.plans = this.plans.filter((p) => p.id !== id);
 		if (this.selectedId === id) this.select(null);
 		for (const { bitmap } of plan?.image.tiles ?? []) bitmap.close();
+		this.#persist(this.#store?.delete(id));
+	}
+
+	#save(plan: FloorPlan): void {
+		const { image: _, ...settings } = plan;
+		const stored: StoredPlan = {
+			...settings,
+			order: this.plans.findIndex((p) => p.id === plan.id),
+		};
+		this.#persist(this.#store?.save(stored));
+	}
+
+	/** Reports a failed write: plans stay usable, but won't survive a reload. */
+	#persist(write: Promise<void> | undefined): void {
+		write?.catch((e: Error) => {
+			this.storageError = `Floor plans could not be saved in this browser: ${e.message}`;
+		});
 	}
 }
 

@@ -136,6 +136,34 @@ describe("buildFeatures", () => {
 		});
 	});
 
+	it("tells the style how to draw each feature", () => {
+		const graph = Graph.fromEntities([
+			...square(1, 0, 0),
+			way("w1", ring(1), {
+				indoor: "room",
+				ref: "B12",
+				room: "toilets",
+				access: "private",
+			}),
+			node("n5", { door: "hinged" }),
+		]);
+		const { collection } = buildFeatures(graph, {
+			icons: new Set(["room_toilets"]),
+		});
+		const props = (id: string) =>
+			collection.features.find((f) => f.properties["@id"] === id)?.properties;
+
+		expect(props("w1")).toMatchObject({
+			"@kind": "room",
+			"@icon": "room_toilets",
+			"@label": "B12",
+			"@restricted": "yes",
+		});
+		expect(props("n5")).toMatchObject({ "@kind": "door" });
+		expect(props("n5")).not.toHaveProperty("@icon");
+		expect(props("n5")).not.toHaveProperty("@label");
+	});
+
 	it("skips ways whose nodes were not downloaded", () => {
 		const entities = [
 			node("n1"),

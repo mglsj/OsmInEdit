@@ -14,7 +14,8 @@
 			"!.svelte-kit",
 			"!test-results",
 			"!playwright-report",
-			"!skills-lock.json"
+			"!skills-lock.json",
+			"!src/lib/map/style/icons"
 		]
 	},
 	"formatter": {

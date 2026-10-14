@@ -28,7 +28,8 @@ runs the same commands.
 - `src/lib/` holds the code, imported as `#lib/...` with explicit extensions
   (`import { parseHash } from "#lib/map/hash.ts"`). `$lib` does not exist in SvelteKit 3.
 - `src/lib/ui/` components, `src/lib/map/` map helpers, `src/routes/` pages, `static/` copied
-  as-is (`config.json`, legacy icons in `static/img`), `tests/e2e/` browser tests.
+  as-is (`config.json`, help images), `tests/e2e/` browser tests. Map icons live in
+  `src/lib/map/style/icons/` (`key_value.svg|png`) and load on demand (`style/icons.ts`).
 - Data model (P1): `osm/` (entities, immutable `Graph`, `History`, osmChange), `actions/`
   (pure `graph => graph` functions), `levels/` (level values as ranges), `api/` (`OsmApi`).
   Get ids for new entities from `graph.newId(type)`; never mutate entities or graphs.

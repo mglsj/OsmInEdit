@@ -16,6 +16,13 @@ import { isOnLevel, type Levels } from "#lib/levels/levels.ts";
 import type { Entity, NodeId, Relation, Way } from "#lib/osm/entity.ts";
 import type { Graph } from "#lib/osm/graph.ts";
 import { hasInterestingTags, type Tags } from "#lib/osm/tags.ts";
+import {
+	classify,
+	type GeometryType,
+	iconFor,
+	isRestricted,
+	labelFor,
+} from "./classify.ts";
 import type { FilterSpecification } from "./maplibre.ts";
 
 export type FeatureProperties = Tags & { "@id": string; "@lv": string };
@@ -27,7 +34,16 @@ export interface IndoorFeatures {
 	readonly levels: number[];
 }
 
-export function buildFeatures(graph: Graph): IndoorFeatures {
+export interface BuildOptions {
+	/** Names of the icons the map can show (see `iconFor`). */
+	readonly icons?: ReadonlySet<string>;
+}
+
+export function buildFeatures(
+	graph: Graph,
+	options: BuildOptions = {},
+): IndoorFeatures {
+	const icons = options.icons ?? new Set<string>();
 	const drafts: {
 		entity: Entity;
 		geometry: Geometry;
@@ -51,12 +67,28 @@ export function buildFeatures(graph: Graph): IndoorFeatures {
 			geometry,
 			properties: {
 				...entity.tags,
+				...drawingProperties(entity.tags, geometry.type as GeometryType, icons),
 				"@id": entity.id,
 				"@lv": encodeLevels(own, levels),
 			},
 		}),
 	);
 	return { collection: { type: "FeatureCollection", features }, levels };
+}
+
+/** Properties the style uses: `@kind`, and when relevant `@icon`, `@label`, `@restricted`. */
+function drawingProperties(
+	tags: Tags,
+	geometry: GeometryType,
+	icons: ReadonlySet<string>,
+): Record<string, string> {
+	const props: Record<string, string> = { "@kind": classify(tags, geometry) };
+	const icon = iconFor(tags, icons);
+	if (icon) props["@icon"] = icon;
+	const label = labelFor(tags);
+	if (label) props["@label"] = label;
+	if (isRestricted(tags)) props["@restricted"] = "yes";
+	return props;
 }
 
 /** MapLibre filter keeping the features on `level`, and those without level information. */

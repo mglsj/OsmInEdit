@@ -40,11 +40,14 @@ export class Editor {
 	/** Current graph; replaced (never mutated) on every change. */
 	graph = $state.raw(Graph.fromEntities([]));
 	status = $state.raw<LoadStatus>({ kind: "idle" });
-	readonly features = $derived(
-		buildFeatures(this.graph, { icons: AVAILABLE_ICONS }),
-	);
 	/** Presets, loaded in the background. */
 	presets = $state.raw<PresetIndex | null>(null);
+	readonly features = $derived(
+		buildFeatures(this.graph, {
+			icons: AVAILABLE_ICONS,
+			presets: this.presets ?? undefined,
+		}),
+	);
 	selectedId = $state<EntityId | null>(null);
 	/** Tag upgrade rules: local ones at once, the schema's once loaded. */
 	upgrades = $state.raw<readonly UpgradeRule[]>(LOCAL_UPGRADES);

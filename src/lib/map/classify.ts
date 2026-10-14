@@ -4,6 +4,7 @@
  * Tagging, plus older tags still found in the data (`room=*`, `buildingpart=*`).
  */
 import type { Tags } from "#lib/osm/tags.ts";
+import type { Preset } from "#lib/presets/presets.ts";
 
 export type FeatureKind =
 	/** Walled indoor space: `indoor=room`. */
@@ -134,12 +135,26 @@ const ICON_KEYS = [
 	"sport",
 ];
 
-/** The first icon available for a feature, or null. */
+/**
+ * Presets of the building's structure, which the map already shows by its shapes and colours:
+ * an icon on every room or door would only clutter it.
+ */
+const STRUCTURE_PRESETS =
+	/^(indoor(\/(room|area|corridor|level|wall|door))?$|(door|entrance|building|building_part|highway\/(corridor|footway|pedestrian_area))(\/|$))/;
+
+/**
+ * The icon of a feature, or null: its preset's icon (Maki or Temaki) when bundled, else the
+ * first available 1.x icon.
+ */
 export function iconFor(
 	tags: Tags,
 	available: ReadonlySet<string>,
+	preset?: Pick<Preset, "id" | "icon">,
 ): string | null {
 	const candidates: string[] = [];
+	if (preset?.icon && !STRUCTURE_PRESETS.test(preset.id)) {
+		candidates.push(preset.icon);
+	}
 	if (tags.conveying !== undefined || tags.room === "escalator") {
 		candidates.push("passage_escalator");
 	}

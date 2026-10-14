@@ -13,10 +13,11 @@ import type {
 } from "geojson";
 import { featureLevels } from "#lib/levels/feature-levels.ts";
 import { isOnLevel, type Levels } from "#lib/levels/levels.ts";
-import { isArea, isClosed } from "#lib/osm/area.ts";
+import { entityGeometry, isArea, isClosed } from "#lib/osm/area.ts";
 import type { Entity, NodeId, Relation, Way } from "#lib/osm/entity.ts";
 import type { Graph } from "#lib/osm/graph.ts";
 import { hasInterestingTags, type Tags } from "#lib/osm/tags.ts";
+import type { Preset, PresetIndex } from "#lib/presets/presets.ts";
 import {
 	classify,
 	type GeometryType,
@@ -39,6 +40,8 @@ export interface IndoorFeatures {
 export interface BuildOptions {
 	/** Names of the icons the map can show (see `iconFor`). */
 	readonly icons?: ReadonlySet<string>;
+	/** Presets, whose icons the map shows when it has them. */
+	readonly presets?: Pick<PresetIndex, "match">;
 }
 
 export function buildFeatures(
@@ -46,6 +49,11 @@ export function buildFeatures(
 	options: BuildOptions = {},
 ): IndoorFeatures {
 	const icons = options.icons ?? new Set<string>();
+	const { presets } = options;
+	const presetOf = (entity: Entity) =>
+		presets && hasInterestingTags(entity.tags)
+			? presets.match(entity.tags, entityGeometry(graph, entity))
+			: undefined;
 	const drafts: {
 		entity: Entity;
 		geometry: Geometry;
@@ -69,7 +77,12 @@ export function buildFeatures(
 			geometry,
 			properties: {
 				...entity.tags,
-				...drawingProperties(entity.tags, geometry.type as GeometryType, icons),
+				...drawingProperties(
+					entity.tags,
+					geometry.type as GeometryType,
+					icons,
+					presetOf(entity),
+				),
 				"@id": entity.id,
 				"@lv": encodeLevels(own, levels),
 			},
@@ -83,9 +96,10 @@ function drawingProperties(
 	tags: Tags,
 	geometry: GeometryType,
 	icons: ReadonlySet<string>,
+	preset: Preset | undefined,
 ): Record<string, string> {
 	const props: Record<string, string> = { "@kind": classify(tags, geometry) };
-	const icon = iconFor(tags, icons);
+	const icon = iconFor(tags, icons, preset);
 	if (icon) props["@icon"] = icon;
 	const label = labelFor(tags);
 	if (label) props["@label"] = label;

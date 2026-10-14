@@ -1,11 +1,19 @@
 /**
  * Extracts the presets IndoorID needs from iD's tagging schema
  * (@openstreetmap/id-tagging-schema, ISC) into src/lib/presets/generated/, with English
- * labels resolved. Runs on `bun install` (the `prepare` script); the output is not committed.
+ * labels resolved, and copies the Maki and Temaki icons (CC0) they use into its `icons/`.
+ * Runs on `bun install` (the `prepare` script); the output is not committed.
  *
  * Usage: bun scripts/build-presets.ts
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import overlay from "../src/lib/presets/overlay.json" with { type: "json" };
@@ -145,6 +153,27 @@ const write = (file: string, data: unknown) =>
 write("presets.json", outPresets);
 write("fields.json", outFields);
 write("deprecated.json", deprecated);
+
+/** Icon sets bundled for the map, by the prefix of iD's icon names (`maki-toilet`). */
+const ICON_SETS: Record<string, string> = {
+	maki: "node_modules/@mapbox/maki/icons",
+	temaki: "node_modules/@rapideditor/temaki/icons",
+};
+const iconsOut = join(out, "icons");
+rmSync(iconsOut, { recursive: true, force: true });
+mkdirSync(iconsOut);
+let icons = 0;
+for (const icon of new Set(outPresets.map((p) => p.icon))) {
+	if (typeof icon !== "string") continue;
+	const [, set, name] = icon.match(/^(\w+)-(.+)$/) ?? [];
+	const dir = set && ICON_SETS[set];
+	if (!dir) continue;
+	const file = join(root, dir, `${name}.svg`);
+	if (!existsSync(file)) continue;
+	copyFileSync(file, join(iconsOut, `${icon}.svg`));
+	icons++;
+}
+
 console.log(
-	`Presets: ${outPresets.length} presets, ${outFields.length} fields → src/lib/presets/generated/`,
+	`Presets: ${outPresets.length} presets, ${outFields.length} fields, ${icons} icons → src/lib/presets/generated/`,
 );

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Entity, NodeId } from "#lib/osm/entity.ts";
 import { node, relation, way } from "#lib/osm/fixtures.ts";
 import { Graph } from "#lib/osm/graph.ts";
+import { PresetIndex } from "#lib/presets/presets.ts";
 import { buildFeatures, levelFilter } from "./features.ts";
 
 /** Node id n{prefix}{i}, e.g. n12. */
@@ -162,6 +163,56 @@ describe("buildFeatures", () => {
 		expect(props("n5")).toMatchObject({ "@kind": "door" });
 		expect(props("n5")).not.toHaveProperty("@icon");
 		expect(props("n5")).not.toHaveProperty("@label");
+	});
+
+	it("uses the icon of the preset matched for the feature's geometry", () => {
+		const presets = new PresetIndex(
+			[
+				{
+					id: "amenity/toilets",
+					name: "Restroom",
+					terms: [],
+					icon: "maki-toilet",
+					geometry: ["point", "area"],
+					tags: { amenity: "toilets" },
+					fields: [],
+					moreFields: [],
+				},
+				{
+					id: "highway/elevator",
+					name: "Elevator",
+					terms: [],
+					icon: "temaki-elevator",
+					geometry: ["vertex"],
+					tags: { highway: "elevator" },
+					fields: [],
+					moreFields: [],
+				},
+			],
+			[],
+		);
+		const graph = Graph.fromEntities([
+			...square(1, 0, 0),
+			way("w1", ring(1), { indoor: "room", amenity: "toilets" }),
+			node("n5", { amenity: "toilets" }),
+			node("n6", { highway: "elevator" }),
+			node("n7", { highway: "elevator" }),
+			way("w2", ["n7", nid(1, 1)], { indoor: "wall" }),
+		]);
+		const { collection } = buildFeatures(graph, {
+			icons: new Set(["maki-toilet", "temaki-elevator", "highway_elevator"]),
+			presets,
+		});
+		const icon = (id: string) =>
+			collection.features.find((f) => f.properties["@id"] === id)?.properties[
+				"@icon"
+			];
+
+		expect(icon("w1")).toBe("maki-toilet");
+		expect(icon("n5")).toBe("maki-toilet");
+		// A lone node is a point, which the elevator preset is not for: 1.x icon.
+		expect(icon("n6")).toBe("highway_elevator");
+		expect(icon("n7")).toBe("temaki-elevator");
 	});
 
 	it("skips ways whose nodes were not downloaded", () => {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import X from "@lucide/svelte/icons/x";
+	import { iconUrl } from "#lib/map/style/icons.ts";
 	import { formatTagText, parseTagText } from "#lib/osm/tag-text.ts";
 	import type { Field, Preset } from "#lib/presets/presets.ts";
 	import type { Editor } from "#lib/state/editor.svelte.ts";
@@ -62,6 +63,24 @@
 	}
 </script>
 
+{#snippet presetIcon(
+	preset: Preset | undefined,
+	size: number,
+)}
+	{@const url = iconUrl(preset?.icon)}
+	{#if url}
+		<img
+			src={url}
+			alt=""
+			width={size}
+			height={size}
+			class="shrink-0 dark:invert"
+		>
+	{:else}
+		<span class="shrink-0" style:width="{size}px"></span>
+	{/if}
+{/snippet}
+
 <aside
 	aria-label="Feature editor"
 	class="flex h-full w-88 max-w-[calc(100vw-2rem)] flex-col border-l border-black/10 bg-white shadow-lg dark:border-white/15 dark:bg-slate-900"
@@ -69,6 +88,7 @@
 	<header
 		class="flex items-center gap-2 border-b border-black/10 px-4 py-3 dark:border-white/15"
 	>
+		{@render presetIcon(preset, 24)}
 		<div class="min-w-0 flex-1">
 			<h2 class="truncate text-base font-semibold">
 				{preset?.name ?? "Feature"}
@@ -113,8 +133,9 @@
 							<button
 								type="button"
 								onclick={() => choose(result)}
-								class="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+								class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
 							>
+								{@render presetIcon(result, 16)}
 								{result.name}
 							</button>
 						</li>

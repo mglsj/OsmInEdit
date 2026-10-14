@@ -38,9 +38,11 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.15",
+		"@mapbox/maki": "8.2.0",
 		"@maplibre/maplibre-gl-style-spec": "26.4.4",
 		"@openstreetmap/id-tagging-schema": "7.3.0",
 		"@playwright/test": "1.56.1",
+		"@rapideditor/temaki": "5.13.0",
 		"@sveltejs/adapter-static": "4.0.0",
 		"@sveltejs/kit": "3.0.1",
 		"@sveltejs/vite-plugin-svelte": "7.3.1",

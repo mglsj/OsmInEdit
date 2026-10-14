@@ -95,7 +95,9 @@ test("reports areas that could not be downloaded", async ({ page }) => {
 	);
 });
 
-test("draws the icon of a point of interest", async ({ page }) => {
+test("draws the preset's Maki icon for a point of interest", async ({
+	page,
+}) => {
 	await serveOsm(page, [
 		{
 			type: "node",
@@ -106,10 +108,12 @@ test("draws the icon of a point of interest", async ({ page }) => {
 			tags: { amenity: "toilets", level: "0" },
 		},
 	]);
+	// The Restroom preset's icon, rather than the 1.x amenity_toilets.png.
+	const icon = page.waitForRequest(/\/maki-toilet\.[\w-]+\.svg$/);
 	await page.goto(`/#19/${LAT}/${LON}/0`);
+	await icon;
 	const { x, y } = await mapCenter(page);
 
-	// Icons are bundled (small ones inline), so check the drawing rather than a request.
 	await expect
 		.poll(async () => (await pixelAt(page, x, y)).join(","), {
 			timeout: 10_000,

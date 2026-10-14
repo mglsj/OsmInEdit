@@ -73,11 +73,21 @@ export class PresetIndex {
 	readonly #presets: readonly Preset[];
 	readonly #byId: ReadonlyMap<string, Preset>;
 	readonly #fields: ReadonlyMap<string, Field>;
+	/** Positions of the presets with tags, by their first key: only those can match. */
+	readonly #byKey = new Map<string, number[]>();
+	readonly #matches = new WeakMap<Tags, Map<PresetGeometry, Preset>>();
 
 	constructor(presets: readonly Preset[], fields: readonly Field[]) {
 		this.#presets = presets;
 		this.#byId = new Map(presets.map((p) => [p.id, p]));
 		this.#fields = new Map(fields.map((f) => [f.id, f]));
+		presets.forEach((preset, i) => {
+			const [key] = Object.keys(preset.tags);
+			if (key === undefined) return;
+			const positions = this.#byKey.get(key);
+			if (positions) positions.push(i);
+			else this.#byKey.set(key, [i]);
+		});
 	}
 
 	preset(id: string): Preset | undefined {
@@ -100,11 +110,33 @@ export class PresetIndex {
 		};
 	}
 
-	/** The best preset for these tags, or the generic one for the geometry. */
+	/**
+	 * The best preset for these tags, or the generic one for the geometry. Results are cached
+	 * by tags object, which is never mutated, so redrawing the map after an edit is cheap.
+	 */
 	match(tags: Tags, geometry: PresetGeometry): Preset {
+		let byGeometry = this.#matches.get(tags);
+		if (!byGeometry) {
+			byGeometry = new Map();
+			this.#matches.set(tags, byGeometry);
+		}
+		let preset = byGeometry.get(geometry);
+		if (!preset) {
+			preset = this.#match(tags, geometry);
+			byGeometry.set(geometry, preset);
+		}
+		return preset;
+	}
+
+	#match(tags: Tags, geometry: PresetGeometry): Preset {
+		// Presets whose first key is in the tags, in schema order (it breaks ties).
+		const positions = Object.keys(tags)
+			.flatMap((key) => this.#byKey.get(key) ?? [])
+			.sort((a, b) => a - b);
 		let best: Preset | undefined;
 		let bestScore = 0;
-		for (const preset of this.#presets) {
+		for (const i of positions) {
+			const preset = this.#presets[i] as Preset;
 			if (!preset.geometry.includes(geometry)) continue;
 			const score = matchScore(preset, tags);
 			if (score > bestScore) {

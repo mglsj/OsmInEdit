@@ -65,6 +65,56 @@ describe("iconFor", () => {
 		expect(iconFor({ amenity: "fountain" }, available)).toBeNull();
 		expect(iconFor({ indoor: "room" }, available)).toBeNull();
 	});
+
+	describe("with the feature's preset", () => {
+		const withPresetIcons = new Set([
+			...available,
+			"maki-toilet",
+			"temaki-room",
+			"temaki-elevator",
+			"maki-entrance-alt1",
+		]);
+
+		it("prefers the preset's icon", () => {
+			expect(
+				iconFor({ amenity: "toilets" }, withPresetIcons, {
+					id: "amenity/toilets",
+					icon: "maki-toilet",
+				}),
+			).toBe("maki-toilet");
+			expect(
+				iconFor({ indoor: "room", elevator: "yes" }, withPresetIcons, {
+					id: "indoor/elevator",
+					icon: "temaki-elevator",
+				}),
+			).toBe("temaki-elevator");
+		});
+
+		it("falls back to the 1.x icons when the preset's icon is not bundled", () => {
+			expect(
+				iconFor({ indoor: "room", stairs: "yes" }, withPresetIcons, {
+					id: "indoor/stairs",
+					icon: "iD-highway-steps",
+				}),
+			).toBe("highway_steps");
+			expect(
+				iconFor({ amenity: "toilets" }, withPresetIcons, {
+					id: "amenity/toilets",
+				}),
+			).toBe("amenity_toilets");
+		});
+
+		it.each([
+			["indoor/room", "temaki-room"],
+			["indoor/level", "temaki-room"],
+			["door", "maki-entrance-alt1"],
+			["entrance/main", "maki-entrance-alt1"],
+		])("draws no icon for structure: %s", (id, icon) => {
+			expect(
+				iconFor({ indoor: "room" }, withPresetIcons, { id, icon }),
+			).toBeNull();
+		});
+	});
 });
 
 describe("labelFor", () => {

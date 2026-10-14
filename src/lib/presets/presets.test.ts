@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type Preset, type PresetGeometry, PresetIndex } from "./presets.ts";
+import {
+	applyPreset,
+	type Preset,
+	type PresetGeometry,
+	PresetIndex,
+} from "./presets.ts";
 
 const preset = (
 	id: string,
@@ -103,5 +108,45 @@ describe("PresetIndex.search", () => {
 
 	it("returns nothing for an empty query", () => {
 		expect(names(" ", "area")).toEqual([]);
+	});
+});
+
+describe("applyPreset", () => {
+	const room = index.preset("indoor/room");
+	const stairs = index.preset("indoor/stairs");
+	const entrance = index.preset("entrance");
+	const door: Preset = {
+		...preset("door", "Door", ["vertex"], { door: "*" }),
+	};
+
+	it("adds the tags of the new preset and keeps the others", () => {
+		expect(
+			applyPreset({ indoor: "room", ref: "B12", level: "0" }, room, stairs),
+		).toEqual({ indoor: "room", stairs: "yes", ref: "B12", level: "0" });
+	});
+
+	it("removes the tags of the old preset", () => {
+		expect(
+			applyPreset(
+				{ indoor: "room", stairs: "yes", level: "0;1" },
+				stairs,
+				room,
+			),
+		).toEqual({ indoor: "room", level: "0;1" });
+	});
+
+	it("sets yes for a preset that accepts any value, and removes any value of the old one", () => {
+		expect(applyPreset({ door: "hinged", width: "1" }, door, entrance)).toEqual(
+			{
+				width: "1",
+				entrance: "yes",
+			},
+		);
+	});
+
+	it("keeps an existing value for a preset that accepts any value", () => {
+		expect(applyPreset({ entrance: "main" }, undefined, entrance)).toEqual({
+			entrance: "main",
+		});
 	});
 });

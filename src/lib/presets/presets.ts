@@ -39,6 +39,28 @@ export interface Field {
 	readonly options: readonly FieldOption[];
 }
 
+/** Presets offered before typing a search, by geometry: the common indoor ones. */
+export const DEFAULT_PRESETS: Record<PresetGeometry, readonly string[]> = {
+	area: [
+		"indoor/room",
+		"indoor/corridor",
+		"indoor/area",
+		"indoor/stairs",
+		"indoor/elevator",
+		"indoor/level",
+		"amenity/toilets",
+	],
+	line: ["indoor/wall", "highway/corridor", "highway/steps", "highway/footway"],
+	vertex: ["door", "entrance", "highway/elevator"],
+	point: [
+		"amenity/toilets",
+		"amenity/vending_machine",
+		"amenity/bench",
+		"highway/elevator",
+	],
+	relation: [],
+};
+
 const FALLBACKS: Record<PresetGeometry, string> = {
 	point: "point",
 	vertex: "point",
@@ -91,6 +113,13 @@ export class PresetIndex {
 			}
 		}
 		return best ?? this.#fallback(geometry);
+	}
+
+	/** Presets to offer before a search, for the geometry. */
+	defaults(geometry: PresetGeometry): Preset[] {
+		return DEFAULT_PRESETS[geometry]
+			.map((id) => this.#byId.get(id))
+			.filter((p): p is Preset => p?.geometry.includes(geometry) === true);
 	}
 
 	/** Searchable presets for the geometry whose name or terms match the query, best first. */
@@ -159,4 +188,27 @@ function normalize(text: string): string {
 		.replace(/\p{Diacritic}/gu, "")
 		.toLowerCase()
 		.trim();
+}
+
+/**
+ * Tags after changing an entity's preset, as iD does: the old preset's tags are removed (any
+ * value for `*`), the new one's added (`*` becomes `yes` unless a value is there), and every
+ * other tag is kept.
+ */
+export function applyPreset(
+	tags: Tags,
+	from: Preset | undefined,
+	to: Preset | undefined,
+): Tags {
+	const result: Record<string, string> = { ...tags };
+	for (const [key, value] of Object.entries(
+		from?.removeTags ?? from?.addTags ?? from?.tags ?? {},
+	)) {
+		if (value === "*" || result[key] === value) delete result[key];
+	}
+	for (const [key, value] of Object.entries(to?.addTags ?? to?.tags ?? {})) {
+		if (value !== "*") result[key] = value;
+		else if (result[key] === undefined) result[key] = "yes";
+	}
+	return result;
 }

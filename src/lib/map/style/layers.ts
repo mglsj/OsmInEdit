@@ -55,14 +55,20 @@ function widthByKind(
 	return ["interpolate", ["exponential", 2], ["zoom"], 17, at(1), 22, at(2)];
 }
 
-/** Layer ids, bottom to top. Fills and lines go below the basemap labels, symbols above. */
-export const INDOOR_LAYER_IDS = [
+/** Layers the user can click to select a feature. */
+export const SELECTABLE_LAYER_IDS = [
 	"indoor-fill",
 	"indoor-outline",
 	"indoor-lines",
 	"indoor-doors",
 	"indoor-labels",
-] as const;
+];
+
+const isSelected: ExpressionSpecification = [
+	"boolean",
+	["feature-state", "selected"],
+	false,
+];
 
 export interface IndoorStyleOptions {
 	/** Fonts available from the basemap's glyph server. */
@@ -231,6 +237,30 @@ export function indoorLayers(
 				"text-color": C.text,
 				"text-halo-color": C.textHalo,
 				"text-halo-width": 1.2,
+			},
+		},
+		{
+			id: "indoor-selection-line",
+			type: "line",
+			source: INDOOR_SOURCE,
+			filter: onLevel(["any", isPolygon, isLine]),
+			paint: {
+				"line-color": C.selection,
+				"line-width": 3,
+				"line-opacity": ["case", isSelected, 1, 0],
+			},
+		},
+		{
+			id: "indoor-selection-point",
+			type: "circle",
+			source: INDOOR_SOURCE,
+			filter: onLevel(isPoint),
+			paint: {
+				"circle-radius": 12,
+				"circle-color": "rgba(0, 0, 0, 0)",
+				"circle-stroke-color": C.selection,
+				"circle-stroke-width": 3,
+				"circle-stroke-opacity": ["case", isSelected, 1, 0],
 			},
 		},
 	];

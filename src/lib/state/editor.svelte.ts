@@ -2,13 +2,23 @@
  * Editor state shared by the UI: the OSM graph with its history, the features drawn on the
  * map, and the loading status of the visible area.
  */
+import { changeTags } from "#lib/actions/change-tags.ts";
 import { MapLoader } from "#lib/api/map-loader.ts";
 import type { Bbox, OsmApi } from "#lib/api/osm-api.ts";
 import { buildFeatures } from "#lib/map/features.ts";
 import { AVAILABLE_ICONS } from "#lib/map/style/icons.ts";
-import type { Entity } from "#lib/osm/entity.ts";
+import { entityGeometry } from "#lib/osm/area.ts";
+import type { Entity, EntityId } from "#lib/osm/entity.ts";
 import { Graph } from "#lib/osm/graph.ts";
-import { History } from "#lib/osm/history.ts";
+import { type Action, History } from "#lib/osm/history.ts";
+import type { Tags } from "#lib/osm/tags.ts";
+import { loadPresetIndex } from "#lib/presets/load.ts";
+import {
+	applyPreset,
+	type Preset,
+	type PresetGeometry,
+	type PresetIndex,
+} from "#lib/presets/presets.ts";
 
 export type LoadStatus =
 	| { readonly kind: "idle" }
@@ -31,6 +41,13 @@ export class Editor {
 	readonly features = $derived(
 		buildFeatures(this.graph, { icons: AVAILABLE_ICONS }),
 	);
+	/** Presets, loaded in the background. */
+	presets = $state.raw<PresetIndex | null>(null);
+	selectedId = $state<EntityId | null>(null);
+	/** The selected entity, or null when nothing (or something deleted) is selected. */
+	readonly selected = $derived(
+		this.selectedId ? (this.graph.entity(this.selectedId) ?? null) : null,
+	);
 
 	readonly #history = new History(this.graph);
 	readonly #loader: MapLoader;
@@ -39,6 +56,7 @@ export class Editor {
 
 	constructor({ api, minZoom }: EditorOptions) {
 		this.#minZoom = minZoom;
+		void loadPresetIndex().then((index) => (this.presets = index));
 		this.#loader = new MapLoader({
 			download: (bbox) => api.loadMap(bbox),
 			onData: (entities) => this.#receive(entities),
@@ -60,6 +78,57 @@ export class Editor {
 		} else if (this.#loads === 0) {
 			this.status = { kind: result.skipped ? "zoom-in" : "idle" };
 		}
+	}
+
+	get canUndo(): boolean {
+		void this.graph; // re-evaluate when the graph changes
+		return this.#history.canUndo;
+	}
+
+	get canRedo(): boolean {
+		void this.graph;
+		return this.#history.canRedo;
+	}
+
+	/** Number of entities created, modified or deleted since the last upload. */
+	get editCount(): number {
+		const { created, modified, deleted } = this.graph.changes();
+		return created.length + modified.length + deleted.length;
+	}
+
+	perform(action: Action, annotation: string): void {
+		this.graph = this.#history.perform(action, annotation);
+	}
+
+	undo(): void {
+		this.#history.undo();
+		this.graph = this.#history.graph;
+	}
+
+	redo(): void {
+		this.#history.redo();
+		this.graph = this.#history.graph;
+	}
+
+	select(id: EntityId | null): void {
+		this.selectedId = id;
+	}
+
+	geometryOf(entity: Entity): PresetGeometry {
+		return entityGeometry(this.graph, entity);
+	}
+
+	presetOf(entity: Entity): Preset | undefined {
+		return this.presets?.match(entity.tags, this.geometryOf(entity));
+	}
+
+	setTags(id: EntityId, tags: Tags): void {
+		this.perform(changeTags(id, tags), "Change tags");
+	}
+
+	setPreset(entity: Entity, preset: Preset): void {
+		const tags = applyPreset(entity.tags, this.presetOf(entity), preset);
+		this.perform(changeTags(entity.id, tags), `Change to ${preset.name}`);
 	}
 
 	#receive(entities: Entity[]): void {

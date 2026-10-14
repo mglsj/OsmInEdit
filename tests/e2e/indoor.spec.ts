@@ -1,64 +1,20 @@
-import type { Page } from "@playwright/test";
 import {
 	BACKGROUND,
 	blend,
 	expect,
 	expectPixel,
 	hash,
+	LAT,
+	LON,
 	mapCenter,
 	pixelAt,
+	room,
+	serveOsm,
 	test,
 } from "./fixtures.ts";
 
 /** The room colour of the style, drawn at its fill opacity over the background. */
 const ROOM = blend([0xd6, 0xd1, 0xc7], 0.8, BACKGROUND);
-
-const LAT = 48.13;
-const LON = -1.69;
-
-type Element = Record<string, unknown>;
-
-/** A square room of `r` degrees around (lon, lat), as OSM JSON elements with ids from `id`. */
-function room(
-	id: number,
-	lon: number,
-	lat: number,
-	level: string,
-	r = 0.0002,
-): Element[] {
-	const corners = [
-		[lon - r, lat - r],
-		[lon + r, lat - r],
-		[lon + r, lat + r],
-		[lon - r, lat + r],
-	];
-	return [
-		...corners.map(([x, y], i) => ({
-			type: "node",
-			id: id + i + 1,
-			lon: x,
-			lat: y,
-			version: 1,
-		})),
-		{
-			type: "way",
-			id,
-			version: 1,
-			nodes: [id + 1, id + 2, id + 3, id + 4, id + 1],
-			tags: { indoor: "room", level },
-		},
-	];
-}
-
-/** Serves `elements` for every downloaded area and counts the downloads. */
-async function serveOsm(page: Page, elements: Element[]) {
-	const requests: string[] = [];
-	await page.route("**/api/0.6/map.json*", (route) => {
-		requests.push(route.request().url());
-		return route.fulfill({ json: { version: "0.6", elements } });
-	});
-	return requests;
-}
 
 test("draws a room on its level only", async ({ page }) => {
 	await serveOsm(page, [

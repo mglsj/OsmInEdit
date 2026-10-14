@@ -10,18 +10,31 @@ import type {
 	Map as MapLibreMap,
 } from "./maplibre.ts";
 import { loadIconsOnDemand } from "./style/icons.ts";
-import { INDOOR_SOURCE, indoorLayers } from "./style/layers.ts";
+import {
+	INDOOR_SOURCE,
+	indoorLayers,
+	SELECTABLE_LAYER_IDS,
+} from "./style/layers.ts";
 
 type Collection = FeatureCollection<Geometry, FeatureProperties>;
 
 /** Layers drawn above the basemap's labels; the others go below them. */
-const ABOVE_LABELS = new Set(["indoor-doors", "indoor-labels"]);
+const ABOVE_LABELS = new Set([
+	"indoor-doors",
+	"indoor-labels",
+	"indoor-selection-line",
+	"indoor-selection-point",
+]);
+
+/** Click tolerance, in pixels around the pointer. */
+const CLICK_TOLERANCE = 4;
 
 export class IndoorMap {
 	readonly #map: MapLibreMap;
 	#ready = false;
 	#data: Collection = { type: "FeatureCollection", features: [] };
 	#level = 0;
+	#selected: string | null = null;
 
 	constructor(map: MapLibreMap) {
 		this.#map = map;
@@ -44,6 +57,58 @@ export class IndoorMap {
 				this.#map.setFilter(layer.id, layer.filter as FilterSpecification);
 			}
 		}
+	}
+
+	/** Highlights a feature, by `@id`, or nothing. */
+	setSelected(id: string | null): void {
+		if (this.#ready && this.#selected !== null) {
+			this.#map.setFeatureState(
+				{ source: INDOOR_SOURCE, id: this.#selected },
+				{ selected: false },
+			);
+		}
+		this.#selected = id;
+		if (this.#ready && id !== null) {
+			this.#map.setFeatureState(
+				{ source: INDOOR_SOURCE, id },
+				{ selected: true },
+			);
+		}
+	}
+
+	/**
+	 * Calls `handler` with the `@id` of the clicked feature, topmost first, or null for a click
+	 * on empty space. Returns a function removing the handler.
+	 */
+	onClick(handler: (id: string | null) => void): () => void {
+		const map = this.#map;
+		const listener = ({ point }: { point: { x: number; y: number } }) => {
+			const features = this.#ready
+				? map.queryRenderedFeatures(
+						[
+							[point.x - CLICK_TOLERANCE, point.y - CLICK_TOLERANCE],
+							[point.x + CLICK_TOLERANCE, point.y + CLICK_TOLERANCE],
+						],
+						{ layers: SELECTABLE_LAYER_IDS },
+					)
+				: [];
+			const id = features[0]?.properties["@id"];
+			handler(typeof id === "string" ? id : null);
+		};
+		const pointer = () => (map.getCanvas().style.cursor = "pointer");
+		const reset = () => (map.getCanvas().style.cursor = "");
+		map.on("click", listener);
+		for (const layer of SELECTABLE_LAYER_IDS) {
+			map.on("mouseenter", layer, pointer);
+			map.on("mouseleave", layer, reset);
+		}
+		return () => {
+			map.off("click", listener);
+			for (const layer of SELECTABLE_LAYER_IDS) {
+				map.off("mouseenter", layer, pointer);
+				map.off("mouseleave", layer, reset);
+			}
+		};
 	}
 
 	remove(): void {
@@ -70,6 +135,7 @@ export class IndoorMap {
 			map.addLayer(layer, ABOVE_LABELS.has(layer.id) ? undefined : firstLabel);
 		}
 		this.#ready = true;
+		this.setSelected(this.#selected);
 	}
 
 	#source(): GeoJSONSource | undefined {

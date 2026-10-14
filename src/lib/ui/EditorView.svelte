@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Redo2 from "@lucide/svelte/icons/redo-2";
+	import Undo2 from "@lucide/svelte/icons/undo-2";
 	import { untrack } from "svelte";
 	import type { Place } from "#lib/api/nominatim.ts";
 	import type { Bbox } from "#lib/api/osm-api.ts";
@@ -13,8 +15,10 @@
 	import type { ImageryEntry } from "#lib/map/imagery.ts";
 	import { IndoorMap } from "#lib/map/indoor-map.ts";
 	import type { Map as MapLibreMap } from "#lib/map/maplibre.ts";
+	import type { EntityId } from "#lib/osm/entity.ts";
 	import { Editor } from "#lib/state/editor.svelte.ts";
 	import ImageryPicker from "#lib/ui/ImageryPicker.svelte";
+	import Inspector from "#lib/ui/Inspector.svelte";
 	import LevelControl from "#lib/ui/LevelControl.svelte";
 	import MapView from "#lib/ui/MapView.svelte";
 	import SearchPlace from "#lib/ui/SearchPlace.svelte";
@@ -58,7 +62,14 @@
 		const indoor = new IndoorMap(map);
 		$effect(() => indoor.setData(editor.features.collection));
 		$effect(() => indoor.setLevel(level));
-		return () => indoor.remove();
+		$effect(() => indoor.setSelected(editor.selectedId));
+		const stopClicks = indoor.onClick((id) =>
+			editor.select(id as EntityId | null),
+		);
+		return () => {
+			stopClicks();
+			indoor.remove();
+		};
 	});
 
 	// Keep the URL hash in sync with the map camera and the selected level.
@@ -112,6 +123,25 @@
 		map?.jumpTo({ center: [view.lon, view.lat], zoom: view.zoom });
 	}
 
+	/** Undo/redo shortcuts, except while typing in a field (which has its own undo). */
+	function onKeydown(event: KeyboardEvent) {
+		const target = event.target as HTMLElement | null;
+		const typing = target?.closest("input, textarea, select") !== null;
+		if (event.key === "Escape" && !typing) {
+			editor.select(null);
+			return;
+		}
+		if (typing || !(event.ctrlKey || event.metaKey)) return;
+		const key = event.key.toLowerCase();
+		if (key === "z" && !event.shiftKey) {
+			event.preventDefault();
+			editor.undo();
+		} else if ((key === "z" && event.shiftKey) || key === "y") {
+			event.preventDefault();
+			editor.redo();
+		}
+	}
+
 	const statusMessage = $derived.by(() => {
 		switch (editor.status.kind) {
 			case "loading":
@@ -126,7 +156,7 @@
 	});
 </script>
 
-<svelte:window onhashchange={onHashChange} />
+<svelte:window onhashchange={onHashChange} onkeydown={onKeydown} />
 
 <MapView
 	styleUrl={config.basemap_style}
@@ -145,6 +175,32 @@
 		onselect={showPlace}
 		baseUrl={config.nominatim_url}
 	/>
+	<div
+		role="toolbar"
+		aria-label="Edit history"
+		class="flex overflow-hidden rounded-md bg-white shadow-md ring-1 ring-black/10 dark:bg-slate-900 dark:ring-white/15"
+	>
+		<button
+			type="button"
+			aria-label="Undo"
+			title="Undo (Ctrl+Z)"
+			disabled={!editor.canUndo}
+			onclick={() => editor.undo()}
+			class="flex h-9 w-10 items-center justify-center hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-slate-800"
+		>
+			<Undo2 size={16} aria-hidden="true" />
+		</button>
+		<button
+			type="button"
+			aria-label="Redo"
+			title="Redo (Ctrl+Shift+Z)"
+			disabled={!editor.canRedo}
+			onclick={() => editor.redo()}
+			class="flex h-9 w-10 items-center justify-center hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-slate-800"
+		>
+			<Redo2 size={16} aria-hidden="true" />
+		</button>
+	</div>
 	<ImageryPicker
 		center={camera && [camera.lon, camera.lat]}
 		selected={background}
@@ -153,9 +209,18 @@
 	/>
 </div>
 
-<div class="absolute top-4 right-4 z-10">
+<div
+	class="absolute top-4 z-10"
+	style:right={editor.selected ? "23rem" : "1rem"}
+>
 	<LevelControl bind:level levels={editor.features.levels} />
 </div>
+
+{#if editor.selected}
+	<div class="absolute inset-y-0 right-0 z-30">
+		<Inspector {editor} entity={editor.selected} />
+	</div>
+{/if}
 
 {#if statusMessage}
 	<p

@@ -124,3 +124,51 @@ export async function mapCenter(page: Page): Promise<{ x: number; y: number }> {
 		y: Math.round(box.y + box.height / 2),
 	};
 }
+
+/** Default place of the OSM extracts below. */
+export const LAT = 48.13;
+export const LON = -1.69;
+
+export type Element = Record<string, unknown>;
+
+/** A square room of `r` degrees around (lon, lat), as OSM JSON elements with ids from `id`. */
+export function room(
+	id: number,
+	lon: number,
+	lat: number,
+	level: string,
+	r = 0.0002,
+): Element[] {
+	const corners = [
+		[lon - r, lat - r],
+		[lon + r, lat - r],
+		[lon + r, lat + r],
+		[lon - r, lat + r],
+	];
+	return [
+		...corners.map(([x, y], i) => ({
+			type: "node",
+			id: id + i + 1,
+			lon: x,
+			lat: y,
+			version: 1,
+		})),
+		{
+			type: "way",
+			id,
+			version: 1,
+			nodes: [id + 1, id + 2, id + 3, id + 4, id + 1],
+			tags: { indoor: "room", level },
+		},
+	];
+}
+
+/** Serves `elements` for every downloaded area and counts the downloads. */
+export async function serveOsm(page: Page, elements: Element[]) {
+	const requests: string[] = [];
+	await page.route("**/api/0.6/map.json*", (route) => {
+		requests.push(route.request().url());
+		return route.fulfill({ json: { version: "0.6", elements } });
+	});
+	return requests;
+}

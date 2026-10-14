@@ -14,15 +14,19 @@ function drawnBy(
 	geometry: keyof typeof GEOMETRY,
 	properties: Record<string, string>,
 ): string[] {
-	return indoorLayers(level)
-		.filter((layer) => {
-			if (!("filter" in layer) || !layer.filter) return true;
-			return featureFilter(layer.filter, `layers.${layer.id}.filter`).filter(
-				{ zoom: 19 },
-				{ type: GEOMETRY[geometry], properties },
-			);
-		})
-		.map((layer) => layer.id);
+	return (
+		indoorLayers(level)
+			// Selection layers draw everything, invisible unless selected.
+			.filter((layer) => !layer.id.startsWith("indoor-selection"))
+			.filter((layer) => {
+				if (!("filter" in layer) || !layer.filter) return true;
+				return featureFilter(layer.filter, `layers.${layer.id}.filter`).filter(
+					{ zoom: 19 },
+					{ type: GEOMETRY[geometry], properties },
+				);
+			})
+			.map((layer) => layer.id)
+	);
 }
 
 describe("indoorLayers", () => {

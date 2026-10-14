@@ -21,5 +21,6 @@ export const INDOOR_COLORS = {
 	passageStroke: "#aaaaaa",
 	line: "#9e9e9e",
 	text: "#333333",
+	selection: "#f59e0b",
 	textHalo: "rgba(255, 255, 255, 0.8)",
 } as const;

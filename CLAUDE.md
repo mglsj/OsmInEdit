@@ -33,8 +33,12 @@ runs the same commands.
 - Data model (P1): `osm/` (entities, immutable `Graph`, `History`, osmChange), `actions/`
   (pure `graph => graph` functions), `levels/` (level values as ranges), `api/` (`OsmApi`).
   Get ids for new entities from `graph.newId(type)`; never mutate entities or graphs.
-- Planned modules (see plan.md): `presets`, `validation`, `edit`, `floorplans`, `persist`,
-  `state`. Pure modules (`osm`, `levels`, `actions`, `presets`, `validation`,
+- Viewer (P2): `map/features.ts` (graph → GeoJSON with `@lv`, `@kind`, `@icon`, `@label`),
+  `map/classify.ts` (all tag → drawing rules), `map/style/layers.ts`, `map/indoor-map.ts` (source
+  and layers on the map), `api/map-loader.ts`, `state/editor.svelte.ts` (`Editor`), and
+  `ui/EditorView.svelte` (the page's map UI). Change how a tag is drawn in `classify.ts`, not
+  in the style.
+- Planned modules (see plan.md): `presets`, `validation`, `edit`, `floorplans`, `persist`. Pure modules (`osm`, `levels`, `actions`, `presets`, `validation`,
   `floorplans/georef`) must not touch the DOM or Svelte.
 
 ## Rules that are easy to get wrong
@@ -66,8 +70,10 @@ runs the same commands.
   client with a fake `fetch` (see `api/osm-api.test.ts`), never the network.
 - E2E tests use the `test` fixture from `tests/e2e/fixtures.ts`: it blocks all external requests
   and serves a blank basemap style. Override a route in the test when you need specific data.
-  `camera()` reads the map's camera, `pixelAt()` checks rendered colours (WebGL runs in
-  SwiftShader).
+  `camera()` reads the map's camera, `pixelAt()`/`expectPixel()` check rendered colours (WebGL
+  runs in SwiftShader). It serves an empty OSM area by default; `serveOsm()` in
+  `indoor.spec.ts` shows how to serve real elements. Don't wait for network requests to
+  bundled assets: Vite inlines small files as `data:` URLs.
 - `@playwright/test` is pinned to 1.56.1 because that version matches the Chromium preinstalled in
   cloud sessions (`/opt/pw-browsers`). Upgrade both together.
 

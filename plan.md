@@ -21,8 +21,8 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | ----- | ------------------------------------------ | ----------- |
 | P0    | Scaffold, tooling, map, URL hash           | Done        |
 | P1    | Core data model (no UI)                    | Done        |
-| P2    | Fast read-only viewer                      | Next        |
-| P3    | Presets, validation, upload                | Not started |
+| P2    | Fast read-only viewer                      | Done        |
+| P3    | Presets, validation, upload                | Next        |
 | P4    | Floor plans                                | Not started |
 | P5    | Geometry editing                           | Not started |
 | P6    | Parity and polish                          | Not started |
@@ -157,18 +157,32 @@ Each phase ends with lint, check, unit and e2e tests green, and a status update 
 Moved out of P1: autosave and orthogonalize / copy level / copy-paste → P5 (they need the
 editing UI); merging re-downloaded data into the graph → P2 (map loader); OAuth login → P3.
 
-### P2: Fast read-only viewer (Explore mode)
+### P2: Fast read-only viewer — done
 
-- Load OSM data over a z16 tile grid from zoom 17, with a cache and at most 4 parallel requests;
-  merge downloads into the graph (same version → skip; newer and untouched → replace; newer and
-  edited locally → conflict).
-- Translate `public/style.mapcss` by hand into MapLibre layers (fill, line, symbol), including
-  door widths and incline/conveying arrows; icons through `styleimagemissing`, rasterised at the
-  device pixel ratio from Maki/Temaki and the legacy SVGs.
-- Level selector from building levels; Nominatim search; imagery picker from the
-  editor-layer-index (fetched once, filtered by bbox on debounced `moveend`; templates
-  `{zoom}`, `{switch:}`, `{-y}`, WMS `{bbox-epsg-3857}`; keyed sources hidden without a key).
-- Targets: smooth panning on a 10k-feature fixture, level switch < 50 ms, no polling timers.
+228 unit tests and 17 browser tests in total; the browser tests check rendered pixels.
+
+- Data: `map/tiles.ts` (slippy-map tiles), `api/map-loader.ts` (each zoom-16 tile downloaded
+  once, at most 4 at a time, failed tiles retried on the next move, zoomed-out views skipped),
+  `History.merge` (same version → skip; newer and untouched → replace; newer and edited locally
+  → conflict, local edit kept).
+- Features: `map/features.ts` turns the graph into GeoJSON (areas, lines, tagged points,
+  multipolygons with holes). Each feature carries `@lv` (known levels it covers), so a level
+  switch is a `setFilter`, never a data rebuild. `map/classify.ts` decides `@kind`, `@icon`,
+  `@label`, `@restricted` in code instead of long style expressions.
+- Style: `map/style/layers.ts` (fills and lines under the basemap labels, doors and labels
+  above), validated with MapLibre's validator; 1.x icons bundled and rasterised on demand at
+  the screen's pixel density through MapLibre 6's `setMissingStyleImageResolver`.
+- UI: `EditorView` with the `Editor` state class, a level selector built from the data,
+  Nominatim search on submit (`nominatim_url`), and a Background panel listing
+  Editor Layer Index imagery for the view (`imagery_index_url`; TMS, `{switch:}`, `{-y}`, WMS in
+  EPSG:3857; Bing, keyed and long-expired sources left out).
+- Performance: no polling timers. Measured in Node on 10,000 rooms (50,000 entities): merging 9
+  tiles 64 ms in total, building all features 85 ms. Each downloaded tile still rebuilds every
+  feature; incremental `updateData()` comes with editing (P5). The level-switch time has not been
+  measured in a real browser yet (headless tests use software WebGL).
+
+Moved out of P2: Maki/Temaki icons → P3 (they come with the presets); door widths and
+incline/conveying arrows → P5.
 
 ### P3: Presets, validation, upload
 
@@ -183,6 +197,7 @@ editing UI); merging re-downloaded data into the graph → P2 (map loader); OAut
   → `level=a;b;c`; empty keys/values; level outside the building; missing `indoor=level`
   outline; door not on a wall.
 - PKCE login; changeset pane (comment, source, `review_requested`, `imagery_used`); atomic upload.
+- Icons from Maki/Temaki for the presets' features, alongside the 1.x set.
 - E2E against a mocked OSM API that records the uploaded osmChange.
 
 ### P4: Floor plans
@@ -206,6 +221,7 @@ editing UI); merging re-downloaded data into the graph → P2 (map loader); OAut
   relations); door on wall; orthogonalize (port iD's current action); copy/paste features and
   tags; copy level.
 - Building, Levels and Features workflows; simple multipolygons (outer + inner).
+- Door widths and incline/conveying arrows on the map; incremental source updates on edit.
 - History autosaved to IndexedDB with a restore prompt and a `beforeunload` guard.
 
 ### P6: Parity and polish

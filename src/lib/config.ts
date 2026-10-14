@@ -10,6 +10,8 @@ export interface EditorConfig {
 	osm_api_url: string;
 	/** Public OAuth 2 client id registered on the OSM instance above (PKCE, no secret). */
 	oauth_client_id: string;
+	/** Nominatim instance for place search; the OSMF one by default. */
+	nominatim_url?: string;
 	/** URL of a MapLibre style used as the default basemap. */
 	basemap_style: string;
 	/** Minimal zoom at which OSM data is downloaded. */

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { untrack } from "svelte";
+	import type { Place } from "#lib/api/nominatim.ts";
+	import type { Bbox } from "#lib/api/osm-api.ts";
 	import { OsmApi } from "#lib/api/osm-api.ts";
 	import type { EditorConfig } from "#lib/config.ts";
 	import {
@@ -12,6 +14,7 @@
 	import { Editor } from "#lib/state/editor.svelte.ts";
 	import LevelControl from "#lib/ui/LevelControl.svelte";
 	import MapView from "#lib/ui/MapView.svelte";
+	import SearchPlace from "#lib/ui/SearchPlace.svelte";
 	import { goto } from "$app/navigation";
 	import { resolve } from "$app/paths";
 
@@ -36,20 +39,18 @@
 	);
 
 	let map = $state.raw<MapLibreMap>();
-	let indoor = $state.raw<IndoorMap>();
 	let camera = $state.raw<Omit<View, "level">>();
 	let level = $state(fromUrl?.level ?? 0);
 	let lastHash = "";
 
-	// The indoor layers live as long as the map.
+	// The indoor layers live as long as the map, and follow the data and the selected level.
 	$effect(() => {
 		if (!map) return;
-		const layers = new IndoorMap(map);
-		indoor = layers;
-		return () => layers.remove();
+		const indoor = new IndoorMap(map);
+		$effect(() => indoor.setData(editor.features.collection));
+		$effect(() => indoor.setLevel(level));
+		return () => indoor.remove();
 	});
-	$effect(() => indoor?.setData(editor.features.collection));
-	$effect(() => indoor?.setLevel(level));
 
 	// Keep the URL hash in sync with the map camera and the selected level.
 	const hash = $derived(camera && formatHash({ ...camera, level }));
@@ -60,19 +61,37 @@
 		}
 	});
 
-	function onMove(next: Omit<View, "level">) {
-		camera = next;
+	function visibleArea(): Bbox | undefined {
 		const bounds = map?.getBounds();
-		if (!bounds) return;
-		void editor.loadView(
-			{
+		return (
+			bounds && {
 				west: bounds.getWest(),
 				south: bounds.getSouth(),
 				east: bounds.getEast(),
 				north: bounds.getNorth(),
-			},
-			next.zoom,
+			}
 		);
+	}
+
+	function onMove(next: Omit<View, "level">) {
+		camera = next;
+		const area = visibleArea();
+		if (area) void editor.loadView(area, next.zoom);
+	}
+
+	function showPlace(place: Place) {
+		if (place.bbox) {
+			const { west, south, east, north } = place.bbox;
+			map?.fitBounds(
+				[
+					[west, south],
+					[east, north],
+				],
+				{ maxZoom: 19, duration: 0 },
+			);
+		} else {
+			map?.jumpTo({ center: [place.lon, place.lat], zoom: 19 });
+		}
 	}
 
 	// Follow hash edits made by the user (typed URL, pasted link, back/forward).
@@ -110,6 +129,14 @@
 	bind:map
 	onmove={onMove}
 />
+
+<div class="absolute top-4 left-4 z-20">
+	<SearchPlace
+		getView={visibleArea}
+		onselect={showPlace}
+		baseUrl={config.nominatim_url}
+	/>
+</div>
 
 <div class="absolute top-4 right-4 z-10">
 	<LevelControl bind:level levels={editor.features.levels} />

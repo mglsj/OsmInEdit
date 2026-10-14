@@ -55,6 +55,7 @@ SvelteKit is configured in `vite.config.ts` (SvelteKit 3 no longer reads `svelte
 | `editor_name`        | Name of this instance                                                                                                                                 |
 | `osm_api_url`        | OSM API to edit. Defaults to the [development API](https://master.apis.dev.openstreetmap.org); use `https://api.openstreetmap.org` in production      |
 | `oauth_client_id`    | Public client id of an [OAuth 2 application](https://wiki.openstreetmap.org/wiki/OAuth) registered on that OSM instance, without client secret (PKCE) |
+| `nominatim_url`      | Nominatim instance used for place search (optional, defaults to `https://nominatim.openstreetmap.org`) |
 | `basemap_style`      | URL of a MapLibre style used as background map                                                                                                        |
 | `data_min_zoom`      | Minimal zoom at which OSM data is downloaded                                                                                                          |
 | `map_initial_zoom`   | Zoom used when the URL has no position                                                                                                                |

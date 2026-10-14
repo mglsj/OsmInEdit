@@ -1,7 +1,7 @@
 <script lang="ts">
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import ChevronUp from '@lucide/svelte/icons/chevron-up';
-	import { Tooltip } from 'bits-ui';
+	import ChevronDown from "@lucide/svelte/icons/chevron-down";
+	import ChevronUp from "@lucide/svelte/icons/chevron-up";
+	import { Tooltip } from "bits-ui";
 
 	interface Props {
 		level: number;
@@ -11,8 +11,8 @@
 	let { level = $bindable() }: Props = $props();
 
 	const buttons = [
-		{ label: 'Level up', step: 1, Icon: ChevronUp },
-		{ label: 'Level down', step: -1, Icon: ChevronDown }
+		{ label: "Level up", step: 1, Icon: ChevronUp },
+		{ label: "Level down", step: -1, Icon: ChevronDown },
 	];
 </script>
 

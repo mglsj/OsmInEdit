@@ -12,11 +12,9 @@ If you are looking for an indoor data viewer (a map for browsing existing data),
 
 > **Rewrite in progress.** This branch is rebuilding OsmInEdit with Svelte, MapLibre GL JS and an OpenStreetMap-native data model, to make map rendering fast, floor plan alignment easy and tagging up to date with the wiki. It is not usable for editing yet. The last release of the original editor is kept under the git tag `legacy-v1.0.16`.
 
-**Tips and tricks** for using this editor can be found on [usage documentation](USAGE.md).
-
 ## Contributing
 
-This project is an open source tool, meaning it is made by volunteers. If you **want to help us**, there are several ways (technical or non-technical ones). You can find how to participate in the [contributing documentation](CONTRIBUTING.md).
+This project is an open source tool, meaning it is made by volunteers. If you **want to help us**, there are several ways (technical or non-technical ones). Issues and pull requests are welcome on [GitHub](https://github.com/mglsj/OsmInEdit).
 
 ## Develop/run your own instance
 

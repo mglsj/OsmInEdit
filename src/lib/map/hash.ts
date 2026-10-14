@@ -17,7 +17,11 @@ export const MAX_ZOOM = 24;
 
 /** Strict number parsing: rejects empty strings and trailing garbage that parseFloat accepts. */
 function toNumber(value: string): number {
-	return value.trim() === '' ? NaN : Number(value);
+	return value.trim() === "" ? NaN : Number(value);
+}
+
+function isFiniteNumber(value: number | undefined): value is number {
+	return value !== undefined && Number.isFinite(value);
 }
 
 /**
@@ -25,15 +29,21 @@ function toNumber(value: string): number {
  * so callers can fall back to a default view.
  */
 export function parseHash(hash: string): MapView | null {
-	const parts = (hash.startsWith('#') ? hash.slice(1) : hash).split('/');
+	const parts = (hash.startsWith("#") ? hash.slice(1) : hash).split("/");
 	if (parts.length < 3 || parts.length > 4) return null;
 
-	const [zoom, lat, lon] = parts.slice(0, 3).map(toNumber) as [number, number, number];
-	if (!Number.isFinite(zoom) || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-	if (zoom < MIN_ZOOM || zoom > MAX_ZOOM || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+	const [zoom, lat, lon, level] = parts.map(toNumber);
+	if (!isFiniteNumber(zoom) || !isFiniteNumber(lat) || !isFiniteNumber(lon))
+		return null;
+	if (
+		zoom < MIN_ZOOM ||
+		zoom > MAX_ZOOM ||
+		Math.abs(lat) > 90 ||
+		Math.abs(lon) > 180
+	)
+		return null;
 
-	const level = parts.length === 4 ? toNumber(parts[3]!) : 0;
-	return { zoom, lat, lon, level: Number.isFinite(level) ? level : 0 };
+	return { zoom, lat, lon, level: isFiniteNumber(level) ? level : 0 };
 }
 
 /**
@@ -56,7 +66,7 @@ export function formatHash(view: MapView): `#${string}` {
 		formatNumber(view.zoom, 2),
 		formatNumber(view.lat, precision),
 		formatNumber(view.lon, precision),
-		formatNumber(view.level, 2)
+		formatNumber(view.level, 2),
 	];
-	return `#${parts.join('/')}`;
+	return `#${parts.join("/")}`;
 }

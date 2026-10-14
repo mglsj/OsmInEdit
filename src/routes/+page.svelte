@@ -1,25 +1,28 @@
 <script lang="ts">
-	import type { Map as MapLibreMap } from 'maplibre-gl';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
-	import { loadConfig } from '#lib/config.ts';
-	import { formatHash, parseHash, type MapView as View } from '#lib/map/hash.ts';
-	import LevelControl from '#lib/ui/LevelControl.svelte';
-	import MapView from '#lib/ui/MapView.svelte';
+	import { loadConfig } from "#lib/config.ts";
+	import {
+		formatHash,
+		parseHash,
+		type MapView as View,
+	} from "#lib/map/hash.ts";
+	import type { Map as MapLibreMap } from "#lib/map/maplibre.ts";
+	import LevelControl from "#lib/ui/LevelControl.svelte";
+	import MapView from "#lib/ui/MapView.svelte";
+	import { goto } from "$app/navigation";
+	import { resolve } from "$app/paths";
 
 	const configPromise = loadConfig();
 	const fromUrl = parseHash(location.hash);
 
 	let map = $state.raw<MapLibreMap>();
-	let camera = $state.raw<Omit<View, 'level'>>();
+	let camera = $state.raw<Omit<View, "level">>();
 	let level = $state(fromUrl?.level ?? 0);
-	let lastHash = '';
+	let lastHash = "";
 
 	// Keep the URL hash in sync with the map camera and the selected level.
+	const hash = $derived(camera && formatHash({ ...camera, level }));
 	$effect(() => {
-		if (!camera) return;
-		const hash = formatHash({ ...camera, level });
-		if (hash !== lastHash) {
+		if (hash && hash !== lastHash) {
 			lastHash = hash;
 			void goto(resolve(hash), { replace: true, shallow: true });
 		}
@@ -42,7 +45,9 @@
 		class="flex h-12 shrink-0 items-center gap-3 border-b border-black/10 px-4 dark:border-white/15"
 	>
 		<h1 class="text-base font-semibold">OsmInEdit</h1>
-		<span class="text-xs text-slate-500 dark:text-slate-400">2.0 preview · {__GIT_HASH__}</span>
+		<span class="text-xs text-slate-500 dark:text-slate-400"
+			>2.0 preview · {__GIT_HASH__}</span
+		>
 	</header>
 
 	<main class="relative min-h-0 flex-1">
@@ -54,7 +59,7 @@
 				initialCamera={fromUrl ?? {
 					zoom: config.map_initial_zoom,
 					lat: config.map_initial_latlng[0],
-					lon: config.map_initial_latlng[1]
+					lon: config.map_initial_latlng[1],
 				}}
 				bind:map
 				onmove={(c) => (camera = c)}
@@ -63,7 +68,9 @@
 				<LevelControl bind:level />
 			</div>
 		{:catch error}
-			<p role="alert" class="p-4 text-sm text-red-700 dark:text-red-300">{error.message}</p>
+			<p role="alert" class="p-4 text-sm text-red-700 dark:text-red-300">
+				{error.message}
+			</p>
 		{/await}
 	</main>
 </div>

@@ -1,3 +1,4 @@
+import type { Entity, EntityId } from "./entity.ts";
 import type { Graph } from "./graph.ts";
 
 /** A change to the graph. Actions are pure: they return a new graph. */
@@ -45,6 +46,34 @@ export class History {
 		this.#steps.push({ graph, annotation });
 		this.#index++;
 		return graph;
+	}
+
+	/**
+	 * Adds downloaded entities to the server data of every step. Entities already known in the
+	 * same or a newer version are ignored. A newer version of an entity edited locally is not
+	 * taken: the local edit stays, the upload will be refused for it, and it is reported here.
+	 */
+	merge(entities: Iterable<Entity>): { conflicts: EntityId[] } {
+		const base = this.base;
+		const accepted: Entity[] = [];
+		const conflicts: EntityId[] = [];
+		for (const entity of entities) {
+			const known = base.entity(entity.id);
+			if (known && (known.version ?? 0) >= (entity.version ?? 0)) continue;
+			if (this.#steps.some((step) => step.graph.isEdited(entity.id))) {
+				conflicts.push(entity.id);
+			} else {
+				accepted.push(entity);
+			}
+		}
+		if (accepted.length > 0) {
+			const merged = base.withBaseEntities(accepted);
+			this.#steps = this.#steps.map((step) => ({
+				...step,
+				graph: step.graph.rebaseOnto(merged),
+			}));
+		}
+		return { conflicts };
 	}
 
 	/** Returns the annotation of the undone action, or null if there was nothing to undo. */

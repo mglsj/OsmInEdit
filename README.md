@@ -12,7 +12,7 @@ If you are looking for an indoor data viewer (a map for browsing existing data),
 
 ## Contributing
 
-This project is an open source tool, meaning it is made by volunteers. If you **want to help us**, there are several ways (technical or non-technical ones). Issues and pull requests are welcome on [GitHub](https://github.com/mglsj/OsmInEdit).
+This project is an open source tool, meaning it is made by volunteers. If you **want to help us**, there are several ways (technical or non-technical ones). Issues and pull requests are welcome on [GitHub](https://github.com/mglsj/indoor-id).
 
 ## Develop/run your own instance
 
@@ -27,6 +27,10 @@ IndoorID builds on OsmInEdit, which exists thanks to the **amazing people** foll
 - Florian Lainez, for improving the user experience
 - Thomas Gratier, for his work on [osm-request](https://github.com/osmlab/osm-request) library
 - And all users, for using the tool and sharing their ideas !
+
+Presets and fields come from iD's [tagging schema](https://github.com/openstreetmap/id-tagging-schema)
+(ISC), and icons from [Maki](https://github.com/mapbox/maki) and
+[Temaki](https://github.com/rapideditor/temaki) (CC0).
 
 ## License
 

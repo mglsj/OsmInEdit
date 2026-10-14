@@ -7,7 +7,7 @@ IndoorID is a client-side web application written in TypeScript with [Svelte 5](
 ## Requirements
 
 - [Bun](https://bun.sh) 1.4 (package manager and script runner)
-- Node.js 26 or later (runs Vite, SvelteKit and the test tools)
+- Node.js 24 or later (runs Vite, SvelteKit and the test tools)
 
 ## Commands
 
@@ -53,12 +53,30 @@ SvelteKit is configured in `vite.config.ts` (SvelteKit 3 no longer reads `svelte
 | Key                  | Description                                                                                                                                           |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `editor_name`        | Name of this instance                                                                                                                                 |
-| `osm_api_url`        | OSM API to edit. Defaults to the [development API](https://master.apis.dev.openstreetmap.org); use `https://api.openstreetmap.org` in production      |
+| `osm_api_url`        | OSM API to read and edit: `https://api.openstreetmap.org` (the default), or the [development API](https://master.apis.dev.openstreetmap.org) to test uploads |
+| `oauth_url`          | OSM website handling the login and changeset links (`https://www.openstreetmap.org` with the production API; defaults to `osm_api_url`, which is right for the development API) |
 | `oauth_client_id`    | Public client id of an [OAuth 2 application](https://wiki.openstreetmap.org/wiki/OAuth) registered on that OSM instance, without client secret (PKCE) |
+| `imagery_index_url`  | [Editor Layer Index](https://github.com/osmlab/editor-layer-index) listing background imagery (optional, defaults to the osmlab one) |
+| `nominatim_url`      | Nominatim instance used for place search (optional, defaults to `https://nominatim.openstreetmap.org`) |
 | `basemap_style`      | URL of a MapLibre style used as background map                                                                                                        |
 | `data_min_zoom`      | Minimal zoom at which OSM data is downloaded                                                                                                          |
 | `map_initial_zoom`   | Zoom used when the URL has no position                                                                                                                |
 | `map_initial_latlng` | `[lat, lon]` used when the URL has no position                                                                                                        |
+
+### Logging in
+
+Register an OAuth 2 application on the OSM instance (your user settings, "OAuth 2 applications") with:
+
+- permissions: *Read user preferences* and *Modify the map*;
+- redirect URI: the editor's URL followed by `auth/callback`, e.g. `http://localhost:5173/auth/callback` for development;
+- confidential application: **unchecked** (IndoorID uses PKCE and has no secret).
+
+Put its client id in `oauth_client_id`.
+
+To try uploads without touching the real map, register the application on the
+[development server](https://master.apis.dev.openstreetmap.org) instead, set `osm_api_url` to
+`https://master.apis.dev.openstreetmap.org` and remove `oauth_url`. Its data is a test sandbox:
+anyone can edit it, so expect names and shapes that don't match reality.
 
 ## Translations
 

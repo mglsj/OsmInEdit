@@ -21,9 +21,9 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | ----- | ------------------------------------------ | ----------- |
 | P0    | Scaffold, tooling, map, URL hash           | Done        |
 | P1    | Core data model (no UI)                    | Done        |
-| P2    | Fast read-only viewer                      | Next        |
-| P3    | Presets, validation, upload                | Not started |
-| P4    | Floor plans                                | Not started |
+| P2    | Fast read-only viewer                      | Done        |
+| P3    | Presets, validation, upload                | Done        |
+| P4    | Floor plans                                | Next        |
 | P5    | Geometry editing                           | Not started |
 | P6    | Parity and polish                          | Not started |
 
@@ -61,7 +61,7 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 
 | Area        | Choice                                                                                          |
 | ----------- | ----------------------------------------------------------------------------------------------- |
-| Tooling     | Bun 1.4 (package manager, scripts), Node 26, Biome 2.5 (format + lint), GitHub Actions          |
+| Tooling     | Bun 1.4 (package manager, scripts), Node 24+, Biome 2.5 (format + lint), GitHub Actions          |
 | App         | SvelteKit 3 + `adapter-static`, every route `ssr = false` / `prerender = true`; Svelte 5 runes; TypeScript 6 strict |
 | Map         | MapLibre GL JS 6 (WebGL), imported only via `#lib/map/maplibre.ts`                              |
 | UI          | Tailwind CSS 4, bits-ui 2 (headless, accessible primitives), `@lucide/svelte`                   |
@@ -157,33 +157,66 @@ Each phase ends with lint, check, unit and e2e tests green, and a status update 
 Moved out of P1: autosave and orthogonalize / copy level / copy-paste → P5 (they need the
 editing UI); merging re-downloaded data into the graph → P2 (map loader); OAuth login → P3.
 
-### P2: Fast read-only viewer (Explore mode)
+### P2: Fast read-only viewer — done
 
-- Load OSM data over a z16 tile grid from zoom 17, with a cache and at most 4 parallel requests;
-  merge downloads into the graph (same version → skip; newer and untouched → replace; newer and
-  edited locally → conflict).
-- Translate `public/style.mapcss` by hand into MapLibre layers (fill, line, symbol), including
-  door widths and incline/conveying arrows; icons through `styleimagemissing`, rasterised at the
-  device pixel ratio from Maki/Temaki and the legacy SVGs.
-- Level selector from building levels; Nominatim search; imagery picker from the
-  editor-layer-index (fetched once, filtered by bbox on debounced `moveend`; templates
-  `{zoom}`, `{switch:}`, `{-y}`, WMS `{bbox-epsg-3857}`; keyed sources hidden without a key).
-- Targets: smooth panning on a 10k-feature fixture, level switch < 50 ms, no polling timers.
+228 unit tests and 17 browser tests in total; the browser tests check rendered pixels.
 
-### P3: Presets, validation, upload
+- Data: `map/tiles.ts` (slippy-map tiles), `api/map-loader.ts` (each zoom-16 tile downloaded
+  once, at most 4 at a time, failed tiles retried on the next move, zoomed-out views skipped),
+  `History.merge` (same version → skip; newer and untouched → replace; newer and edited locally
+  → conflict, local edit kept).
+- Features: `map/features.ts` turns the graph into GeoJSON (areas, lines, tagged points,
+  multipolygons with holes). Each feature carries `@lv` (known levels it covers), so a level
+  switch is a `setFilter`, never a data rebuild. `map/classify.ts` decides `@kind`, `@icon`,
+  `@label`, `@restricted` in code instead of long style expressions.
+- Style: `map/style/layers.ts` (fills and lines under the basemap labels, doors and labels
+  above), validated with MapLibre's validator; 1.x icons bundled and rasterised on demand at
+  the screen's pixel density through MapLibre 6's `setMissingStyleImageResolver`.
+- UI: `EditorView` with the `Editor` state class, a level selector built from the data,
+  Nominatim search on submit (`nominatim_url`), and a Background panel listing
+  Editor Layer Index imagery for the view (`imagery_index_url`; TMS, `{switch:}`, `{-y}`, WMS in
+  EPSG:3857; Bing, keyed and long-expired sources left out).
+- Performance: no polling timers. Measured in Node on 10,000 rooms (50,000 entities): merging 9
+  tiles 64 ms in total, building all features 85 ms. Each downloaded tile still rebuilds every
+  feature; incremental `updateData()` comes with editing (P5). The level-switch time has not been
+  measured in a real browser yet (headless tests use software WebGL).
 
-- `scripts/build-presets.ts`: filter id-tagging-schema to indoor-relevant presets and emit
-  presets, fields, `deprecated.json` and translations; local overlay for `level:ref`,
-  `indoor=level`, repeat_on guidance and entries from the legacy `indoor.xml` that upstream lacks.
-- Preset matching, search, recent presets; fields (text, number, combo, semiCombo, check) that
-  respect delimiters; raw tag table.
-- Validator with one-click fixes: `room=stairs` → `indoor=room` + `stairs=yes`;
-  `room=elevator` → `indoor=room` + `elevator=yes`; `buildingpart=*` → `indoor=*`;
-  `diaper` → `changing_table`; `building:height` → `height`; vertical features using `repeat_on`
-  → `level=a;b;c`; empty keys/values; level outside the building; missing `indoor=level`
-  outline; door not on a wall.
-- PKCE login; changeset pane (comment, source, `review_requested`, `imagery_used`); atomic upload.
-- E2E against a mocked OSM API that records the uploaded osmChange.
+Moved out of P2: Maki/Temaki icons → P3 (they come with the presets); door widths and
+incline/conveying arrows → P5.
+
+### P3: Presets, validation, upload — done
+
+295 unit tests and 28 browser tests in total.
+
+- Presets: `scripts/build-presets.ts` keeps 1,049 presets and 396 fields of
+  `@openstreetmap/id-tagging-schema` 7.3 (indoor, amenity, shop, door and entrance, elevator,
+  steps, corridor and other features found inside buildings) with English labels, plus
+  `deprecated.json`; `presets/overlay.json` adds "Indoor Level Outline" (`indoor=level`,
+  `level:ref`), a generic Door preset and door fields (`swinging`, `automatic_door`, `handle`).
+  `PresetIndex` matches like iD (indexed by key, cached per tags object) and searches by name
+  and terms.
+- Inspector: click to select (feature-state highlight), preset name and icon, "Change type"
+  picker (defaults per geometry, search), fields (text, combo with suggestions, check, select,
+  textarea), raw tag text, undo/redo buttons and shortcuts, Escape to deselect.
+- Validation (`validation/validate.ts`) on the selected feature and on every edited one before
+  upload, with one-click fixes: outdated tags (`room=stairs|elevator`, `buildingpart=*`, and the
+  schema's `deprecated.json`, e.g. `diaper` → `changing_table`); vertical features using
+  `repeat_on` → `level=a;b;c`; unreadable levels (a comma explains `;`, no guessed fix); door
+  not on a wall or room outline.
+- Login and upload: osm-auth popup with PKCE and `/auth/callback`; upload dialog with comment,
+  source, review request and `imagery_used` from the backgrounds picked; one atomic osmChange;
+  each API error explained, with the edits kept. The e2e test asserts the exact osmChange.
+- Icons: the presets' Maki and Temaki icons (CC0) on the map and in the inspector, falling back
+  to the 1.x icons; rooms, walls, doors and other structure get none. Icon files are loaded on
+  demand rather than inlined in the bundle.
+- Performance: building the features of 10,000 rooms with presets takes ~290 ms the first time
+  (matching every preset) and ~40 ms after, thanks to the match cache.
+
+Moved out of P3: the spatial rules (level outside the building's levels, missing `indoor=level`
+outline) and the empty key/value check → P5, with the geometry tools; translations of presets
+and recent presets → P6 (i18n); number fields and semiCombo lists edited as plain text for now
+(values are kept as typed, never rewritten). Upload tests mock the API with `page.route` in each
+test instead of a shared `mock-osm.ts`.
 
 ### P4: Floor plans
 
@@ -206,11 +239,15 @@ editing UI); merging re-downloaded data into the graph → P2 (map loader); OAut
   relations); door on wall; orthogonalize (port iD's current action); copy/paste features and
   tags; copy level.
 - Building, Levels and Features workflows; simple multipolygons (outer + inner).
+- Door widths and incline/conveying arrows on the map; incremental source updates on edit.
+- Spatial validation (from P3): level outside the building's levels, missing `indoor=level`
+  outline; empty keys or values.
 - History autosaved to IndexedDB with a restore prompt and a `beforeunload` guard.
 
 ### P6: Parity and polish
 
-- i18n with Paraglide; migrate 1.x UI translations (en, fr, de, it, hu, cs, es).
+- i18n with Paraglide; migrate 1.x UI translations (en, fr, de, it, hu, cs, es); preset and
+  field translations from the schema; recent presets in the type picker.
 - Keyboard shortcuts, help, indoor= preview (origin-checked `postMessage`), conflict dialog,
   README and usage docs. Release gate: an e2e checklist of 1.x features.
 
@@ -218,8 +255,8 @@ editing UI); merging re-downloaded data into the graph → P2 (map loader); OAut
 
 - Unit (Vitest, node environment): at least 90% coverage on `osm`, `levels`, `georef`.
 - E2E (Playwright, Chromium with SwiftShader WebGL, `vite preview`): all external requests
-  blocked or mocked through `tests/e2e/fixtures.ts`; a mock OSM API (`mock-osm.ts`, P3) with
-  injectable 409/412 errors; rendering checked with `pixelAt()` rather than screenshots.
+  blocked or mocked through `tests/e2e/fixtures.ts`; the OSM API mocked per test with
+  `page.route` (including 409/412 errors); rendering checked with `pixelAt()` rather than screenshots.
 - TDD per the `tdd` skill: agree on seams before writing tests.
 
 ## Risks

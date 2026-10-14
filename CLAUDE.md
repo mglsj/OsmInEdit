@@ -6,7 +6,7 @@ SvelteKit + MapLibre app. OSM is the only backend. The roadmap, decisions and ph
 
 ## Commands
 
-Bun is the package manager and script runner; Node 26 runs Vite and the test tools.
+Bun is the package manager and script runner; Node 24+ runs Vite and the test tools.
 
 ```bash
 bun install
@@ -28,13 +28,25 @@ runs the same commands.
 - `src/lib/` holds the code, imported as `#lib/...` with explicit extensions
   (`import { parseHash } from "#lib/map/hash.ts"`). `$lib` does not exist in SvelteKit 3.
 - `src/lib/ui/` components, `src/lib/map/` map helpers, `src/routes/` pages, `static/` copied
-  as-is (`config.json`, legacy icons in `static/img`), `tests/e2e/` browser tests.
+  as-is (`config.json`, help images), `tests/e2e/` browser tests. Map icons load on demand
+  (`style/icons.ts`): the 1.x set in `src/lib/map/style/icons/` (`key_value.svg|png`) and the
+  presets' Maki/Temaki icons (`maki-toilet.svg`) copied into `presets/generated/icons/`.
 - Data model (P1): `osm/` (entities, immutable `Graph`, `History`, osmChange), `actions/`
   (pure `graph => graph` functions), `levels/` (level values as ranges), `api/` (`OsmApi`).
   Get ids for new entities from `graph.newId(type)`; never mutate entities or graphs.
-- Planned modules (see plan.md): `presets`, `validation`, `edit`, `floorplans`, `persist`,
-  `state`. Pure modules (`osm`, `levels`, `actions`, `presets`, `validation`,
-  `floorplans/georef`) must not touch the DOM or Svelte.
+- Viewer (P2): `map/features.ts` (graph → GeoJSON with `@lv`, `@kind`, `@icon`, `@label`),
+  `map/classify.ts` (all tag → drawing rules), `map/style/layers.ts`, `map/indoor-map.ts` (source
+  and layers on the map), `api/map-loader.ts`, `state/editor.svelte.ts` (`Editor`), and
+  `ui/EditorView.svelte` (the page's map UI). Change how a tag is drawn in `classify.ts`, not
+  in the style.
+- Tagging and upload (P3): `presets/` (`PresetIndex`: match, search, fields; `applyPreset`),
+  `validation/` (`validate()` rules with one-click fixes, tag upgrades), `api/changeset.ts`,
+  `state/session.svelte.ts` (osm-auth login), `ui/Inspector.svelte`, `ui/SaveDialog.svelte`.
+  Presets come from `@openstreetmap/id-tagging-schema` plus `presets/overlay.json`, built by
+  `scripts/build-presets.ts` on install into the gitignored `presets/generated/`; run
+  `bun run presets` after changing the overlay or the schema version.
+- Planned modules (see plan.md): `edit`, `floorplans`, `persist`. Pure modules (`osm`, `levels`,
+  `actions`, `presets`, `validation`, `floorplans/georef`) must not touch the DOM or Svelte.
 
 ## Rules that are easy to get wrong
 
@@ -65,8 +77,11 @@ runs the same commands.
   client with a fake `fetch` (see `api/osm-api.test.ts`), never the network.
 - E2E tests use the `test` fixture from `tests/e2e/fixtures.ts`: it blocks all external requests
   and serves a blank basemap style. Override a route in the test when you need specific data.
-  `camera()` reads the map's camera, `pixelAt()` checks rendered colours (WebGL runs in
-  SwiftShader).
+  `camera()` reads the map's camera, `pixelAt()`/`expectPixel()` check rendered colours (WebGL
+  runs in SwiftShader). It serves an empty OSM area by default; `serveOsm()` in
+  `indoor.spec.ts` shows how to serve real elements. Don't wait for network requests to
+  bundled assets other than map icons: Vite inlines small files as `data:` URLs (icons are
+  imported with `?no-inline`, so a test can wait for `maki-toilet.*.svg`).
 - `@playwright/test` is pinned to 1.56.1 because that version matches the Chromium preinstalled in
   cloud sessions (`/opt/pw-browsers`). Upgrade both together.
 

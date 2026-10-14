@@ -1,28 +1,30 @@
 # Develop
 
-OsmInEdit 2 is a client-side web application written in TypeScript with [Svelte 5](https://svelte.dev) and [SvelteKit](https://svelte.dev/docs/kit), rendered with [MapLibre GL JS](https://maplibre.org) and styled with [Tailwind CSS](https://tailwindcss.com). It has no backend of its own: OpenStreetMap is the backend.
+IndoorID is a client-side web application written in TypeScript with [Svelte 5](https://svelte.dev) and [SvelteKit](https://svelte.dev/docs/kit), rendered with [MapLibre GL JS](https://maplibre.org) and styled with [Tailwind CSS](https://tailwindcss.com). It has no backend of its own: OpenStreetMap is the backend.
 
-> The 1.x editor (React + Leaflet) is being rewritten. Its last version is kept under the git tag `legacy-v1.0.16`.
+> IndoorID is a rewrite of the OsmInEdit 1.x editor (React + Leaflet). Its last version is kept under the git tag `legacy-v1.0.16`.
 
 ## Requirements
 
-- Node.js 22 or later, and npm
+- [Bun](https://bun.sh) 1.4 (package manager and script runner)
+- Node.js 26 or later (runs Vite, SvelteKit and the test tools)
 
 ## Commands
 
-Install dependencies with `npm install`, then:
+Install dependencies with `bun install`, then:
 
-| Command             | Description                                                                    |
-| ------------------- | ------------------------------------------------------------------------------ |
-| `npm run dev`       | Starts a development server on [http://localhost:5173](http://localhost:5173)  |
-| `npm run build`     | Builds the static site into `build/`, ready to be served by any web server     |
-| `npm run preview`   | Serves the production build locally                                            |
-| `npm run check`     | Type-checks TypeScript and Svelte files                                        |
-| `npm run lint`      | Checks formatting (Prettier) and lints (ESLint); `npm run format` fixes format |
-| `npm run test:unit` | Runs unit tests (Vitest), found next to the code as `*.test.ts`                |
-| `npm run test:e2e`  | Builds the app and runs browser tests (Playwright) from `tests/e2e`            |
+| Command              | Description                                                                   |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `bun run dev`        | Starts a development server on [http://localhost:5173](http://localhost:5173) |
+| `bun run build`      | Builds the static site into `build/`, ready to be served by any web server    |
+| `bun run preview`    | Serves the production build locally                                           |
+| `bun run check`      | Type-checks TypeScript and Svelte files                                       |
+| `bun run lint`       | Checks formatting and lint rules (Biome)                                      |
+| `bun run format`     | Formats and applies safe lint fixes (Biome)                                   |
+| `bun run test:unit`  | Runs unit tests (Vitest), found next to the code as `*.test.ts`               |
+| `bun run test:e2e`   | Builds the app and runs browser tests (Playwright) from `tests/e2e`           |
 
-The first time you run browser tests, install Chromium with `npx playwright install chromium`.
+The first time you run browser tests, install Chromium with `bunx playwright install chromium`.
 
 ## Project layout
 
@@ -32,13 +34,15 @@ src/
   routes/               SvelteKit pages (the editor is the root page)
   lib/                  Application code, imported as `#lib/...`
     config.ts           Runtime configuration loader
-    map/                Map helpers (URL hash, ...)
+    map/                Map helpers: MapLibre entry point, URL hash, ...
     ui/                 Svelte components
 static/                 Files copied as-is: config.json, images
 tests/e2e/              Playwright tests; external requests are mocked
 ```
 
-Imports inside `src/lib` use the `#lib/*` [subpath import](https://nodejs.org/api/packages.html#subpath-imports) with explicit file extensions, e.g. `import { parseHash } from '#lib/map/hash.ts'`.
+Imports inside `src/lib` use the `#lib/*` [subpath import](https://nodejs.org/api/packages.html#subpath-imports) with explicit file extensions, e.g. `import { parseHash } from "#lib/map/hash.ts"`.
+
+Always import MapLibre from `#lib/map/maplibre.ts`, never from `maplibre-gl` directly: that module registers the MapLibre web worker, without which no data source can load.
 
 SvelteKit is configured in `vite.config.ts` (SvelteKit 3 no longer reads `svelte.config.js`).
 

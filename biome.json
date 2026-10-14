@@ -6,7 +6,16 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"ignoreUnknown": false
+		"ignoreUnknown": false,
+		"includes": [
+			"**",
+			"!static",
+			"!build",
+			"!.svelte-kit",
+			"!test-results",
+			"!playwright-report",
+			"!skills-lock.json"
+		]
 	},
 	"formatter": {
 		"enabled": true,
@@ -30,5 +39,29 @@
 				"organizeImports": "on"
 			}
 		}
-	}
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	},
+	"html": {
+		"experimentalFullSupportEnabled": true,
+		"formatter": {
+			"enabled": true,
+			"indentScriptAndStyle": true
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["**/*.test.ts", "tests/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noNonNullAssertion": "off"
+					}
+				}
+			}
+		}
+	]
 }

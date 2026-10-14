@@ -1,4 +1,4 @@
-import { asset } from '$app/paths';
+import { asset } from "$app/paths";
 
 /**
  * Instance configuration, read at runtime from `static/config.json` so a deployed build
@@ -19,8 +19,10 @@ export interface EditorConfig {
 	map_initial_latlng: [number, number];
 }
 
-export async function loadConfig(fetchFn: typeof fetch = fetch): Promise<EditorConfig> {
-	const response = await fetchFn(asset('config.json'));
+export async function loadConfig(
+	fetchFn: typeof fetch = fetch,
+): Promise<EditorConfig> {
+	const response = await fetchFn(asset("config.json"));
 	if (!response.ok) {
 		throw new Error(`Could not load config.json (HTTP ${response.status})`);
 	}

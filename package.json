@@ -26,7 +26,9 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"test": "npm run test:unit && npm run test:e2e",
+		"lint": "biome check .",
+		"format": "biome check --write .",
+		"test": "bun run test:unit && bun run test:e2e",
 		"test:unit": "vitest run",
 		"test:e2e": "playwright test"
 	},
@@ -35,14 +37,12 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.15",
-		"@eslint/js": "10.0.1",
 		"@playwright/test": "1.56.1",
 		"@sveltejs/adapter-static": "4.0.0",
 		"@sveltejs/kit": "3.0.1",
 		"@sveltejs/vite-plugin-svelte": "7.3.1",
 		"@tailwindcss/vite": "4.3.3",
-		"@types/node": "22.20.5",
-		"globals": "17.13.0",
+		"@types/node": "26.6.5",
 		"svelte": "5.57.2",
 		"svelte-check": "4.7.6",
 		"tailwindcss": "4.3.3",
@@ -54,5 +54,6 @@
 		"@lucide/svelte": "1.57.0",
 		"bits-ui": "2.19.5",
 		"maplibre-gl": "6.14.0"
-	}
+	},
+	"packageManager": "bun@1.4.2"
 }

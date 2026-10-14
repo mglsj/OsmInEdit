@@ -80,7 +80,7 @@ test("asks to zoom in instead of downloading a large area", async ({
 	const requests = await serveOsm(page, []);
 	await page.goto(`/#16/${LAT}/${LON}/0`);
 	await expect(page.getByTestId("load-status")).toHaveText(
-		"Zoom in to see and edit indoor data",
+		"Zoom in to load indoor data here",
 	);
 	expect(requests).toEqual([]);
 });

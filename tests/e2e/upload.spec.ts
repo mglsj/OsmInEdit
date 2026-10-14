@@ -1,7 +1,8 @@
 import type { Page, Route } from "@playwright/test";
 import { expect, selectRoom, tagsBox, test } from "./fixtures.ts";
 
-const API = "https://master.apis.dev.openstreetmap.org";
+const API = "https://api.openstreetmap.org";
+const WEBSITE = "https://www.openstreetmap.org";
 
 /** Turns login on, as if the user had logged in before. */
 async function loggedIn(page: Page) {
@@ -15,7 +16,7 @@ async function loggedIn(page: Page) {
 	});
 	await page.addInitScript(
 		(key) => localStorage.setItem(key, "secret-token"),
-		`${API}oauth2_access_token`,
+		`${WEBSITE}oauth2_access_token`,
 	);
 	await page.route(`${API}/api/0.6/user/details.json`, (route) =>
 		route.fulfill({ json: { user: { display_name: "Tester" } } }),

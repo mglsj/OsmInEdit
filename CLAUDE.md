@@ -80,7 +80,8 @@ runs the same commands.
   `camera()` reads the map's camera, `pixelAt()`/`expectPixel()` check rendered colours (WebGL
   runs in SwiftShader). It serves an empty OSM area by default; `serveOsm()` in
   `indoor.spec.ts` shows how to serve real elements. Don't wait for network requests to
-  bundled assets: Vite inlines small files as `data:` URLs.
+  bundled assets other than map icons: Vite inlines small files as `data:` URLs (icons are
+  imported with `?no-inline`, so a test can wait for `maki-toilet.*.svg`).
 - `@playwright/test` is pinned to 1.56.1 because that version matches the Chromium preinstalled in
   cloud sessions (`/opt/pw-browsers`). Upgrade both together.
 

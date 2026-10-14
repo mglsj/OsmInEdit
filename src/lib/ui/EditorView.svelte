@@ -161,7 +161,7 @@
 			case "loading":
 				return "Loading OpenStreetMap data…";
 			case "zoom-in":
-				return "Zoom in to see and edit indoor data";
+				return "Zoom in to load indoor data here";
 			case "error":
 				return `Some data could not be loaded (${editor.status.failed} area${editor.status.failed > 1 ? "s" : ""}). Move the map to retry.`;
 			default:

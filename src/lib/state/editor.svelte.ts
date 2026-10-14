@@ -12,13 +12,15 @@ import type { Entity, EntityId } from "#lib/osm/entity.ts";
 import { Graph } from "#lib/osm/graph.ts";
 import { type Action, History } from "#lib/osm/history.ts";
 import type { Tags } from "#lib/osm/tags.ts";
-import { loadPresetIndex } from "#lib/presets/load.ts";
+import { loadPresetIndex, loadSchemaUpgrades } from "#lib/presets/load.ts";
 import {
 	applyPreset,
 	type Preset,
 	type PresetGeometry,
 	type PresetIndex,
 } from "#lib/presets/presets.ts";
+import { LOCAL_UPGRADES, type UpgradeRule } from "#lib/validation/upgrades.ts";
+import { type Issue, validate } from "#lib/validation/validate.ts";
 
 export type LoadStatus =
 	| { readonly kind: "idle" }
@@ -44,6 +46,8 @@ export class Editor {
 	/** Presets, loaded in the background. */
 	presets = $state.raw<PresetIndex | null>(null);
 	selectedId = $state<EntityId | null>(null);
+	/** Tag upgrade rules: local ones at once, the schema's once loaded. */
+	upgrades = $state.raw<readonly UpgradeRule[]>(LOCAL_UPGRADES);
 	/** The selected entity, or null when nothing (or something deleted) is selected. */
 	readonly selected = $derived(
 		this.selectedId ? (this.graph.entity(this.selectedId) ?? null) : null,
@@ -57,6 +61,9 @@ export class Editor {
 	constructor({ api, minZoom }: EditorOptions) {
 		this.#minZoom = minZoom;
 		void loadPresetIndex().then((index) => (this.presets = index));
+		void loadSchemaUpgrades().then(
+			(rules) => (this.upgrades = [...LOCAL_UPGRADES, ...rules]),
+		);
 		this.#loader = new MapLoader({
 			download: (bbox) => api.loadMap(bbox),
 			onData: (entities) => this.#receive(entities),
@@ -108,6 +115,25 @@ export class Editor {
 	redo(): void {
 		this.#history.redo();
 		this.graph = this.#history.graph;
+	}
+
+	/** Problems of one entity. */
+	issuesOf(id: EntityId): Issue[] {
+		return validate(this.graph, [id], this.upgrades);
+	}
+
+	/** Problems of the entities edited since the last upload. */
+	get editIssues(): Issue[] {
+		const { created, modified } = this.graph.changes();
+		return validate(
+			this.graph,
+			[...created, ...modified].map((e) => e.id),
+			this.upgrades,
+		);
+	}
+
+	fix(issue: Issue): void {
+		if (issue.fix) this.perform(issue.fix.action, issue.fix.label);
 	}
 
 	select(id: EntityId | null): void {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import X from "@lucide/svelte/icons/x";
 	import { formatTagText, parseTagText } from "#lib/osm/tag-text.ts";
 	import type { Field, Preset } from "#lib/presets/presets.ts";
@@ -30,6 +31,7 @@
 			(f) => f.key !== undefined && entity.tags[f.key] !== undefined,
 		),
 	]);
+	const issues = $derived(editor.issuesOf(entity.id));
 	const results = $derived(
 		editor.presets
 			? query.trim()
@@ -124,6 +126,37 @@
 				</ul>
 			</div>
 		{:else}
+			{#if issues.length > 0}
+				<section
+					aria-label="Issues"
+					class="flex flex-col gap-2 border-b border-black/10 p-4 dark:border-white/15"
+				>
+					{#each issues as issue (issue.id)}
+						<div
+							class="rounded-md bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+						>
+							<p class="flex gap-2">
+								<TriangleAlert
+									size={16}
+									class="mt-0.5 shrink-0"
+									aria-hidden="true"
+								/>
+								{issue.message}
+							</p>
+							{#if issue.fix}
+								<button
+									type="button"
+									onclick={() => editor.fix(issue)}
+									class="mt-2 rounded bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700"
+								>
+									{issue.fix.label}
+								</button>
+							{/if}
+						</div>
+					{/each}
+				</section>
+			{/if}
+
 			<section aria-label="Fields" class="flex flex-col gap-3 p-4">
 				{#each shownFields as field (field.id)}
 					<FieldInput

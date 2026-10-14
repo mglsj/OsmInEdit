@@ -100,3 +100,31 @@ test("Escape and clicking elsewhere close the editor", async ({ page }) => {
 	await page.mouse.click(box.x + 20, box.y + box.height - 60);
 	await expect(editor).toBeHidden();
 });
+
+test("fixes outdated tags in one click, and the fix can be undone", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page, { room: "stairs" });
+	const issues = editor.getByRole("region", { name: "Issues" });
+	await expect(issues).toContainText("Outdated tags: room=stairs");
+
+	await issues.getByRole("button", { name: "Upgrade to stairs=yes" }).click();
+	await expect(tagsBox(page)).toHaveValue("indoor=room\nlevel=0\nstairs=yes");
+	await expect(
+		editor.getByRole("heading", { name: "Indoor Stairwell" }),
+	).toBeVisible();
+	await expect(issues).toBeHidden();
+
+	await page.getByRole("button", { name: "Undo" }).click();
+	await expect(tagsBox(page)).toHaveValue("indoor=room\nlevel=0\nroom=stairs");
+});
+
+test("flags a level value it can't read", async ({ page }) => {
+	const editor = await selectRoom(page);
+	const level = editor.getByLabel("Level", { exact: true });
+	await level.fill("1,5");
+	await level.press("Enter");
+	await expect(editor.getByRole("region", { name: "Issues" })).toContainText(
+		"level=1,5 can't be read",
+	);
+});

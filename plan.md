@@ -61,7 +61,7 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 
 | Area        | Choice                                                                                          |
 | ----------- | ----------------------------------------------------------------------------------------------- |
-| Tooling     | Bun 1.4 (package manager, scripts), Node 26, Biome 2.5 (format + lint), GitHub Actions          |
+| Tooling     | Bun 1.4 (package manager, scripts), Node 24+, Biome 2.5 (format + lint), GitHub Actions          |
 | App         | SvelteKit 3 + `adapter-static`, every route `ssr = false` / `prerender = true`; Svelte 5 runes; TypeScript 6 strict |
 | Map         | MapLibre GL JS 6 (WebGL), imported only via `#lib/map/maplibre.ts`                              |
 | UI          | Tailwind CSS 4, bits-ui 2 (headless, accessible primitives), `@lucide/svelte`                   |

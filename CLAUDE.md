@@ -6,7 +6,7 @@ SvelteKit + MapLibre app. OSM is the only backend. The roadmap, decisions and ph
 
 ## Commands
 
-Bun is the package manager and script runner; Node 26 runs Vite and the test tools.
+Bun is the package manager and script runner; Node 24+ runs Vite and the test tools.
 
 ```bash
 bun install

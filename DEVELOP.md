@@ -7,7 +7,7 @@ IndoorID is a client-side web application written in TypeScript with [Svelte 5](
 ## Requirements
 
 - [Bun](https://bun.sh) 1.4 (package manager and script runner)
-- Node.js 26 or later (runs Vite, SvelteKit and the test tools)
+- Node.js 24 or later (runs Vite, SvelteKit and the test tools)
 
 ## Commands
 

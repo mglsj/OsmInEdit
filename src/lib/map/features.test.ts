@@ -1,0 +1,193 @@
+import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
+import { describe, expect, it } from "vitest";
+import type { Entity, NodeId } from "#lib/osm/entity.ts";
+import { node, relation, way } from "#lib/osm/fixtures.ts";
+import { Graph } from "#lib/osm/graph.ts";
+import { buildFeatures, levelFilter } from "./features.ts";
+
+/** Node id n{prefix}{i}, e.g. n12. */
+const nid = (prefix: number, i: number): NodeId => `n${prefix * 10 + i}`;
+
+/** A square of nodes n{prefix}1..4 around (x, y), with side 2 * r. */
+function square(prefix: number, x: number, y: number, r = 1): Entity[] {
+	return [
+		node(nid(prefix, 1), {}, [x - r, y - r]),
+		node(nid(prefix, 2), {}, [x + r, y - r]),
+		node(nid(prefix, 3), {}, [x + r, y + r]),
+		node(nid(prefix, 4), {}, [x - r, y + r]),
+	];
+}
+const ring = (prefix: number) => [1, 2, 3, 4, 1].map((i) => nid(prefix, i));
+
+function featuresOf(entities: Entity[]) {
+	return buildFeatures(Graph.fromEntities(entities));
+}
+
+function feature(entities: Entity[], id: string) {
+	return featuresOf(entities).collection.features.find(
+		(f) => f.properties["@id"] === id,
+	);
+}
+
+describe("buildFeatures", () => {
+	it("draws a room as a polygon carrying its tags", () => {
+		const room = feature(
+			[...square(1, 0, 0), way("w1", ring(1), { indoor: "room", level: "0" })],
+			"w1",
+		);
+		expect(room?.geometry).toEqual({
+			type: "Polygon",
+			coordinates: [
+				[
+					[-1, -1],
+					[1, -1],
+					[1, 1],
+					[-1, 1],
+					[-1, -1],
+				],
+			],
+		});
+		expect(room?.properties).toMatchObject({ indoor: "room", level: "0" });
+	});
+
+	it("draws a closed wall as a line, unless tagged area=yes", () => {
+		const wall = [...square(1, 0, 0), way("w1", ring(1), { indoor: "wall" })];
+		expect(feature(wall, "w1")?.geometry.type).toBe("LineString");
+
+		const solid = [
+			...square(1, 0, 0),
+			way("w1", ring(1), { indoor: "wall", area: "yes" }),
+		];
+		expect(feature(solid, "w1")?.geometry.type).toBe("Polygon");
+	});
+
+	it("draws open ways as lines", () => {
+		const corridor = feature(
+			[
+				...square(1, 0, 0),
+				way("w1", ["n11", "n12", "n13"], { highway: "corridor" }),
+			],
+			"w1",
+		);
+		expect(corridor?.geometry).toEqual({
+			type: "LineString",
+			coordinates: [
+				[-1, -1],
+				[1, -1],
+				[1, 1],
+			],
+		});
+	});
+
+	it("draws tagged nodes, including doors on walls, but not plain vertices", () => {
+		const entities = [
+			...square(1, 0, 0),
+			node("n5", { door: "hinged" }, [0, -1]),
+			way("w1", ["n11", "n5", "n12", "n13", "n14", "n11"], { indoor: "room" }),
+			node("n6", { amenity: "toilets", level: "0" }, [0, 0]),
+		];
+		const ids = featuresOf(entities).collection.features.map(
+			(f) => f.properties["@id"],
+		);
+		expect(ids.sort()).toEqual(["n5", "n6", "w1"]);
+	});
+
+	it("draws multipolygons with holes, and not their untagged member ways", () => {
+		const entities = [
+			...square(1, 0, 0, 10),
+			...square(2, 0, 0, 1),
+			way("w1", ["n11", "n12", "n13"]),
+			way("w2", ["n13", "n14", "n11"]),
+			way("w3", ring(2)),
+			relation(
+				"r1",
+				[
+					{ ref: "w1", role: "outer" },
+					{ ref: "w2", role: "outer" },
+					{ ref: "w3", role: "inner" },
+				],
+				{ type: "multipolygon", indoor: "corridor", level: "0" },
+			),
+		];
+		const features = featuresOf(entities).collection.features;
+
+		expect(features.map((f) => f.properties["@id"])).toEqual(["r1"]);
+		expect(features[0]?.properties).toMatchObject({ indoor: "corridor" });
+		expect(features[0]?.geometry).toEqual({
+			type: "MultiPolygon",
+			coordinates: [
+				[
+					[
+						[-10, -10],
+						[10, -10],
+						[10, 10],
+						[-10, 10],
+						[-10, -10],
+					],
+					[
+						[-1, -1],
+						[1, -1],
+						[1, 1],
+						[-1, 1],
+						[-1, -1],
+					],
+				],
+			],
+		});
+	});
+
+	it("skips ways whose nodes were not downloaded", () => {
+		const entities = [
+			node("n1"),
+			way("w1", ["n1", "n2"], { highway: "corridor" }),
+		];
+		expect(featuresOf(entities).collection.features).toEqual([]);
+	});
+
+	it("lists the levels present in the data, including levels inside ranges", () => {
+		const entities = [
+			...square(1, 0, 0),
+			way("w1", ring(1), { building: "yes", "building:levels": "3" }),
+			node("n5", { amenity: "toilets", level: "0.5" }),
+			node("n6", { amenity: "toilets", level: "-1" }),
+		];
+		expect(featuresOf(entities).levels).toEqual([-1, 0, 0.5, 1, 2]);
+	});
+});
+
+describe("levelFilter", () => {
+	const entities = [
+		...square(1, 0, 0),
+		way("w1", ring(1), { building: "yes", "building:levels": "3" }),
+		node("n5", { amenity: "toilets", level: "0;1" }),
+		node("n6", { shop: "kiosk", level: "0.5" }),
+		node("n7", { amenity: "bench" }),
+	];
+	const { collection } = featuresOf(entities);
+
+	function visibleOn(level: number): string[] {
+		const filter = featureFilter(levelFilter(level), "layers[0].filter");
+		return collection.features
+			.filter((f) =>
+				filter.filter({ zoom: 18 }, { type: 1, properties: f.properties }),
+			)
+			.map((f) => String(f.properties["@id"]))
+			.sort();
+	}
+
+	it("shows features listed on a level", () => {
+		expect(visibleOn(1)).toEqual(["n5", "n7", "w1"]);
+	});
+
+	it("shows a range on the levels in between, but not a list", () => {
+		expect(visibleOn(0.5)).toEqual(["n6", "n7", "w1"]);
+	});
+
+	it("shows features without level information on every level", () => {
+		expect(visibleOn(-3)).toEqual(["n7"]);
+	});
+
+	it("treats level 0 as a real level", () => {
+		expect(visibleOn(0)).toEqual(["n5", "n7", "w1"]);
+	});
+});

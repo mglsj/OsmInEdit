@@ -63,6 +63,21 @@
 					}
 				}
 			}
+		},
+		{
+			"includes": ["src/lib/components/shadcn/**", "src/lib/utils.ts"],
+			"linter": {
+				"rules": {
+					"a11y": {
+						"useSemanticElements": "off",
+						"useKeyWithClickEvents": "off"
+					},
+					"suspicious": {
+						"noShadowRestrictedNames": "off",
+						"noExplicitAny": "off"
+					}
+				}
+			}
 		}
 	]
 }

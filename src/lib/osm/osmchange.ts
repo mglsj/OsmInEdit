@@ -13,6 +13,7 @@ import {
 	type Relation,
 } from "./entity.ts";
 import { Graph } from "./graph.ts";
+import { escapeXml } from "./xml.ts";
 
 const GENERATOR = "IndoorID";
 const TYPE_ORDER: Record<EntityType, number> = { node: 0, way: 1, relation: 2 };
@@ -188,17 +189,6 @@ function tags(entity: Entity): string[] {
 	return Object.entries(entity.tags).map(
 		([k, v]) => `<tag k="${escapeXml(k)}" v="${escapeXml(v)}"/>`,
 	);
-}
-
-function escapeXml(value: string): string {
-	return value
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;")
-		.replaceAll('"', "&quot;")
-		.replaceAll("\n", "&#10;")
-		.replaceAll("\r", "&#13;")
-		.replaceAll("\t", "&#9;");
 }
 
 /** Degrees with OSM's 7-decimal precision, never in exponent notation. */

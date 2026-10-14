@@ -1,0 +1,77 @@
+{
+	"presets": [
+		{
+			"id": "indoor/level",
+			"name": "Indoor Level Outline",
+			"terms": ["floor", "storey", "story", "level outline"],
+			"icon": "temaki-room",
+			"geometry": ["area"],
+			"tags": {
+				"indoor": "level"
+			},
+			"matchScore": 0.8,
+			"fields": ["level", "level_ref", "name"],
+			"moreFields": ["height"]
+		},
+		{
+			"id": "door",
+			"name": "Door",
+			"terms": ["doorway", "opening", "gate"],
+			"icon": "maki-entrance-alt1",
+			"geometry": ["vertex", "point"],
+			"tags": {
+				"door": "*"
+			},
+			"matchScore": 0.9,
+			"fields": [
+				"door_type",
+				"level",
+				"ref",
+				"width",
+				"automatic_door",
+				"access_simple"
+			],
+			"moreFields": ["wheelchair", "height", "handle", "name"]
+		}
+	],
+	"fields": {
+		"level_ref": {
+			"key": "level:ref",
+			"type": "text",
+			"label": "Level Name (as Displayed)"
+		},
+		"door_type": {
+			"options": [
+				"hinged",
+				"sliding",
+				"revolving",
+				"swinging",
+				"folding",
+				"overhead",
+				"trapdoor",
+				"no",
+				"yes"
+			]
+		},
+		"automatic_door": {
+			"key": "automatic_door",
+			"type": "combo",
+			"label": "Automatic Door",
+			"options": [
+				"no",
+				"yes",
+				"button",
+				"motion",
+				"floor",
+				"continuous",
+				"slowdown_button"
+			]
+		},
+		"handle": {
+			"key": "handle",
+			"type": "combo",
+			"label": "Door Handle",
+			"options": ["lever", "knob", "pull", "push", "no"]
+		}
+	}
+}

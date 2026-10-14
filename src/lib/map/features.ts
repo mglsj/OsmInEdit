@@ -13,6 +13,7 @@ import type {
 } from "geojson";
 import { featureLevels } from "#lib/levels/feature-levels.ts";
 import { isOnLevel, type Levels } from "#lib/levels/levels.ts";
+import { isArea, isClosed } from "#lib/osm/area.ts";
 import type { Entity, NodeId, Relation, Way } from "#lib/osm/entity.ts";
 import type { Graph } from "#lib/osm/graph.ts";
 import { hasInterestingTags, type Tags } from "#lib/osm/tags.ts";
@@ -152,38 +153,6 @@ function coordinatesOf(
 		coordinates.push([...node.loc]);
 	}
 	return coordinates;
-}
-
-function isClosed(way: Way): boolean {
-	return way.nodes.length > 3 && way.nodes[0] === way.nodes.at(-1);
-}
-
-/** Keys whose closed ways are areas, unless `area=no`. */
-const AREA_KEYS = new Set([
-	"building",
-	"building:part",
-	"buildingpart",
-	"room",
-	"amenity",
-	"shop",
-	"office",
-	"craft",
-	"healthcare",
-	"leisure",
-	"tourism",
-	"landuse",
-	"area:highway",
-]);
-
-/** Whether a closed way is a surface (room, building) rather than a ring-shaped line (wall). */
-function isArea(tags: Tags): boolean {
-	if (tags.area === "yes") return true;
-	if (tags.area === "no") return false;
-	if (tags.indoor) return tags.indoor !== "wall" && tags.indoor !== "door";
-	if (tags.public_transport === "platform" || tags.railway === "platform")
-		return true;
-	if (tags.highway === "elevator") return true;
-	return Object.keys(tags).some((key) => AREA_KEYS.has(key));
 }
 
 function multipolygon(graph: Graph, relation: Relation): MultiPolygon | null {

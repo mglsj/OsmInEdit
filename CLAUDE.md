@@ -29,9 +29,12 @@ runs the same commands.
   (`import { parseHash } from "#lib/map/hash.ts"`). `$lib` does not exist in SvelteKit 3.
 - `src/lib/ui/` components, `src/lib/map/` map helpers, `src/routes/` pages, `static/` copied
   as-is (`config.json`, legacy icons in `static/img`), `tests/e2e/` browser tests.
-- Planned modules (see plan.md): `osm`, `actions`, `levels`, `api`, `presets`, `validation`,
-  `edit`, `floorplans`, `persist`, `state`. Pure modules (`osm`, `levels`, `actions`, `presets`,
-  `validation`, `floorplans/georef`) must not touch the DOM or Svelte.
+- Data model (P1): `osm/` (entities, immutable `Graph`, `History`, osmChange), `actions/`
+  (pure `graph => graph` functions), `levels/` (level values as ranges), `api/` (`OsmApi`).
+  Get ids for new entities from `graph.newId(type)`; never mutate entities or graphs.
+- Planned modules (see plan.md): `presets`, `validation`, `edit`, `floorplans`, `persist`,
+  `state`. Pure modules (`osm`, `levels`, `actions`, `presets`, `validation`,
+  `floorplans/georef`) must not touch the DOM or Svelte.
 
 ## Rules that are easy to get wrong
 
@@ -58,6 +61,8 @@ runs the same commands.
 - Follow the `tdd` skill: agree on the seams to test first, then red → green, one slice at a time.
   Expected values come from the spec or worked examples, never recomputed like the code does.
 - Unit tests sit next to the module (`hash.ts` → `hash.test.ts`) and test public functions.
+  Build entities with `node()`, `way()`, `relation()` from `#lib/osm/fixtures.ts`; test the API
+  client with a fake `fetch` (see `api/osm-api.test.ts`), never the network.
 - E2E tests use the `test` fixture from `tests/e2e/fixtures.ts`: it blocks all external requests
   and serves a blank basemap style. Override a route in the test when you need specific data.
   `camera()` reads the map's camera, `pixelAt()` checks rendered colours (WebGL runs in

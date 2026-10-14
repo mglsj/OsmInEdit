@@ -20,8 +20,8 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | Phase | Scope                                      | Status      |
 | ----- | ------------------------------------------ | ----------- |
 | P0    | Scaffold, tooling, map, URL hash           | Done        |
-| P1    | Core data model (no UI)                    | Next        |
-| P2    | Fast read-only viewer                      | Not started |
+| P1    | Core data model (no UI)                    | Done        |
+| P2    | Fast read-only viewer                      | Next        |
 | P3    | Presets, validation, upload                | Not started |
 | P4    | Floor plans                                | Not started |
 | P5    | Geometry editing                           | Not started |
@@ -137,22 +137,31 @@ Each phase ends with lint, check, unit and e2e tests green, and a status update 
 - Lesson: MapLibre 6 under Vite needs `setWorkerUrl()`; covered by an e2e test that checks a
   GeoJSON polygon actually renders.
 
-### P1: Core data model (no UI)
+### P1: Core data model — done
 
-- `osm/*`: entities, graph, history, osmChange builder, diffResult parsing, OSM JSON parsing.
-- `actions/*`: pure graph actions.
-- `levels/*`: port `_listFeatureLevels`, `_parseLevelsFloat`, `_cleanLevelTag`
-  (`VectorDataManager.js:2477-2586, 2664, 1027`) with the fixes above; never rewrite a tag the
-  user didn't edit; flag comma decimals in validation instead of guessing.
-- `api/*` against a mocked `fetch`; `persist/autosave`.
-- Tests: level parse/format tables and a regression test per legacy bug; graph immutability and
-  undo/redo; osmChange XML snapshots (ordering, placeholders, `if-unused`, multipolygon member
-  removal); the ~45 legacy `_analyzeDiff` scenarios (from `VectorDataManager.test.js`) rewritten
-  as action + osmChange tests.
+140 unit tests, all through the agreed seams (public functions; HTTP mocked at `fetch`).
+
+- `levels/`: `parseLevels`, `formatLevels`, `isOnLevel`, `featureLevels`. Levels are ranges, so
+  `0-2` covers a 0.5 mezzanine but `0;1` doesn't. Unreadable values (`G`, `1,5`) return null
+  instead of becoming level 0; `building:levels=0` no longer invents level -1; IndoorOSM
+  `buildingpart:verticalpassage:floorrange` is no longer read (validation will flag it).
+- `osm/`: immutable entities with iD-style ids, `Graph` (server data + local edits, parent
+  indexes, `newId`, `changes()`), `History` (graph snapshots), `buildOsmChange` and
+  `applyDiffResult` (tiny parser, no XML dependency).
+- `actions/`: `changeTags`, `addNode`, `moveNode`, `addWay`, `insertNodeInWay`,
+  `deleteEntities` with iD-style cleanup. The 1.x `_analyzeDiff` scenarios that still apply are
+  covered; the ones about guessing topology from coordinates disappear with the graph model.
+- `api/`: `OsmApi.loadMap(bbox)` and `OsmApi.upload(graph, tags)` (one request, changeset always
+  closed, typed errors).
+
+Moved out of P1: autosave and orthogonalize / copy level / copy-paste → P5 (they need the
+editing UI); merging re-downloaded data into the graph → P2 (map loader); OAuth login → P3.
 
 ### P2: Fast read-only viewer (Explore mode)
 
-- Load OSM data over a z16 tile grid from zoom 17, with a cache and at most 4 parallel requests.
+- Load OSM data over a z16 tile grid from zoom 17, with a cache and at most 4 parallel requests;
+  merge downloads into the graph (same version → skip; newer and untouched → replace; newer and
+  edited locally → conflict).
 - Translate `public/style.mapcss` by hand into MapLibre layers (fill, line, symbol), including
   door widths and incline/conveying arrows; icons through `styleimagemissing`, rasterised at the
   device pixel ratio from Maki/Temaki and the legacy SVGs.

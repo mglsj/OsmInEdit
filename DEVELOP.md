@@ -1,63 +1,61 @@
 # Develop
 
-This application is based on web technologies, and mainly written in ECMAScript 6 (modern JavaScript). This documentation is for people who want to build by themselves or develop the project.
+OsmInEdit 2 is a client-side web application written in TypeScript with [Svelte 5](https://svelte.dev) and [SvelteKit](https://svelte.dev/docs/kit), rendered with [MapLibre GL JS](https://maplibre.org) and styled with [Tailwind CSS](https://tailwindcss.com). It has no backend of its own: OpenStreetMap is the backend.
 
+> The 1.x editor (React + Leaflet) is being rewritten. Its last version is kept under the git tag `legacy-v1.0.16`.
 
-## Dependencies
+## Requirements
 
-You need to install the given tools before starting:
-* NodeJS (>= 9) - [Documentation](https://nodejs.org/en/download/)
-* Transifex CLI - [Documentation](https://docs.transifex.com/client/installing-the-client)
+- Node.js 22 or later, and npm
 
+## Commands
 
-## Run
+Install dependencies with `npm install`, then:
 
-To run the project locally, you need to first `git clone` this repository.
+| Command             | Description                                                                    |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `npm run dev`       | Starts a development server on [http://localhost:5173](http://localhost:5173)  |
+| `npm run build`     | Builds the static site into `build/`, ready to be served by any web server     |
+| `npm run preview`   | Serves the production build locally                                            |
+| `npm run check`     | Type-checks TypeScript and Svelte files                                        |
+| `npm run lint`      | Checks formatting (Prettier) and lints (ESLint); `npm run format` fixes format |
+| `npm run test:unit` | Runs unit tests (Vitest), found next to the code as `*.test.ts`                |
+| `npm run test:e2e`  | Builds the app and runs browser tests (Playwright) from `tests/e2e`            |
 
-Then, install project dependencies using `npm install`. Now, you can use following commands to work.
+The first time you run browser tests, install Chromium with `npx playwright install chromium`.
 
-### `npm start`
+## Project layout
 
-Runs the app in the development mode.<br>
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+```
+src/
+  app.html, app.css     Page shell and Tailwind theme
+  routes/               SvelteKit pages (the editor is the root page)
+  lib/                  Application code, imported as `#lib/...`
+    config.ts           Runtime configuration loader
+    map/                Map helpers (URL hash, ...)
+    ui/                 Svelte components
+static/                 Files copied as-is: config.json, images
+tests/e2e/              Playwright tests; external requests are mocked
+```
 
-The page will reload if you make edits.<br>
-You will also see any lint errors in the console.
+Imports inside `src/lib` use the `#lib/*` [subpath import](https://nodejs.org/api/packages.html#subpath-imports) with explicit file extensions, e.g. `import { parseHash } from '#lib/map/hash.ts'`.
 
-### `npm test`
-
-Launches the test runner in the interactive watch mode.<br>
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.<br>
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.<br>
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-
-## Translations
-
-Translations of user interface labels are managed using JSON configuration files, automatically generated using `i18nline` tool. When editing code, launch manually `npm run i18n:build` to update these configuration files.
-
-To retrieve translated labels from Transifex, run command `npm run i18n:pull`.
-
-
-## Documentation
-
-Documentation of the source code uses [JSDoc syntax](http://usejsdoc.org/). Readable documentation can be generated using `npm run doc` command, and will be available as an HTML page in `doc/` folder.
-
+SvelteKit is configured in `vite.config.ts` (SvelteKit 3 no longer reads `svelte.config.js`).
 
 ## Configuration
 
-Various components of the editor can be configured for the instance manager. Main files you can edit are :
+`static/config.json` is read at runtime, so it can be edited in a deployed `build/` folder without rebuilding. It is public: never put secrets in it.
 
-* `public/config.json` : various configurations, in particular [OAuth tokens](https://wiki.openstreetmap.org/wiki/Oauth) and [OSM API URL](https://wiki.openstreetmap.org/wiki/API_v0.6#URL_.2B_authentication) to use
-* `public/style.mapcss` : [MapCSS](https://wiki.openstreetmap.org/wiki/MapCSS) stylesheet for map features
-* `public/presets/*.xml` : [JOSM tagging presets](https://josm.openstreetmap.de/wiki/TaggingPresets) for simple creation and editing of features
+| Key                  | Description                                                                                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editor_name`        | Name of this instance                                                                                                                                 |
+| `osm_api_url`        | OSM API to edit. Defaults to the [development API](https://master.apis.dev.openstreetmap.org); use `https://api.openstreetmap.org` in production      |
+| `oauth_client_id`    | Public client id of an [OAuth 2 application](https://wiki.openstreetmap.org/wiki/OAuth) registered on that OSM instance, without client secret (PKCE) |
+| `basemap_style`      | URL of a MapLibre style used as background map                                                                                                        |
+| `data_min_zoom`      | Minimal zoom at which OSM data is downloaded                                                                                                          |
+| `map_initial_zoom`   | Zoom used when the URL has no position                                                                                                                |
+| `map_initial_latlng` | `[lat, lon]` used when the URL has no position                                                                                                        |
 
-You can either make temporary changes by editing these files in your `build/` folder, or making changes permanent by editing in `public/` folder (and rebuild using described procedure above).
+## Translations
+
+Translations are managed on [Transifex](https://www.transifex.com/openlevelup/osminedit). The translation setup of the new editor is not in place yet; existing translations remain available in the `legacy-v1.0.16` tag.

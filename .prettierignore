@@ -1,0 +1,9 @@
+package-lock.json
+/build
+/.svelte-kit
+/static
+/test-results
+/playwright-report
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+LICENSE.md

@@ -55,6 +55,16 @@ test("lists the levels found in the data", async ({ page }) => {
 	await expect(page.getByRole("button", { name: "Level down" })).toBeDisabled();
 });
 
+test("shows no level list when the data has a single level", async ({
+	page,
+}) => {
+	await serveOsm(page, room(100, LON, LAT, "0"));
+	await page.goto(`/#19/${LAT}/${LON}/0`);
+	await expect(page.getByTestId("level")).toHaveText("0");
+	await expect(page.getByRole("button", { name: "Level up" })).toBeDisabled();
+	await expect(page.getByRole("group", { name: "Levels" })).toBeHidden();
+});
+
 test("downloads each area only once", async ({ page }) => {
 	const requests = await serveOsm(page, room(100, LON, LAT, "0"));
 	await page.goto(`/#19/${LAT}/${LON}/0`);

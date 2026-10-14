@@ -73,7 +73,7 @@
 			</output>
 		{/snippet}
 	</ButtonGroup.Text>
-	{#if descending.length > 0}
+	{#if descending.length > 1}
 		<ToggleGroup.Root
 			type="single"
 			orientation="vertical"

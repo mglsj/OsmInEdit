@@ -23,6 +23,7 @@ test("opens on the configured default view when the hash is missing", async ({
 	page,
 }) => {
 	await page.goto("/");
+	await expect(page).toHaveTitle("IndoorID");
 
 	const view = await camera(page);
 	expect(view.zoom).toBeCloseTo(18, 5);

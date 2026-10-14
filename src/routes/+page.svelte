@@ -44,7 +44,7 @@
 	<header
 		class="flex h-12 shrink-0 items-center gap-3 border-b border-black/10 px-4 dark:border-white/15"
 	>
-		<h1 class="text-base font-semibold">OsmInEdit</h1>
+		<h1 class="text-base font-semibold">IndoorID</h1>
 		<span class="text-xs text-slate-500 dark:text-slate-400"
 			>2.0 preview · {__GIT_HASH__}</span
 		>

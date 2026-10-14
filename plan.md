@@ -1,4 +1,4 @@
-# Rewrite plan
+# IndoorID rewrite plan
 
 A client-only indoor editor for OpenStreetMap ([Simple Indoor Tagging](https://wiki.openstreetmap.org/wiki/Simple_Indoor_Tagging)),
 rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `cd1e955`
@@ -230,5 +230,4 @@ Each phase ends with lint, check, unit and e2e tests green, and a status update 
 - **License.** `package.json` says MIT, while 1.x is ISC (© Adrien Pavie, Daimler AG). The ISC
   notice must be kept with any ported code (level logic, style, presets), and the repo needs a
   `LICENSE` file.
-- **Name.** `package.json` is `indoor-id`; the UI still says OsmInEdit.
 - **Legacy tag.** `legacy-v1.0.16` has to be pushed from a machine with tag permissions.

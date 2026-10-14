@@ -1,16 +1,14 @@
-# OsmInEdit
+# IndoorID
 
-OsmInEdit is web tool to allow easy editing of OpenStreetMap indoor-related data.
-
-You can use it at [osminedit.pavie.info](https://osminedit.pavie.info/) (or [here for under development version](https://osminedit.pavie.info/dev/)).
+IndoorID is a web tool for editing indoor data in OpenStreetMap: rooms, corridors, doors, stairs and everything else inside buildings, level by level.
 
 ## Purpose
 
-OsmInEdit aims to make [indoor data editing](https://wiki.openstreetmap.org/wiki/Simple_Indoor_Tagging) easy on OpenStreetMap, ideally being as good as [iD editor](https://github.com/openstreetmap/iD), but focused on building indoors. With this tool, you can contribute to make OpenStreetMap the best source of geo-data for both outdoors and indoors.
+IndoorID aims to make [indoor data editing](https://wiki.openstreetmap.org/wiki/Simple_Indoor_Tagging) easy on OpenStreetMap, ideally being as good as the [iD editor](https://github.com/openstreetmap/iD), but focused on building indoors. Its main goals are a fast map, easy alignment of floor plans, and tagging that follows the current OSM wiki.
 
 If you are looking for an indoor data viewer (a map for browsing existing data), have a look at [OpenLevelUp](https://openlevelup.net/).
 
-> **Rewrite in progress.** This branch is rebuilding OsmInEdit with Svelte, MapLibre GL JS and an OpenStreetMap-native data model, to make map rendering fast, floor plan alignment easy and tagging up to date with the wiki. It is not usable for editing yet. The last release of the original editor is kept under the git tag `legacy-v1.0.16`.
+> **Work in progress.** IndoorID is a rewrite of [OsmInEdit](https://framagit.org/PanierAvide/osminedit) with Svelte, MapLibre GL JS and an OpenStreetMap-native data model. It is not usable for editing yet: see the [plan](plan.md) for progress. The last release of OsmInEdit is kept under the git tag `legacy-v1.0.16`.
 
 ## Contributing
 
@@ -18,11 +16,11 @@ This project is an open source tool, meaning it is made by volunteers. If you **
 
 ## Develop/run your own instance
 
-OsmInEdit is already available online, so you can use without any bothering (see link on top of this document). In case you want to run your instance of OsmInEdit, or work on its development, you can read [develop documentation](DEVELOP.md) to have all technical information.
+To run your own instance of IndoorID, or work on its development, read the [develop documentation](DEVELOP.md).
 
 ## Contributors
 
-OsmInEdit exists and is everyday improving thanks to the **amazing people** following :
+IndoorID builds on OsmInEdit, which exists thanks to the **amazing people** following:
 
 - Adrien Pavie, main developer of OsmInEdit
 - Daimler AG team, for sponsoring and leading the project

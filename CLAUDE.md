@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Indoor OpenStreetMap editor: a rewrite of OsmInEdit (React + Leaflet, 2019) as a client-only
+IndoorID, an indoor OpenStreetMap editor: a rewrite of OsmInEdit (React + Leaflet, 2019) as a client-only
 SvelteKit + MapLibre app. OSM is the only backend. The roadmap, decisions and phase status live in
 [plan.md](plan.md): read it before starting a phase and update its status when a phase lands.
 

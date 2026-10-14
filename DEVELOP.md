@@ -1,8 +1,8 @@
 # Develop
 
-OsmInEdit 2 is a client-side web application written in TypeScript with [Svelte 5](https://svelte.dev) and [SvelteKit](https://svelte.dev/docs/kit), rendered with [MapLibre GL JS](https://maplibre.org) and styled with [Tailwind CSS](https://tailwindcss.com). It has no backend of its own: OpenStreetMap is the backend.
+IndoorID is a client-side web application written in TypeScript with [Svelte 5](https://svelte.dev) and [SvelteKit](https://svelte.dev/docs/kit), rendered with [MapLibre GL JS](https://maplibre.org) and styled with [Tailwind CSS](https://tailwindcss.com). It has no backend of its own: OpenStreetMap is the backend.
 
-> The 1.x editor (React + Leaflet) is being rewritten. Its last version is kept under the git tag `legacy-v1.0.16`.
+> IndoorID is a rewrite of the OsmInEdit 1.x editor (React + Leaflet). Its last version is kept under the git tag `legacy-v1.0.16`.
 
 ## Requirements
 

@@ -1,5 +1,5 @@
 {
-	"editor_name": "OsmInEdit",
+	"editor_name": "IndoorID",
 	"osm_api_url": "https://master.apis.dev.openstreetmap.org",
 	"oauth_client_id": "",
 	"basemap_style": "https://tiles.openfreemap.org/styles/positron",

@@ -53,29 +53,30 @@
 </script>
 
 <div class="w-80 max-w-[calc(100vw-6rem)]" {onkeydown} role="presentation">
-	<form
-		role="search"
-		onsubmit={search}
-		class="flex overflow-hidden rounded-md bg-white shadow-md ring-1 ring-black/10 focus-within:ring-2 focus-within:ring-brand-500 dark:bg-slate-900 dark:ring-white/15"
-	>
-		<label class="sr-only" for="place-search">Search a place</label>
-		<input
-			id="place-search"
-			type="search"
-			bind:value={query}
-			placeholder="Search a place"
-			autocomplete="off"
-			class="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-slate-400"
+	<search>
+		<form
+			onsubmit={search}
+			class="flex overflow-hidden rounded-md bg-white shadow-md ring-1 ring-black/10 focus-within:ring-2 focus-within:ring-brand-500 dark:bg-slate-900 dark:ring-white/15"
 		>
-		<button
-			type="submit"
-			aria-label="Search"
-			disabled={searching}
-			class="flex w-10 items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
-		>
-			<Search size={16} aria-hidden="true" />
-		</button>
-	</form>
+			<label class="sr-only" for="place-search">Search a place</label>
+			<input
+				id="place-search"
+				type="search"
+				bind:value={query}
+				placeholder="Search a place"
+				autocomplete="off"
+				class="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-slate-400"
+			>
+			<button
+				type="submit"
+				aria-label="Search"
+				disabled={searching}
+				class="flex w-10 items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
+			>
+				<Search size={16} aria-hidden="true" />
+			</button>
+		</form>
+	</search>
 
 	{#if results}
 		<ul

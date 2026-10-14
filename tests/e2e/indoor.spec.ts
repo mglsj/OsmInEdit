@@ -25,7 +25,7 @@ test("draws a room on its level only", async ({ page }) => {
 	const { x, y } = await mapCenter(page);
 
 	await expectPixel(page, x, y, ROOM);
-	await page.getByRole("button", { name: "Level 1", exact: true }).click();
+	await page.getByRole("radio", { name: "Level 1", exact: true }).click();
 	await expectPixel(page, x, y, BACKGROUND);
 });
 
@@ -44,11 +44,11 @@ test("lists the levels found in the data", async ({ page }) => {
 	]);
 	await page.goto(`/#19/${LAT}/${LON}/0`);
 
-	const levels = page.getByRole("list", { name: "Levels" }).getByRole("button");
+	const levels = page.getByRole("group", { name: "Levels" }).getByRole("radio");
 	await expect(levels).toHaveText(["1", "0", "-1"]);
 	await expect(
-		page.getByRole("button", { name: "Level 0", exact: true }),
-	).toHaveAttribute("aria-pressed", "true");
+		page.getByRole("radio", { name: "Level 0", exact: true }),
+	).toBeChecked();
 
 	await page.getByRole("button", { name: "Level down" }).click();
 	await expect.poll(() => hash(page)).toBe(`#19/${LAT}/${LON}/-1`);

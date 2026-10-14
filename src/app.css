@@ -5,13 +5,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Design tokens shared by the editor UI. Map feature colours live with the map style. */
+/*
+ * shadcn-svelte theme. The UI uses its semantic colours (bg-background, text-muted-foreground…);
+ * map feature colours live with the map style. Dark mode follows the system through
+ * mode-watcher, which sets the `.dark` class.
+ */
 @theme {
 	--font-sans: "Inter Variable", sans-serif;
-	--color-brand-50: oklch(97% 0.02 250);
-	--color-brand-500: oklch(56% 0.16 250);
-	--color-brand-600: oklch(49% 0.16 250);
-	--color-brand-700: oklch(42% 0.14 250);
 	--color-sidebar-ring: var(--sidebar-ring);
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -58,7 +58,7 @@ body {
 }
 
 body {
-	@apply bg-white text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+	@apply antialiased;
 }
 
 :root {

@@ -1,6 +1,16 @@
 <script lang="ts">
+	import CircleAlert from "@lucide/svelte/icons/circle-alert";
+	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import { changesetTags } from "#lib/api/changeset.ts";
 	import { OsmApiError } from "#lib/api/osm-api.ts";
+	import * as Alert from "#lib/components/shadcn/alert/index.ts";
+	import { Button } from "#lib/components/shadcn/button/index.ts";
+	import { Checkbox } from "#lib/components/shadcn/checkbox/index.ts";
+	import * as Dialog from "#lib/components/shadcn/dialog/index.ts";
+	import * as Field from "#lib/components/shadcn/field/index.ts";
+	import { Input } from "#lib/components/shadcn/input/index.ts";
+	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
+	import { Textarea } from "#lib/components/shadcn/textarea/index.ts";
 	import type { Editor } from "#lib/state/editor.svelte.ts";
 	import type { Session } from "#lib/state/session.svelte.ts";
 
@@ -16,6 +26,7 @@
 
 	let { editor, session, imagery, websiteUrl, onclose }: Props = $props();
 
+	let open = $state(true);
 	let comment = $state("");
 	let source = $state("");
 	let reviewRequested = $state(false);
@@ -64,127 +75,130 @@
 	}
 </script>
 
-<dialog
-	aria-labelledby="save-title"
-	{@attach (dialog) => dialog.showModal()}
-	{onclose}
-	class="m-auto w-[32rem] max-w-[calc(100vw-2rem)] rounded-lg bg-white p-0 text-slate-900 shadow-xl backdrop:bg-black/40 dark:bg-slate-900 dark:text-slate-100"
+<Dialog.Root
+	bind:open
+	onOpenChangeComplete={(isOpen) => {
+		if (!isOpen) onclose();
+	}}
 >
-	<div class="flex flex-col gap-4 p-5">
-		<h2 id="save-title" class="text-lg font-semibold">Upload your edits</h2>
+	<Dialog.Content
+		showCloseButton={false}
+		escapeKeydownBehavior={busy ? "ignore" : "close"}
+		interactOutsideBehavior={busy ? "ignore" : "close"}
+	>
+		<Dialog.Header>
+			<Dialog.Title>Upload your edits</Dialog.Title>
+			{#if phase.kind !== "done"}
+				<Dialog.Description>
+					{editor.editCount}
+					feature{editor.editCount === 1 ? "" : "s"}
+					changed.
+				</Dialog.Description>
+			{/if}
+		</Dialog.Header>
 
 		{#if phase.kind === "done"}
 			<p role="status">
 				Uploaded in
 				<a
-					class="text-brand-600 underline"
+					class="text-primary underline underline-offset-4"
 					href={`${websiteUrl.replace(/\/+$/, "")}/changeset/${phase.changesetId}`}
 					target="_blank"
 					rel="noopener"
 					>changeset {phase.changesetId}</a
 				>. Thank you!
 			</p>
-			<div class="flex justify-end">
-				<button
-					type="button"
-					onclick={onclose}
-					class="rounded bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
-				>
-					Close
-				</button>
-			</div>
+			<Dialog.Footer>
+				<Button onclick={() => (open = false)}>Close</Button>
+			</Dialog.Footer>
 		{:else}
-			<p class="text-sm text-slate-600 dark:text-slate-300">
-				{editor.editCount}
-				feature{editor.editCount === 1 ? "" : "s"}
-				changed.
-			</p>
-
 			{#if issues.length > 0}
-				<section
-					aria-label="Issues in your edits"
-					class="rounded-md bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100"
-				>
-					<p class="font-medium">Please check before uploading:</p>
-					<ul class="mt-1 list-disc pl-5">
-						{#each issues as issue (issue.id)}
-							<li>{issue.message} ({issue.entityId})</li>
-						{/each}
-					</ul>
-				</section>
+				<Alert.Root role="note" aria-label="Issues in your edits">
+					<TriangleAlert />
+					<Alert.Title>Please check before uploading</Alert.Title>
+					<Alert.Description>
+						<ul class="list-disc pl-4">
+							{#each issues as issue (issue.id)}
+								<li>{issue.message} ({issue.entityId})</li>
+							{/each}
+						</ul>
+					</Alert.Description>
+				</Alert.Root>
 			{/if}
 
-			<form class="flex flex-col gap-3" onsubmit={upload}>
-				<label class="flex flex-col gap-1 text-sm">
-					<span class="font-medium">Comment</span>
-					<textarea
-						bind:value={comment}
-						required
-						rows="2"
-						maxlength="255"
-						placeholder="What did you change? e.g. Add room numbers on the 2nd floor"
-						class="rounded border border-black/15 px-2 py-1 focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-900"
-					></textarea>
-				</label>
-				<label class="flex flex-col gap-1 text-sm">
-					<span class="font-medium">Source</span>
-					<input
-						type="text"
-						bind:value={source}
-						placeholder="e.g. survey, floor plan"
-						class="rounded border border-black/15 px-2 py-1 focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-900"
-					>
-				</label>
-				<label class="flex items-center gap-2 text-sm">
-					<input type="checkbox" bind:checked={reviewRequested}>
-					Ask for someone to review my edits
-				</label>
-
-				<p class="text-xs text-slate-500 dark:text-slate-400">
-					{#if !session.configured}
-						Login is not configured for this IndoorID instance
-						(oauth_client_id).
-					{:else if session.loggedIn}
-						Logged in{session.userName ? ` as ${session.userName}` : ""}.
-						<button
-							type="button"
-							class="underline"
-							onclick={() => session.logout()}
-						>
-							Log out
-						</button>
-					{:else}
-						You will be asked to log in to OpenStreetMap.
-					{/if}
-				</p>
+			<form class="flex flex-col gap-6" onsubmit={upload}>
+				<Field.Group>
+					<Field.Field>
+						<Field.Label for="changeset-comment">Comment</Field.Label>
+						<Textarea
+							id="changeset-comment"
+							bind:value={comment}
+							required
+							rows={2}
+							maxlength={255}
+							placeholder="What did you change? e.g. Add room numbers on the 2nd floor"
+						/>
+					</Field.Field>
+					<Field.Field>
+						<Field.Label for="changeset-source">Source</Field.Label>
+						<Input
+							id="changeset-source"
+							type="text"
+							bind:value={source}
+							placeholder="e.g. survey, floor plan"
+						/>
+					</Field.Field>
+					<Field.Field orientation="horizontal">
+						<Checkbox id="changeset-review" bind:checked={reviewRequested} />
+						<Field.Label for="changeset-review" class="font-normal">
+							Ask for someone to review my edits
+						</Field.Label>
+					</Field.Field>
+					<Field.Description>
+						{#if !session.configured}
+							Login is not configured for this IndoorID instance
+							(oauth_client_id).
+						{:else if session.loggedIn}
+							Logged in{session.userName ? ` as ${session.userName}` : ""}.
+							<Button
+								variant="link"
+								size="xs"
+								class="px-0"
+								onclick={() => session.logout()}
+							>
+								Log out
+							</Button>
+						{:else}
+							You will be asked to log in to OpenStreetMap.
+						{/if}
+					</Field.Description>
+				</Field.Group>
 
 				{#if phase.kind === "error"}
-					<p
-						role="alert"
-						class="rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-100"
-					>
-						{phase.message}
-					</p>
+					<Alert.Root variant="destructive">
+						<CircleAlert />
+						<Alert.Description>{phase.message}</Alert.Description>
+					</Alert.Root>
 				{/if}
 
-				<div class="flex justify-end gap-2">
-					<button
-						type="button"
-						onclick={onclose}
+				<Dialog.Footer>
+					<Button
+						variant="outline"
 						disabled={busy}
-						class="rounded px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+						onclick={() => (open = false)}
 					>
 						Cancel
-					</button>
-					<button
-						type="submit"
-						disabled={busy || !session.configured}
-						class="rounded bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
-					>
-						{busy ? "Uploading…" : "Upload"}
-					</button>
-				</div>
+					</Button>
+					<Button type="submit" disabled={busy || !session.configured}>
+						{#if busy}
+							<Spinner data-icon="inline-start" />
+							Uploading…
+						{:else}
+							Upload
+						{/if}
+					</Button>
+				</Dialog.Footer>
 			</form>
 		{/if}
-	</div>
-</dialog>
+	</Dialog.Content>
+</Dialog.Root>

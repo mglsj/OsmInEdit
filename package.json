@@ -51,6 +51,7 @@
 		"@tailwindcss/vite": "4.3.3",
 		"@types/node": "26.6.5",
 		"cn": "^0.3.0",
+		"mode-watcher": "^1.1.0",
 		"osm-auth": "3.2.0",
 		"shadcn-svelte": "^1.7.0",
 		"svelte": "5.57.2",

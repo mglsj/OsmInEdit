@@ -38,9 +38,9 @@ test("changing the type keeps the other tags", async ({ page }) => {
 	const editor = await selectRoom(page, { ref: "S1" });
 	await editor.getByRole("button", { name: "Change type" }).click();
 	await page
-		.getByRole("searchbox", { name: "Search feature types" })
+		.getByRole("combobox", { name: "Search feature types" })
 		.fill("stairwell");
-	await editor.getByRole("button", { name: "Indoor Stairwell" }).click();
+	await editor.getByRole("option", { name: "Indoor Stairwell" }).click();
 
 	await expect(
 		editor.getByRole("heading", { name: "Indoor Stairwell" }),

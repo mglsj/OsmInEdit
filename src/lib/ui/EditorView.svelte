@@ -2,10 +2,14 @@
 	import Redo2 from "@lucide/svelte/icons/redo-2";
 	import Undo2 from "@lucide/svelte/icons/undo-2";
 	import Upload from "@lucide/svelte/icons/upload";
-	import { untrack } from "svelte";
+	import { type Component, untrack } from "svelte";
 	import type { Place } from "#lib/api/nominatim.ts";
 	import type { Bbox } from "#lib/api/osm-api.ts";
 	import { OsmApi } from "#lib/api/osm-api.ts";
+	import { Badge } from "#lib/components/shadcn/badge/index.ts";
+	import { Button } from "#lib/components/shadcn/button/index.ts";
+	import * as ButtonGroup from "#lib/components/shadcn/button-group/index.ts";
+	import * as Tooltip from "#lib/components/shadcn/tooltip/index.ts";
 	import type { EditorConfig } from "#lib/config.ts";
 	import { setBackground } from "#lib/map/background.ts";
 	import {
@@ -172,6 +176,33 @@
 
 <svelte:window onhashchange={onHashChange} onkeydown={onKeydown} />
 
+{#snippet iconButton(
+	label: string,
+	hint: string,
+	Icon: Component,
+	disabled: boolean,
+	onclick: () => void,
+)}
+	<Tooltip.Root>
+		<Tooltip.Trigger {disabled} {onclick}>
+			{#snippet child({
+				props,
+			})}
+				<Button
+					{...props}
+					variant="outline"
+					size="icon"
+					aria-label={label}
+					{disabled}
+				>
+					<Icon />
+				</Button>
+			{/snippet}
+		</Tooltip.Trigger>
+		<Tooltip.Content side="bottom">{hint}</Tooltip.Content>
+	</Tooltip.Root>
+{/snippet}
+
 <MapView
 	styleUrl={config.basemap_style}
 	initialCamera={fromUrl ?? {
@@ -189,46 +220,32 @@
 		onselect={showPlace}
 		baseUrl={config.nominatim_url}
 	/>
-	<div
-		role="toolbar"
-		aria-label="Edit history"
-		class="flex overflow-hidden rounded-md bg-white shadow-md ring-1 ring-black/10 dark:bg-slate-900 dark:ring-white/15"
-	>
-		<button
-			type="button"
-			aria-label="Undo"
-			title="Undo (Ctrl+Z)"
-			disabled={!editor.canUndo}
-			onclick={() => editor.undo()}
-			class="flex h-9 w-10 items-center justify-center hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-slate-800"
-		>
-			<Undo2 size={16} aria-hidden="true" />
-		</button>
-		<button
-			type="button"
-			aria-label="Redo"
-			title="Redo (Ctrl+Shift+Z)"
-			disabled={!editor.canRedo}
-			onclick={() => editor.redo()}
-			class="flex h-9 w-10 items-center justify-center hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-slate-800"
-		>
-			<Redo2 size={16} aria-hidden="true" />
-		</button>
-		<button
-			type="button"
-			disabled={editor.editCount === 0}
-			onclick={() => (saving = true)}
-			class="flex h-9 items-center gap-1.5 border-l border-black/10 px-3 text-sm font-medium hover:bg-slate-100 disabled:opacity-40 dark:border-white/15 dark:hover:bg-slate-800"
-		>
-			<Upload size={16} aria-hidden="true" />
-			Save
-			<span
-				class="rounded-full bg-brand-600 px-1.5 text-xs text-white tabular-nums"
-				data-testid="edit-count"
-				>{editor.editCount}</span
+	<!-- Map controls sit on an opaque surface: shadcn's dark outline styles are translucent. -->
+	<div class="rounded-md bg-background shadow-md">
+		<ButtonGroup.Root aria-label="Edit history">
+			{@render iconButton("Undo", "Undo (Ctrl+Z)", Undo2, !editor.canUndo, () =>
+				editor.undo(),
+			)}
+			{@render iconButton(
+				"Redo",
+				"Redo (Ctrl+Shift+Z)",
+				Redo2,
+				!editor.canRedo,
+				() => editor.redo(),
+			)}
+			<Button
+				variant="outline"
+				disabled={editor.editCount === 0}
+				onclick={() => (saving = true)}
 			>
-			<span class="sr-only">edits</span>
-		</button>
+				<Upload data-icon="inline-start" />
+				Save
+				<Badge class="tabular-nums" data-testid="edit-count"
+					>{editor.editCount}</Badge
+				>
+				<span class="sr-only">edits</span>
+			</Button>
+		</ButtonGroup.Root>
 	</div>
 	<ImageryPicker
 		center={camera && [camera.lon, camera.lat]}
@@ -256,10 +273,10 @@
 		role="status"
 		data-testid="load-status"
 		class={[
-			"absolute bottom-10 left-1/2 z-10 -translate-x-1/2 rounded-full px-4 py-1.5 text-sm shadow",
+			"absolute bottom-10 left-1/2 z-10 -translate-x-1/2 rounded-full bg-popover px-4 py-1.5 text-sm shadow-md ring-1 ring-foreground/10",
 			editor.status.kind === "error"
-				? "bg-amber-100 text-amber-900"
-				: "bg-white/90 text-slate-700 dark:bg-slate-900/90 dark:text-slate-200",
+				? "text-destructive"
+				: "text-popover-foreground",
 		]}
 	>
 		{statusMessage}

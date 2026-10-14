@@ -23,8 +23,8 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P1    | Core data model (no UI)                    | Done        |
 | P2    | Fast read-only viewer                      | Done        |
 | P3    | Presets, validation, upload                | Done        |
-| P4    | Floor plans                                | Next        |
-| P5    | Geometry editing                           | Not started |
+| P4    | Floor plans                                | Done        |
+| P5    | Geometry editing                           | Next        |
 | P6    | Parity and polish                          | Not started |
 
 ## Why a rewrite (findings from the 1.x code)
@@ -218,18 +218,38 @@ and recent presets → P6 (i18n); number fields and semiCombo lists edited as pl
 (values are kept as typed, never rewritten). Upload tests mock the API with `page.route` in each
 test instead of a shared `mock-osm.ts`.
 
-### P4: Floor plans
+### P4: Floor plans — done
 
-- Import: raster via `createImageBitmap` (downscaled to the GPU texture limit); PDF page picker
-  with thumbnails and DPI (default 150); SVG rasterised from an `<img>` blob URL (no scripts).
-- Georeferencing in EPSG:3857, residuals in true metres (× cos lat): 2 points → similarity;
-  3+ → least-squares similarity or affine; 4+ → projective, rendered with MapLibre 6's
-  `setWarp("perspective")`.
-- Tools: measure a known distance to set the scale; rotate about a pinned point; numeric scale,
-  rotation, offset and opacity (default 0.5); control points snap to OSM nodes and the building
-  outline; each plan assigned to a building and level.
-- Plans over 2048 px split into tiles. Stored in IndexedDB; JSON export/import, including the
-  1.x format (old corners → affine transform).
+324 unit tests and 39 browser tests in total.
+
+- Georeferencing (`floorplans/georef.ts`, pure): least-squares fits in Web Mercator from control
+  points (similarity from 2, affine from 3, perspective from 4), residuals and RMS in ground
+  metres, image corners for MapLibre, the pixel under a map position, a starting placement,
+  scaling to a measured distance, rotation about a pinned pixel, moving onto one point. Tested
+  against spherical geometry at several latitudes.
+- Plan files (`floorplans/plan-file.ts`, pure): IndoorID JSON export/import (images as data
+  URLs), and OsmInEdit 1.x `osminedit_floor_imagery.json`. 1.x corners become an exact
+  perspective transform (as 1.x drew them with CSS `matrix3d`) instead of the affine first
+  planned, which would have reshaped plans that are not parallelograms.
+- Import (`floorplans/import.ts`): PNG/JPEG/WebP through `createImageBitmap` (scaled down past
+  8192 px); SVG rendered through an `<img>`, so its scripts never run; PDF page picker with
+  thumbnails and DPI (default 150). pdf.js is lazy-loaded from its legacy build: pdf.js 6 uses
+  JavaScript (`Map.getOrInsertComputed`) that current browsers lack.
+- Drawing (`map/floorplan-layers.ts`): plans cut into tiles of at most 2048 px, each a MapLibre
+  image source warped in perspective, between the background imagery and the indoor data,
+  half-transparent by default, updated by identity (moving only sets coordinates).
+- Alignment (`state/floorplans.svelte.ts`, `ui/FloorPlansPanel.svelte`): control points (click
+  the plan, then the map; snaps to OSM nodes within 8 px) with per-point residuals and the fit
+  kind; measuring a known distance; rotating about a picked spot; opacity. Map clicks go to the
+  active tool instead of selecting OSM features.
+- Storage (`persist/plan-store.ts`, `idb`): images and settings in IndexedDB, restored on
+  reload. Each plan has a level and shows only on it.
+
+Moved out of P4, to P5 with the editing tools: snapping control points to building outlines
+(edges, not only nodes), numeric offset inputs, dragging a plan, and assigning plans to a
+building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
+with fallback fonts (P6). Tiles are covered by unit tests; no browser test renders a plan over
+2048 px.
 
 ### P5: Geometry editing
 
@@ -240,6 +260,8 @@ test instead of a shared `mock-osm.ts`.
   tags; copy level.
 - Building, Levels and Features workflows; simple multipolygons (outer + inner).
 - Door widths and incline/conveying arrows on the map; incremental source updates on edit.
+- Floor plans (from P4): snap control points to building outlines, numeric offset, drag a plan,
+  assign plans to a building.
 - Spatial validation (from P3): level outside the building's levels, missing `indoor=level`
   outline; empty keys or values.
 - History autosaved to IndexedDB with a restore prompt and a `beforeunload` guard.

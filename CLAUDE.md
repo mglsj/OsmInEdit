@@ -45,8 +45,13 @@ runs the same commands.
   Presets come from `@openstreetmap/id-tagging-schema` plus `presets/overlay.json`, built by
   `scripts/build-presets.ts` on install into the gitignored `presets/generated/`; run
   `bun run presets` after changing the overlay or the schema version.
-- Planned modules (see plan.md): `edit`, `floorplans`, `persist`. Pure modules (`osm`, `levels`,
-  `actions`, `presets`, `validation`, `floorplans/georef`) must not touch the DOM or Svelte.
+- Floor plans (P4): `floorplans/` (`georef.ts` transforms fitted in Web Mercator, `plan-file.ts`
+  JSON and 1.x files, `tiling.ts`, `import.ts` raster/SVG/PDF), `map/floorplan-layers.ts`,
+  `state/floorplans.svelte.ts` (`FloorPlans`: plans, alignment tools), `persist/plan-store.ts`
+  (IndexedDB), `ui/FloorPlansPanel.svelte`. Import pdf.js only from its legacy build, lazily.
+- Planned modules (see plan.md): `edit`, `persist/autosave`. Pure modules (`osm`, `levels`,
+  `actions`, `presets`, `validation`, `floorplans/georef`, `floorplans/plan-file`,
+  `floorplans/tiling`) must not touch the DOM or Svelte.
 
 ## Rules that are easy to get wrong
 
@@ -87,7 +92,9 @@ runs the same commands.
   runs in SwiftShader). It serves an empty OSM area by default; `serveOsm()` in
   `indoor.spec.ts` shows how to serve real elements. Don't wait for network requests to
   bundled assets other than map icons: Vite inlines small files as `data:` URLs (icons are
-  imported with `?no-inline`, so a test can wait for `maki-toilet.*.svg`).
+  imported with `?no-inline`, so a test can wait for `maki-toilet.*.svg`). Floor plan fixtures
+  live in `tests/e2e/files/` (excluded from Biome); `pixelAt()` takes page coordinates, so add
+  the map's offset from `mapLocator(page).boundingBox()`.
 - `@playwright/test` is pinned to 1.56.1 because that version matches the Chromium preinstalled in
   cloud sessions (`/opt/pw-browsers`). Upgrade both together.
 

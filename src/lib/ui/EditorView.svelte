@@ -11,7 +11,9 @@
 	import * as ButtonGroup from "#lib/components/shadcn/button-group/index.ts";
 	import * as Tooltip from "#lib/components/shadcn/tooltip/index.ts";
 	import type { EditorConfig } from "#lib/config.ts";
+	import { groundDistance } from "#lib/floorplans/georef.ts";
 	import { setBackground } from "#lib/map/background.ts";
+	import { FloorPlanLayers } from "#lib/map/floorplan-layers.ts";
 	import {
 		formatHash,
 		parseHash,
@@ -22,7 +24,12 @@
 	import type { Map as MapLibreMap } from "#lib/map/maplibre.ts";
 	import type { EntityId } from "#lib/osm/entity.ts";
 	import { Editor } from "#lib/state/editor.svelte.ts";
+	import {
+		FloorPlans,
+		type View as PlanView,
+	} from "#lib/state/floorplans.svelte.ts";
 	import { Session } from "#lib/state/session.svelte.ts";
+	import FloorPlansPanel from "#lib/ui/FloorPlansPanel.svelte";
 	import ImageryPicker from "#lib/ui/ImageryPicker.svelte";
 	import Inspector from "#lib/ui/Inspector.svelte";
 	import LevelControl from "#lib/ui/LevelControl.svelte";
@@ -57,6 +64,7 @@
 		return { session, editor, websiteUrl };
 	});
 	let saving = $state(false);
+	const floorplans = new FloorPlans();
 
 	let map = $state.raw<MapLibreMap>();
 	let camera = $state.raw<Omit<View, "level">>();
@@ -89,6 +97,28 @@
 			indoor.remove();
 		};
 	});
+
+	// Floor plans are drawn as long as the map lives.
+	$effect(() => {
+		if (!map) return;
+		const layers = new FloorPlanLayers(map);
+		$effect(() => layers.setPlans(floorplans.plans));
+		return () => layers.remove();
+	});
+
+	/** The visible map, for placing new floor plans. */
+	function planView(): PlanView | undefined {
+		if (!map) return undefined;
+		const { lng, lat } = map.getCenter();
+		const bounds = map.getBounds();
+		return {
+			center: [lng, lat],
+			heightMetres: groundDistance(
+				[lng, bounds.getNorth()],
+				[lng, bounds.getSouth()],
+			),
+		};
+	}
 
 	// Keep the URL hash in sync with the map camera and the selected level.
 	const hash = $derived(camera && formatHash({ ...camera, level }));
@@ -253,6 +283,7 @@
 		onselect={showBackground}
 		indexUrl={config.imagery_index_url}
 	/>
+	<FloorPlansPanel {floorplans} getView={planView} {level} />
 </div>
 
 <div

@@ -15,7 +15,8 @@
 			"!test-results",
 			"!playwright-report",
 			"!skills-lock.json",
-			"!src/lib/map/style/icons"
+			"!src/lib/map/style/icons",
+			"!tests/e2e/files"
 		]
 	},
 	"formatter": {

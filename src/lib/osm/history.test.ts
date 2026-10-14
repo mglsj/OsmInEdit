@@ -50,3 +50,64 @@ describe("History", () => {
 		expect(history.hasChanges).toBe(false);
 	});
 });
+
+describe("History.merge", () => {
+	const downloaded = (version: number, tags: Record<string, string>): Node => ({
+		...bench,
+		version,
+		tags,
+	});
+
+	it("adds downloaded entities to the current graph and to every undo step", () => {
+		const history = new History(Graph.fromEntities([bench]));
+		history.perform(retag({ amenity: "bench" }), "Tag as bench");
+		history.merge([{ ...bench, id: "n2" }]);
+
+		expect(history.graph.entity("n2")).toBeDefined();
+		history.undo();
+		expect(history.graph.entity("n2")).toBeDefined();
+		expect(history.hasChanges).toBe(false);
+	});
+
+	it("ignores entities it already has in the same or an older version", () => {
+		const history = new History(Graph.fromEntities([{ ...bench, version: 2 }]));
+		history.merge([
+			downloaded(2, { amenity: "chair" }),
+			downloaded(1, { x: "y" }),
+		]);
+		expect(history.graph.entity("n1")?.tags).toEqual({});
+	});
+
+	it("takes newer versions of entities that weren't edited locally", () => {
+		const history = new History(Graph.fromEntities([bench]));
+		const { conflicts } = history.merge([downloaded(2, { amenity: "chair" })]);
+		expect(conflicts).toEqual([]);
+		expect(history.graph.entity("n1")).toMatchObject({
+			version: 2,
+			tags: { amenity: "chair" },
+		});
+	});
+
+	it("keeps local edits and reports a conflict when the server has a newer version", () => {
+		const history = new History(Graph.fromEntities([bench]));
+		history.perform(retag({ amenity: "bench" }), "Tag as bench");
+		const { conflicts } = history.merge([downloaded(2, { amenity: "chair" })]);
+
+		expect(conflicts).toEqual(["n1"]);
+		expect(history.graph.entity("n1")).toMatchObject({
+			version: 1,
+			tags: { amenity: "bench" },
+		});
+	});
+
+	it("still undoes and redoes local edits after a merge", () => {
+		const history = new History(Graph.fromEntities([bench]));
+		history.perform(retag({ amenity: "bench" }), "Tag as bench");
+		history.merge([{ ...bench, id: "n2" }]);
+
+		history.undo();
+		expect(history.graph.entity("n1")?.tags).toEqual({});
+		history.redo();
+		expect(history.graph.entity("n1")?.tags).toEqual({ amenity: "bench" });
+	});
+});

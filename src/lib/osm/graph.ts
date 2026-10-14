@@ -110,6 +110,31 @@ export class Graph {
 		return makeId(type, this.#nextId);
 	}
 
+	/** Whether the entity was created, modified or deleted locally. */
+	isEdited(id: EntityId): boolean {
+		return this.#local.has(id);
+	}
+
+	/** This graph's server data with `entities` added or replaced, without local edits. */
+	withBaseEntities(entities: Iterable<Entity>): Graph {
+		const map = new Map(this.#base.entities);
+		let nextId = this.#nextId;
+		for (const entity of entities) {
+			map.set(entity.id, entity);
+			nextId = Math.min(nextId, osmId(entity.id) - 1);
+		}
+		return new Graph(new BaseData(map), new Map(), nextId);
+	}
+
+	/** The same local edits, applied on the server data of `base`. */
+	rebaseOnto(base: Graph): Graph {
+		return new Graph(
+			base.#base,
+			this.#local,
+			Math.min(this.#nextId, base.#nextId),
+		);
+	}
+
 	/** The graph of server data, without local edits. */
 	base(): Graph {
 		return new Graph(this.#base, new Map(), this.#nextId);

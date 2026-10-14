@@ -12,7 +12,7 @@ If you are looking for an indoor data viewer (a map for browsing existing data),
 
 ## Contributing
 
-This project is an open source tool, meaning it is made by volunteers. If you **want to help us**, there are several ways (technical or non-technical ones). Issues and pull requests are welcome on [GitHub](https://github.com/mglsj/OsmInEdit).
+This project is an open source tool, meaning it is made by volunteers. If you **want to help us**, there are several ways (technical or non-technical ones). Issues and pull requests are welcome on [GitHub](https://github.com/mglsj/indoor-id).
 
 ## Develop/run your own instance
 

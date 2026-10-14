@@ -10,29 +10,27 @@ OsmInEdit aims to make [indoor data editing](https://wiki.openstreetmap.org/wiki
 
 If you are looking for an indoor data viewer (a map for browsing existing data), have a look at [OpenLevelUp](https://openlevelup.net/).
 
-__Tips and tricks__ for using this editor can be found on [usage documentation](USAGE.md).
+> **Rewrite in progress.** This branch is rebuilding OsmInEdit with Svelte, MapLibre GL JS and an OpenStreetMap-native data model, to make map rendering fast, floor plan alignment easy and tagging up to date with the wiki. It is not usable for editing yet. The last release of the original editor is kept under the git tag `legacy-v1.0.16`.
 
+**Tips and tricks** for using this editor can be found on [usage documentation](USAGE.md).
 
 ## Contributing
 
-This project is an open source tool, meaning it is made by volunteers. If you __want to help us__, there are several ways (technical or non-technical ones). You can find how to participate in the [contributing documentation](CONTRIBUTING.md).
-
+This project is an open source tool, meaning it is made by volunteers. If you **want to help us**, there are several ways (technical or non-technical ones). You can find how to participate in the [contributing documentation](CONTRIBUTING.md).
 
 ## Develop/run your own instance
 
 OsmInEdit is already available online, so you can use without any bothering (see link on top of this document). In case you want to run your instance of OsmInEdit, or work on its development, you can read [develop documentation](DEVELOP.md) to have all technical information.
 
-
 ## Contributors
 
-OsmInEdit exists and is everyday improving thanks to the __amazing people__ following :
+OsmInEdit exists and is everyday improving thanks to the **amazing people** following :
 
-* Adrien Pavie, main developer of OsmInEdit
-* Daimler AG team, for sponsoring and leading the project
-* Florian Lainez, for improving the user experience
-* Thomas Gratier, for his work on [osm-request](https://github.com/osmlab/osm-request) library
-* And all users, for using the tool and sharing their ideas !
-
+- Adrien Pavie, main developer of OsmInEdit
+- Daimler AG team, for sponsoring and leading the project
+- Florian Lainez, for improving the user experience
+- Thomas Gratier, for his work on [osm-request](https://github.com/osmlab/osm-request) library
+- And all users, for using the tool and sharing their ideas !
 
 ## License
 

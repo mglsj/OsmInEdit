@@ -23,6 +23,7 @@ import {
 	isRestricted,
 	labelFor,
 } from "./classify.ts";
+import { pointInRing } from "./geometry.ts";
 import type { FilterSpecification } from "./maplibre.ts";
 
 export type FeatureProperties = Tags & { "@id": string; "@lv": string };
@@ -226,17 +227,4 @@ function joinRings(ways: readonly (readonly NodeId[])[]): NodeId[][] {
 		if (ring.length > 3 && ring[0] === ring.at(-1)) rings.push(ring);
 	}
 	return rings;
-}
-
-/** Ray casting: whether a point is inside a closed ring. */
-function pointInRing(point: Position, ring: readonly Position[]): boolean {
-	const [x = 0, y = 0] = point;
-	let inside = false;
-	ring.forEach(([xi = 0, yi = 0], i) => {
-		const [xj = 0, yj = 0] = ring.at(i - 1) ?? [];
-		if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-			inside = !inside;
-		}
-	});
-	return inside;
 }

@@ -4,14 +4,17 @@
 	import type { Bbox } from "#lib/api/osm-api.ts";
 	import { OsmApi } from "#lib/api/osm-api.ts";
 	import type { EditorConfig } from "#lib/config.ts";
+	import { setBackground } from "#lib/map/background.ts";
 	import {
 		formatHash,
 		parseHash,
 		type MapView as View,
 	} from "#lib/map/hash.ts";
+	import type { ImageryEntry } from "#lib/map/imagery.ts";
 	import { IndoorMap } from "#lib/map/indoor-map.ts";
 	import type { Map as MapLibreMap } from "#lib/map/maplibre.ts";
 	import { Editor } from "#lib/state/editor.svelte.ts";
+	import ImageryPicker from "#lib/ui/ImageryPicker.svelte";
 	import LevelControl from "#lib/ui/LevelControl.svelte";
 	import MapView from "#lib/ui/MapView.svelte";
 	import SearchPlace from "#lib/ui/SearchPlace.svelte";
@@ -42,6 +45,12 @@
 	let camera = $state.raw<Omit<View, "level">>();
 	let level = $state(fromUrl?.level ?? 0);
 	let lastHash = "";
+	let background = $state<string | null>(null);
+
+	function showBackground(entry: ImageryEntry | null) {
+		background = entry?.id ?? null;
+		if (map) setBackground(map, entry);
+	}
 
 	// The indoor layers live as long as the map, and follow the data and the selected level.
 	$effect(() => {
@@ -130,11 +139,17 @@
 	onmove={onMove}
 />
 
-<div class="absolute top-4 left-4 z-20">
+<div class="absolute top-4 left-4 z-20 flex flex-col items-start gap-2">
 	<SearchPlace
 		getView={visibleArea}
 		onselect={showPlace}
 		baseUrl={config.nominatim_url}
+	/>
+	<ImageryPicker
+		center={camera && [camera.lon, camera.lat]}
+		selected={background}
+		onselect={showBackground}
+		indexUrl={config.imagery_index_url}
 	/>
 </div>
 

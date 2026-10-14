@@ -1,11 +1,11 @@
 {
-	"name": "osm-indoor-editor",
-	"version": "2.0.0-dev",
+	"name": "indoor-id",
+	"version": "0.0.1",
 	"description": "Web tool for editing OpenStreetMap building indoors data",
 	"private": true,
 	"type": "module",
-	"license": "ISC",
-	"author": "Adrien PAVIE, Daimler AG",
+	"license": "MIT",
+	"author": "mglsj",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/mglsj/OsmInEdit.git"
@@ -18,7 +18,7 @@
 		"building"
 	],
 	"engines": {
-		"node": ">=22"
+		"node": ">=26.0.0"
 	},
 	"scripts": {
 		"dev": "vite dev",
@@ -26,8 +26,6 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"lint": "prettier --check . && eslint .",
-		"format": "prettier --write .",
 		"test": "npm run test:unit && npm run test:e2e",
 		"test:unit": "vitest run",
 		"test:e2e": "playwright test"
@@ -36,6 +34,7 @@
 		"#lib/*": "./src/lib/*"
 	},
 	"devDependencies": {
+		"@biomejs/biome": "2.5.15",
 		"@eslint/js": "10.0.1",
 		"@playwright/test": "1.56.1",
 		"@sveltejs/adapter-static": "4.0.0",
@@ -43,18 +42,11 @@
 		"@sveltejs/vite-plugin-svelte": "7.3.1",
 		"@tailwindcss/vite": "4.3.3",
 		"@types/node": "22.20.5",
-		"eslint": "10.12.0",
-		"eslint-config-prettier": "10.1.8",
-		"eslint-plugin-svelte": "3.23.1",
 		"globals": "17.13.0",
-		"prettier": "3.9.10",
-		"prettier-plugin-svelte": "4.1.1",
-		"prettier-plugin-tailwindcss": "0.8.1",
 		"svelte": "5.57.2",
 		"svelte-check": "4.7.6",
 		"tailwindcss": "4.3.3",
 		"typescript": "6.0.3",
-		"typescript-eslint": "8.71.2",
 		"vite": "8.3.4",
 		"vitest": "5.0.4"
 	},

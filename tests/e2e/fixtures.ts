@@ -8,6 +8,8 @@ import {
 /** A basemap with no network sources, so tests never depend on a tile server. */
 export const blankStyle = {
 	version: 8,
+	// Glyph requests are blocked below; MapLibre then falls back to local fonts.
+	glyphs: "https://fonts.test/{fontstack}/{range}.pbf",
 	sources: {},
 	layers: [
 		{
@@ -23,10 +25,15 @@ export const test = base.extend({
 	page: async ({ page }, use) => {
 		await page.route(
 			(url) => url.hostname !== "localhost",
-			(route) =>
-				route.request().url().includes("/styles/")
-					? route.fulfill({ json: blankStyle })
-					: route.abort(),
+			(route) => {
+				const url = route.request().url();
+				if (url.includes("/styles/"))
+					return route.fulfill({ json: blankStyle });
+				if (url.includes("/api/0.6/map.json")) {
+					return route.fulfill({ json: { version: "0.6", elements: [] } });
+				}
+				return route.abort();
+			},
 		);
 		await use(page);
 	},
@@ -69,4 +76,51 @@ export async function pixelAt(
 		const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
 		return [r, g, b] as [number, number, number];
 	}, png.toString("base64"));
+}
+
+/** RGB colour of `color` drawn with `opacity` over `background`. */
+export function blend(
+	color: [number, number, number],
+	opacity: number,
+	background: [number, number, number],
+): [number, number, number] {
+	return color.map((c, i) =>
+		Math.round(c * opacity + (background[i] ?? 0) * (1 - opacity)),
+	) as [number, number, number];
+}
+
+/** Background colour of `blankStyle`. */
+export const BACKGROUND: [number, number, number] = [0xe8, 0xee, 0xf4];
+
+/** Waits until the pixel's colour is within `tolerance` of `expected` on each channel. */
+export async function expectPixel(
+	page: Page,
+	x: number,
+	y: number,
+	expected: [number, number, number],
+	tolerance = 4,
+) {
+	await expect
+		.poll(
+			async () => {
+				const actual = await pixelAt(page, x, y);
+				return actual.every(
+					(c, i) => Math.abs(c - (expected[i] ?? 0)) <= tolerance,
+				)
+					? "match"
+					: actual.join(",");
+			},
+			{ timeout: 10_000 },
+		)
+		.toBe("match");
+}
+
+/** Centre of the map on screen. */
+export async function mapCenter(page: Page): Promise<{ x: number; y: number }> {
+	const box = await mapLocator(page).boundingBox();
+	if (!box) throw new Error("The map is not visible");
+	return {
+		x: Math.round(box.x + box.width / 2),
+		y: Math.round(box.y + box.height / 2),
+	};
 }

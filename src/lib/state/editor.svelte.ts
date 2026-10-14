@@ -31,7 +31,7 @@ export type LoadStatus =
 	| { readonly kind: "error"; readonly failed: number };
 
 export interface EditorOptions {
-	readonly api: Pick<OsmApi, "loadMap">;
+	readonly api: Pick<OsmApi, "loadMap" | "upload">;
 	/** Data is only downloaded from this zoom level. */
 	readonly minZoom: number;
 }
@@ -53,13 +53,15 @@ export class Editor {
 		this.selectedId ? (this.graph.entity(this.selectedId) ?? null) : null,
 	);
 
-	readonly #history = new History(this.graph);
+	#history = new History(this.graph);
+	readonly #api: EditorOptions["api"];
 	readonly #loader: MapLoader;
 	readonly #minZoom: number;
 	#loads = 0;
 
 	constructor({ api, minZoom }: EditorOptions) {
 		this.#minZoom = minZoom;
+		this.#api = api;
 		void loadPresetIndex().then((index) => (this.presets = index));
 		void loadSchemaUpgrades().then(
 			(rules) => (this.upgrades = [...LOCAL_UPGRADES, ...rules]),
@@ -134,6 +136,20 @@ export class Editor {
 
 	fix(issue: Issue): void {
 		if (issue.fix) this.perform(issue.fix.action, issue.fix.label);
+	}
+
+	/**
+	 * Uploads the edits in one changeset, then starts a new history from the server's state.
+	 * Returns the changeset id. On failure the edits are kept.
+	 */
+	async upload(changesetTags: Tags): Promise<number> {
+		const result = await this.#api.upload(this.graph, changesetTags);
+		this.#history = new History(result.graph);
+		if (this.selectedId) {
+			this.selectedId = result.idMap.get(this.selectedId) ?? this.selectedId;
+		}
+		this.graph = result.graph;
+		return result.changesetId;
 	}
 
 	select(id: EntityId | null): void {

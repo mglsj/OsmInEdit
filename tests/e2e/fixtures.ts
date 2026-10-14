@@ -172,3 +172,29 @@ export async function serveOsm(page: Page, elements: Element[]) {
 	});
 	return requests;
 }
+
+/** Opens the map on a room and selects it. */
+export async function selectRoom(
+	page: Page,
+	tags: Record<string, string> = {},
+) {
+	const elements = room(100, LON, LAT, "0");
+	const way = elements.at(-1) as { tags: Record<string, string> };
+	way.tags = { ...way.tags, ...tags };
+	await serveOsm(page, elements);
+	await page.goto(`/#19/${LAT}/${LON}/0`);
+	await camera(page);
+	const { x, y } = await mapCenter(page);
+	const editor = page.getByRole("complementary", { name: "Feature editor" });
+	// The room is drawn once its data has loaded.
+	await expect(async () => {
+		await page.mouse.click(x, y);
+		await expect(editor).toBeVisible({ timeout: 500 });
+	}).toPass({ timeout: 10_000 });
+	return editor;
+}
+
+/** The raw tag editor of the feature editor. */
+export function tagsBox(page: Page): Locator {
+	return page.getByRole("textbox", { name: "Tags" });
+}

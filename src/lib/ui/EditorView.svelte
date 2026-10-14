@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Redo2 from "@lucide/svelte/icons/redo-2";
 	import Undo2 from "@lucide/svelte/icons/undo-2";
+	import Upload from "@lucide/svelte/icons/upload";
 	import { untrack } from "svelte";
 	import type { Place } from "#lib/api/nominatim.ts";
 	import type { Bbox } from "#lib/api/osm-api.ts";
@@ -17,10 +18,12 @@
 	import type { Map as MapLibreMap } from "#lib/map/maplibre.ts";
 	import type { EntityId } from "#lib/osm/entity.ts";
 	import { Editor } from "#lib/state/editor.svelte.ts";
+	import { Session } from "#lib/state/session.svelte.ts";
 	import ImageryPicker from "#lib/ui/ImageryPicker.svelte";
 	import Inspector from "#lib/ui/Inspector.svelte";
 	import LevelControl from "#lib/ui/LevelControl.svelte";
 	import MapView from "#lib/ui/MapView.svelte";
+	import SaveDialog from "#lib/ui/SaveDialog.svelte";
 	import SearchPlace from "#lib/ui/SearchPlace.svelte";
 	import { goto } from "$app/navigation";
 	import { resolve } from "$app/paths";
@@ -33,26 +36,37 @@
 
 	const fromUrl = parseHash(location.hash);
 	// The configuration is read once: it doesn't change while the editor runs.
-	const editor = untrack(
-		() =>
-			new Editor({
-				api: new OsmApi({
-					baseUrl: config.osm_api_url,
-					getToken: () => null,
-					createdBy: `IndoorID ${__GIT_HASH__}`,
-				}),
-				minZoom: config.data_min_zoom,
-			}),
-	);
+	const { session, editor, websiteUrl } = untrack(() => {
+		const websiteUrl = config.oauth_url ?? config.osm_api_url;
+		const session = new Session({
+			oauthUrl: websiteUrl,
+			apiUrl: config.osm_api_url,
+			clientId: config.oauth_client_id,
+			redirectUri: new URL(resolve("/auth/callback"), location.href).href,
+		});
+		const api = new OsmApi({
+			baseUrl: config.osm_api_url,
+			getToken: () => session.token(),
+			createdBy: `IndoorID ${__GIT_HASH__}`,
+		});
+		const editor = new Editor({ api, minZoom: config.data_min_zoom });
+		return { session, editor, websiteUrl };
+	});
+	let saving = $state(false);
 
 	let map = $state.raw<MapLibreMap>();
 	let camera = $state.raw<Omit<View, "level">>();
 	let level = $state(fromUrl?.level ?? 0);
 	let lastHash = "";
-	let background = $state<string | null>(null);
+	let background = $state.raw<ImageryEntry | null>(null);
+	/** Imagery shown since the last upload, for the changeset's imagery_used tag. */
+	let imageryUsed = $state<string[]>([]);
 
 	function showBackground(entry: ImageryEntry | null) {
-		background = entry?.id ?? null;
+		background = entry;
+		if (entry && !imageryUsed.includes(entry.name)) {
+			imageryUsed = [...imageryUsed, entry.name];
+		}
 		if (map) setBackground(map, entry);
 	}
 
@@ -200,10 +214,25 @@
 		>
 			<Redo2 size={16} aria-hidden="true" />
 		</button>
+		<button
+			type="button"
+			disabled={editor.editCount === 0}
+			onclick={() => (saving = true)}
+			class="flex h-9 items-center gap-1.5 border-l border-black/10 px-3 text-sm font-medium hover:bg-slate-100 disabled:opacity-40 dark:border-white/15 dark:hover:bg-slate-800"
+		>
+			<Upload size={16} aria-hidden="true" />
+			Save
+			<span
+				class="rounded-full bg-brand-600 px-1.5 text-xs text-white tabular-nums"
+				data-testid="edit-count"
+				>{editor.editCount}</span
+			>
+			<span class="sr-only">edits</span>
+		</button>
 	</div>
 	<ImageryPicker
 		center={camera && [camera.lon, camera.lat]}
-		selected={background}
+		selected={background?.id ?? null}
 		onselect={showBackground}
 		indexUrl={config.imagery_index_url}
 	/>
@@ -235,4 +264,14 @@
 	>
 		{statusMessage}
 	</p>
+{/if}
+
+{#if saving}
+	<SaveDialog
+		{editor}
+		{session}
+		imagery={imageryUsed}
+		{websiteUrl}
+		onclose={() => (saving = false)}
+	/>
 {/if}

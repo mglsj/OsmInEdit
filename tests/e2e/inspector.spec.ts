@@ -1,34 +1,4 @@
-import type { Page } from "@playwright/test";
-import {
-	camera,
-	expect,
-	LAT,
-	LON,
-	mapCenter,
-	room,
-	serveOsm,
-	test,
-} from "./fixtures.ts";
-
-/** Opens the map on a room and selects it. */
-async function selectRoom(page: Page, tags: Record<string, string> = {}) {
-	const elements = room(100, LON, LAT, "0");
-	const way = elements.at(-1) as { tags: Record<string, string> };
-	way.tags = { ...way.tags, ...tags };
-	await serveOsm(page, elements);
-	await page.goto(`/#19/${LAT}/${LON}/0`);
-	await camera(page);
-	const { x, y } = await mapCenter(page);
-	const editor = page.getByRole("complementary", { name: "Feature editor" });
-	// The room is drawn once its data has loaded.
-	await expect(async () => {
-		await page.mouse.click(x, y);
-		await expect(editor).toBeVisible({ timeout: 500 });
-	}).toPass({ timeout: 10_000 });
-	return editor;
-}
-
-const tagsBox = (page: Page) => page.getByRole("textbox", { name: "Tags" });
+import { expect, selectRoom, tagsBox, test } from "./fixtures.ts";
 
 test("selecting a room shows its type and fields", async ({ page }) => {
 	const editor = await selectRoom(page);

@@ -8,6 +8,8 @@ export interface EditorConfig {
 	editor_name: string;
 	/** OSM API base URL, e.g. https://api.openstreetmap.org or the dev server. */
 	osm_api_url: string;
+	/** OSM website handling the login; defaults to `osm_api_url` (true for the dev server). */
+	oauth_url?: string;
 	/** Public OAuth 2 client id registered on the OSM instance above (PKCE, no secret). */
 	oauth_client_id: string;
 	/** Editor Layer Index used to list background imagery; the osmlab one by default. */

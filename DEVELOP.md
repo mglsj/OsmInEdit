@@ -54,6 +54,7 @@ SvelteKit is configured in `vite.config.ts` (SvelteKit 3 no longer reads `svelte
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `editor_name`        | Name of this instance                                                                                                                                 |
 | `osm_api_url`        | OSM API to edit. Defaults to the [development API](https://master.apis.dev.openstreetmap.org); use `https://api.openstreetmap.org` in production      |
+| `oauth_url`          | OSM website handling the login (optional, defaults to `osm_api_url`; use `https://www.openstreetmap.org` with the production API) |
 | `oauth_client_id`    | Public client id of an [OAuth 2 application](https://wiki.openstreetmap.org/wiki/OAuth) registered on that OSM instance, without client secret (PKCE) |
 | `imagery_index_url`  | [Editor Layer Index](https://github.com/osmlab/editor-layer-index) listing background imagery (optional, defaults to the osmlab one) |
 | `nominatim_url`      | Nominatim instance used for place search (optional, defaults to `https://nominatim.openstreetmap.org`) |
@@ -61,6 +62,16 @@ SvelteKit is configured in `vite.config.ts` (SvelteKit 3 no longer reads `svelte
 | `data_min_zoom`      | Minimal zoom at which OSM data is downloaded                                                                                                          |
 | `map_initial_zoom`   | Zoom used when the URL has no position                                                                                                                |
 | `map_initial_latlng` | `[lat, lon]` used when the URL has no position                                                                                                        |
+
+### Logging in
+
+Register an OAuth 2 application on the OSM instance (your user settings, "OAuth 2 applications") with:
+
+- permissions: *Read user preferences* and *Modify the map*;
+- redirect URI: the editor's URL followed by `auth/callback`, e.g. `http://localhost:5173/auth/callback` for development;
+- confidential application: **unchecked** (IndoorID uses PKCE and has no secret).
+
+Put its client id in `oauth_client_id`.
 
 ## Translations
 

@@ -3,15 +3,20 @@
 	import Eye from "@lucide/svelte/icons/eye";
 	import EyeOff from "@lucide/svelte/icons/eye-off";
 	import FileImage from "@lucide/svelte/icons/file-image";
+	import Info from "@lucide/svelte/icons/info";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import Upload from "@lucide/svelte/icons/upload";
+	import X from "@lucide/svelte/icons/x";
 	import type { Attachment } from "svelte/attachments";
 	import * as Alert from "#lib/components/shadcn/alert/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import * as Card from "#lib/components/shadcn/card/index.ts";
 	import * as Field from "#lib/components/shadcn/field/index.ts";
+	import { Input } from "#lib/components/shadcn/input/index.ts";
 	import { Slider } from "#lib/components/shadcn/slider/index.ts";
 	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
+	import * as ToggleGroup from "#lib/components/shadcn/toggle-group/index.ts";
+	import type { TransformKind } from "#lib/floorplans/georef.ts";
 	import {
 		ACCEPTED_FILES,
 		importRaster,
@@ -21,7 +26,12 @@
 		type PdfDocument,
 		planName,
 	} from "#lib/floorplans/import.ts";
-	import type { FloorPlans, View } from "#lib/state/floorplans.svelte.ts";
+	import {
+		type FloorPlans,
+		MIN_POINTS,
+		type Tool,
+		type View,
+	} from "#lib/state/floorplans.svelte.ts";
 	import PdfPageDialog from "#lib/ui/PdfPageDialog.svelte";
 
 	interface Props {
@@ -30,9 +40,50 @@
 		getView: () => View | undefined;
 		/** The level shown, which new plans are assigned to. */
 		level: number;
+		/** Why the alignment tool ignored the last map click, if it did. */
+		toolMessage?: string | null;
 	}
 
-	let { floorplans, getView, level }: Props = $props();
+	let { floorplans, getView, level, toolMessage = null }: Props = $props();
+
+	let distance = $state<number>();
+	let angle = $state<number>(90);
+
+	const tool = $derived(floorplans.tool);
+	const fit = $derived(floorplans.fit);
+	const hint = $derived.by(() => {
+		switch (tool?.kind) {
+			case "points":
+				return tool.pending
+					? "Now click where that spot is on the map. Clicks near an OSM node snap to it."
+					: "Click a spot on the plan, such as a corner, then where it is on the map.";
+			case "measure":
+				return tool.points.length < 2
+					? "Click two spots on the plan whose real distance you know."
+					: "Give the real distance between the two spots.";
+			case "rotate":
+				return tool.pin
+					? "Turn the plan around the picked spot."
+					: "Click the spot on the plan to turn around.";
+			default:
+				return "Pick a tool to line the plan up with the map.";
+		}
+	});
+	const FIT_KINDS: { kind: TransformKind; label: string }[] = [
+		{ kind: "similarity", label: "Similarity" },
+		{ kind: "affine", label: "Affine" },
+		{ kind: "projective", label: "Perspective" },
+	];
+
+	function scale(event: SubmitEvent) {
+		event.preventDefault();
+		if (distance && distance > 0) floorplans.scaleTo(distance);
+	}
+
+	function rotate(event: SubmitEvent) {
+		event.preventDefault();
+		if (Number.isFinite(angle)) floorplans.rotate(angle);
+	}
 
 	let open = $state(false);
 	let busy = $state(false);
@@ -114,7 +165,10 @@
 </div>
 
 {#if open}
-	<Card.Root size="sm" class="w-80 max-w-[calc(100vw-2rem)] shadow-md">
+	<Card.Root
+		size="sm"
+		class="max-h-[calc(100dvh-16rem)] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto shadow-md"
+	>
 		<Card.Header>
 			<Card.Title>Floor plans</Card.Title>
 			<Card.Description>
@@ -161,7 +215,7 @@
 									plan.id === floorplans.selectedId && "bg-muted",
 								]}
 								aria-current={plan.id === floorplans.selectedId}
-								onclick={() => (floorplans.selectedId = plan.id)}
+								onclick={() => floorplans.select(plan.id)}
 							>
 								<img
 									{@attach thumbnail(plan.image.blob)}
@@ -218,6 +272,122 @@
 							floorplans.update(selected.id, { opacity })}
 					/>
 				</Field.Field>
+
+				<Field.Field>
+					<Field.Label id="plan-tool-label">Align</Field.Label>
+					<ToggleGroup.Root
+						type="single"
+						variant="outline"
+						size="sm"
+						aria-labelledby="plan-tool-label"
+						class="w-full"
+						value={tool?.kind ?? ""}
+						onValueChange={(kind) =>
+							floorplans.setTool((kind || null) as Tool["kind"] | null)}
+					>
+						<ToggleGroup.Item value="points" class="flex-1"
+							>Control points
+						</ToggleGroup.Item>
+						<ToggleGroup.Item value="measure" class="flex-1"
+							>Measure
+						</ToggleGroup.Item>
+						<ToggleGroup.Item value="rotate" class="flex-1"
+							>Rotate
+						</ToggleGroup.Item>
+					</ToggleGroup.Root>
+					<Field.Description>{hint}</Field.Description>
+				</Field.Field>
+
+				{#if toolMessage && tool}
+					<Alert.Root>
+						<Info />
+						<Alert.Description>{toolMessage}</Alert.Description>
+					</Alert.Root>
+				{/if}
+
+				{#if tool?.kind === "points"}
+					{#if selected.controlPoints.length > 0}
+						<ol aria-label="Control points" class="flex flex-col gap-1 text-sm">
+							{#each selected.controlPoints as _, i (i)}
+								<li class="flex items-center gap-2">
+									<span class="w-5 text-muted-foreground tabular-nums"
+										>{i + 1}</span
+									>{" "}
+									<span class="flex-1 tabular-nums">
+										{fit
+											? `${(fit.residuals[i] ?? 0).toFixed(2)} m`
+											: "Moves the plan"}
+									</span>
+									<Button
+										variant="ghost"
+										size="icon-xs"
+										aria-label={`Remove control point ${i + 1}`}
+										onclick={() => floorplans.removeControlPoint(i)}
+									>
+										<X />
+									</Button>
+								</li>
+							{/each}
+						</ol>
+					{/if}
+					<Field.Field>
+						<Field.Label id="plan-fit-label">Fit</Field.Label>
+						<ToggleGroup.Root
+							type="single"
+							variant="outline"
+							size="sm"
+							aria-labelledby="plan-fit-label"
+							class="w-full"
+							value={selected.fitKind}
+							onValueChange={(kind) => {
+								if (kind) floorplans.setFitKind(kind as TransformKind);
+							}}
+						>
+							{#each FIT_KINDS as { kind, label } (kind)}
+								<ToggleGroup.Item value={kind} class="flex-1"
+									>{label}</ToggleGroup.Item
+								>
+							{/each}
+						</ToggleGroup.Root>
+						<Field.Description>
+							{#if selected.controlPoints.length < MIN_POINTS[selected.fitKind]}
+								Needs {MIN_POINTS[selected.fitKind]} points; until then the plan
+								keeps its shape.
+							{:else if fit}
+								RMS error {fit.rms.toFixed(2)} m
+							{/if}
+						</Field.Description>
+					</Field.Field>
+				{:else if tool?.kind === "measure" && tool.points.length === 2}
+					<form class="flex items-end gap-2" onsubmit={scale}>
+						<Field.Field>
+							<Field.Label for="plan-distance">Real distance (m)</Field.Label>
+							<Input
+								id="plan-distance"
+								type="number"
+								min={0}
+								step="any"
+								required
+								bind:value={distance}
+							/>
+						</Field.Field>
+						<Button type="submit">Scale</Button>
+					</form>
+				{:else if tool?.kind === "rotate" && tool.pin}
+					<form class="flex items-end gap-2" onsubmit={rotate}>
+						<Field.Field>
+							<Field.Label for="plan-angle">Angle (°, clockwise)</Field.Label>
+							<Input
+								id="plan-angle"
+								type="number"
+								step="any"
+								required
+								bind:value={angle}
+							/>
+						</Field.Field>
+						<Button type="submit">Rotate</Button>
+					</form>
+				{/if}
 			{/if}
 		</Card.Content>
 	</Card.Root>

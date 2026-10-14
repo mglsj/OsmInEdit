@@ -9,6 +9,7 @@ import {
 	project,
 	rotateAbout,
 	scaleToDistance,
+	translateTo,
 	unproject,
 } from "./georef.ts";
 import { distance, northUpPlan, offset, RENNES } from "./test-geometry.ts";
@@ -253,6 +254,28 @@ describe("rotateAbout", () => {
 		// 100 px to the right of the pin was 5 m east of it; a quarter turn puts it 5 m south.
 		expect(
 			distance(project(rotated, [200, 100]), offset(pin, 0, -5)),
+		).toBeLessThan(0.001);
+	});
+});
+
+describe("translateTo", () => {
+	it("moves the plan so a pixel lands on a point, keeping its scale and rotation", () => {
+		const start = place(
+			{ center: RENNES, metresPerPixel: 0.05, bearing: 20 },
+			400,
+			300,
+		);
+		// Move pixel (100, 100) 30 m east and 12 m south of where it is.
+		const target = offset(project(start, [100, 100]), 30, -12);
+		const moved = translateTo(start, [100, 100], target);
+
+		expect(distance(project(moved, [100, 100]), target)).toBeLessThan(0.001);
+		// Every pixel moved the same way: 30 m east and 12 m south.
+		expect(
+			distance(
+				project(moved, [300, 250]),
+				offset(project(start, [300, 250]), 30, -12),
+			),
 		).toBeLessThan(0.001);
 	});
 });

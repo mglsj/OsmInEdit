@@ -164,6 +164,18 @@ export function rotateAbout(
 	return aboutPoint(transform, pin, [cos, sin, -sin, cos]);
 }
 
+/** Moves the plan, unscaled and unrotated, so that `pixel` lands on `target`. */
+export function translateTo(
+	transform: Transform,
+	pixel: Pixel,
+	target: LngLat,
+): Transform {
+	const [px, py] = toMercator(project(transform, pixel));
+	const [tx, ty] = toMercator(target);
+	const shift: Matrix = [1, 0, tx - px, 0, 1, ty - py, 0, 0, 1];
+	return { kind: transform.kind, matrix: multiply(shift, transform.matrix) };
+}
+
 /** Applies a 2×2 linear map on the map side, centred on where `pixel` currently is. */
 function aboutPoint(
 	transform: Transform,

@@ -3,9 +3,15 @@
  * the background imagery and the indoor data. Plans are compared by identity, so only what
  * changed is updated: moving a plan sets new coordinates, it never re-uploads the image.
  */
+import type { Feature, FeatureCollection, LineString, Point } from "geojson";
+import { type LngLat, type Pixel, project } from "#lib/floorplans/georef.ts";
 import { tileCorners } from "#lib/floorplans/tiling.ts";
-import type { FloorPlan } from "#lib/state/floorplans.svelte.ts";
-import type { ImageSource, Map as MapLibreMap } from "./maplibre.ts";
+import type { FloorPlan, Tool } from "#lib/state/floorplans.svelte.ts";
+import type {
+	GeoJSONSource,
+	ImageSource,
+	Map as MapLibreMap,
+} from "./maplibre.ts";
 
 /** Prefix of the floor plan source and layer ids. */
 export const FLOORPLAN_PREFIX = "floorplan-";
@@ -123,3 +129,109 @@ export class FloorPlanLayers {
 			: this.#map.getStyle().layers.find((l) => l.type === "symbol")?.id;
 	}
 }
+
+const TOOL_SOURCE = "floorplan-tool";
+
+/** Marks of the alignment tools: control points, measured spots, the rotation pin. */
+export function toolFeatures(
+	plan: FloorPlan | null,
+	tool: Tool | null,
+): FeatureCollection<Point | LineString> {
+	const features: Feature<Point | LineString>[] = [];
+	const point = (position: LngLat, role: string, label = "") =>
+		features.push({
+			type: "Feature",
+			geometry: { type: "Point", coordinates: position },
+			properties: { role, label },
+		});
+	const line = (from: LngLat, to: LngLat) =>
+		features.push({
+			type: "Feature",
+			geometry: { type: "LineString", coordinates: [from, to] },
+			properties: { role: "link" },
+		});
+	if (plan) {
+		const at = (pixel: Pixel) => project(plan.transform, pixel);
+		plan.controlPoints.forEach(({ image, map }, i) => {
+			const onPlan = at(image);
+			line(onPlan, map);
+			point(onPlan, "plan", String(i + 1));
+			point(map, "target", String(i + 1));
+		});
+		if (tool?.kind === "points" && tool.pending) {
+			point(at(tool.pending), "plan", "?");
+		}
+		if (tool?.kind === "measure") {
+			const [a, b] = tool.points.map(at);
+			if (a && b) line(a, b);
+			for (const p of [a, b]) if (p) point(p, "plan");
+		}
+		if (tool?.kind === "rotate" && tool.pin) {
+			point(at(tool.pin), "target");
+		}
+	}
+	return { type: "FeatureCollection", features };
+}
+
+/** Draws `toolFeatures` above the indoor data. */
+export class PlanToolLayer {
+	readonly #map: MapLibreMap;
+	#data: FeatureCollection = { type: "FeatureCollection", features: [] };
+	#ready = false;
+
+	constructor(map: MapLibreMap) {
+		this.#map = map;
+		const install = () => {
+			map.addSource(TOOL_SOURCE, { type: "geojson", data: this.#data });
+			map.addLayer({
+				id: `${TOOL_SOURCE}-links`,
+				type: "line",
+				source: TOOL_SOURCE,
+				filter: ["==", ["geometry-type"], "LineString"],
+				paint: {
+					"line-color": TOOL_COLOR,
+					"line-width": 2,
+					"line-dasharray": [2, 2],
+				},
+			});
+			map.addLayer({
+				id: `${TOOL_SOURCE}-points`,
+				type: "circle",
+				source: TOOL_SOURCE,
+				filter: ["==", ["geometry-type"], "Point"],
+				paint: {
+					"circle-radius": 6,
+					"circle-color": [
+						"case",
+						["==", ["get", "role"], "target"],
+						TOOL_COLOR,
+						"#ffffff",
+					],
+					"circle-stroke-color": TOOL_COLOR,
+					"circle-stroke-width": 2,
+				},
+			});
+			this.#ready = true;
+		};
+		if (map.isStyleLoaded()) install();
+		else map.once("load", install);
+	}
+
+	setData(data: FeatureCollection): void {
+		this.#data = data;
+		if (this.#ready) {
+			this.#map.getSource<GeoJSONSource>(TOOL_SOURCE)?.setData(data);
+		}
+	}
+
+	remove(): void {
+		if (!this.#ready) return;
+		for (const id of [`${TOOL_SOURCE}-points`, `${TOOL_SOURCE}-links`]) {
+			if (this.#map.getLayer(id)) this.#map.removeLayer(id);
+		}
+		if (this.#map.getSource(TOOL_SOURCE)) this.#map.removeSource(TOOL_SOURCE);
+	}
+}
+
+/** Colour of the alignment marks: magenta stands out on plans, imagery and the indoor style. */
+const TOOL_COLOR = "#d6249f";

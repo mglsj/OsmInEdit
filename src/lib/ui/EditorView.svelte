@@ -11,9 +11,13 @@
 	import * as ButtonGroup from "#lib/components/shadcn/button-group/index.ts";
 	import * as Tooltip from "#lib/components/shadcn/tooltip/index.ts";
 	import type { EditorConfig } from "#lib/config.ts";
-	import { groundDistance } from "#lib/floorplans/georef.ts";
+	import { groundDistance, type LngLat } from "#lib/floorplans/georef.ts";
 	import { setBackground } from "#lib/map/background.ts";
-	import { FloorPlanLayers } from "#lib/map/floorplan-layers.ts";
+	import {
+		FloorPlanLayers,
+		PlanToolLayer,
+		toolFeatures,
+	} from "#lib/map/floorplan-layers.ts";
 	import {
 		formatHash,
 		parseHash,
@@ -21,7 +25,12 @@
 	} from "#lib/map/hash.ts";
 	import type { ImageryEntry } from "#lib/map/imagery.ts";
 	import { IndoorMap } from "#lib/map/indoor-map.ts";
-	import type { Map as MapLibreMap } from "#lib/map/maplibre.ts";
+	import {
+		LngLat as LngLatClass,
+		type LngLatLike,
+		type Map as MapLibreMap,
+		type MapMouseEvent,
+	} from "#lib/map/maplibre.ts";
 	import type { EntityId } from "#lib/osm/entity.ts";
 	import { Editor } from "#lib/state/editor.svelte.ts";
 	import {
@@ -65,6 +74,8 @@
 	});
 	let saving = $state(false);
 	const floorplans = new FloorPlans();
+	/** Snapping distance for alignment clicks, in screen pixels. */
+	const SNAP_DISTANCE = 8;
 
 	let map = $state.raw<MapLibreMap>();
 	let camera = $state.raw<Omit<View, "level">>();
@@ -89,9 +100,10 @@
 		$effect(() => indoor.setData(editor.features.collection));
 		$effect(() => indoor.setLevel(level));
 		$effect(() => indoor.setSelected(editor.selectedId));
-		const stopClicks = indoor.onClick((id) =>
-			editor.select(id as EntityId | null),
-		);
+		const stopClicks = indoor.onClick((id) => {
+			// While aligning a floor plan, clicks go to the alignment tool.
+			if (!floorplans.tool) editor.select(id as EntityId | null);
+		});
 		return () => {
 			stopClicks();
 			indoor.remove();
@@ -100,11 +112,54 @@
 
 	// Floor plans are drawn as long as the map lives.
 	$effect(() => {
-		if (!map) return;
-		const layers = new FloorPlanLayers(map);
+		const instance = map;
+		if (!instance) return;
+		const layers = new FloorPlanLayers(instance);
+		const marks = new PlanToolLayer(instance);
 		$effect(() => layers.setPlans(floorplans.plans));
-		return () => layers.remove();
+		$effect(() =>
+			marks.setData(toolFeatures(floorplans.selected, floorplans.tool)),
+		);
+		const onClick = (event: MapMouseEvent) => {
+			if (!floorplans.tool) return;
+			toolMessage = floorplans.click(snap(event.point, event.lngLat));
+		};
+		instance.on("click", onClick);
+		$effect(() => {
+			instance
+				.getCanvasContainer()
+				.classList.toggle("cursor-crosshair", floorplans.tool !== null);
+		});
+		return () => {
+			instance.off("click", onClick);
+			marks.remove();
+			layers.remove();
+		};
 	});
+
+	/** Message from the alignment tool about the last click. */
+	let toolMessage = $state<string | null>(null);
+
+	/**
+	 * A clicked position, moved onto the OSM node drawn within 8 px of it, if any: control points
+	 * then sit exactly on the mapped walls and corners.
+	 */
+	function snap(point: { x: number; y: number }, lngLat: LngLatLike): LngLat {
+		const { lng, lat } = LngLatClass.convert(lngLat);
+		let best: LngLat = [lng, lat];
+		let bestDistance = SNAP_DISTANCE;
+		if (!map) return best;
+		for (const entity of editor.graph.entities()) {
+			if (entity.type !== "node") continue;
+			const screen = map.project(entity.loc as [number, number]);
+			const distance = Math.hypot(screen.x - point.x, screen.y - point.y);
+			if (distance < bestDistance) {
+				bestDistance = distance;
+				best = [entity.loc[0], entity.loc[1]];
+			}
+		}
+		return best;
+	}
 
 	/** The visible map, for placing new floor plans. */
 	function planView(): PlanView | undefined {
@@ -176,7 +231,8 @@
 		const target = event.target as HTMLElement | null;
 		const typing = target?.closest("input, textarea, select") !== null;
 		if (event.key === "Escape" && !typing) {
-			editor.select(null);
+			if (floorplans.tool) floorplans.setTool(null);
+			else editor.select(null);
 			return;
 		}
 		if (typing || !(event.ctrlKey || event.metaKey)) return;
@@ -283,7 +339,7 @@
 		onselect={showBackground}
 		indexUrl={config.imagery_index_url}
 	/>
-	<FloorPlansPanel {floorplans} getView={planView} {level} />
+	<FloorPlansPanel {floorplans} getView={planView} {level} {toolMessage} />
 </div>
 
 <div

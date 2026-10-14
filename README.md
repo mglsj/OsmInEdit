@@ -28,6 +28,10 @@ IndoorID builds on OsmInEdit, which exists thanks to the **amazing people** foll
 - Thomas Gratier, for his work on [osm-request](https://github.com/osmlab/osm-request) library
 - And all users, for using the tool and sharing their ideas !
 
+Presets and fields come from iD's [tagging schema](https://github.com/openstreetmap/id-tagging-schema)
+(ISC), and icons from [Maki](https://github.com/mapbox/maki) and
+[Temaki](https://github.com/rapideditor/temaki) (CC0).
+
 ## License
 
 Copyright (c) Adrien Pavie 2019

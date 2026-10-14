@@ -22,8 +22,8 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P0    | Scaffold, tooling, map, URL hash           | Done        |
 | P1    | Core data model (no UI)                    | Done        |
 | P2    | Fast read-only viewer                      | Done        |
-| P3    | Presets, validation, upload                | Next        |
-| P4    | Floor plans                                | Not started |
+| P3    | Presets, validation, upload                | Done        |
+| P4    | Floor plans                                | Next        |
 | P5    | Geometry editing                           | Not started |
 | P6    | Parity and polish                          | Not started |
 
@@ -184,21 +184,39 @@ editing UI); merging re-downloaded data into the graph → P2 (map loader); OAut
 Moved out of P2: Maki/Temaki icons → P3 (they come with the presets); door widths and
 incline/conveying arrows → P5.
 
-### P3: Presets, validation, upload
+### P3: Presets, validation, upload — done
 
-- `scripts/build-presets.ts`: filter id-tagging-schema to indoor-relevant presets and emit
-  presets, fields, `deprecated.json` and translations; local overlay for `level:ref`,
-  `indoor=level`, repeat_on guidance and entries from the legacy `indoor.xml` that upstream lacks.
-- Preset matching, search, recent presets; fields (text, number, combo, semiCombo, check) that
-  respect delimiters; raw tag table.
-- Validator with one-click fixes: `room=stairs` → `indoor=room` + `stairs=yes`;
-  `room=elevator` → `indoor=room` + `elevator=yes`; `buildingpart=*` → `indoor=*`;
-  `diaper` → `changing_table`; `building:height` → `height`; vertical features using `repeat_on`
-  → `level=a;b;c`; empty keys/values; level outside the building; missing `indoor=level`
-  outline; door not on a wall.
-- PKCE login; changeset pane (comment, source, `review_requested`, `imagery_used`); atomic upload.
-- Icons from Maki/Temaki for the presets' features, alongside the 1.x set.
-- E2E against a mocked OSM API that records the uploaded osmChange.
+295 unit tests and 28 browser tests in total.
+
+- Presets: `scripts/build-presets.ts` keeps 1,049 presets and 396 fields of
+  `@openstreetmap/id-tagging-schema` 7.3 (indoor, amenity, shop, door and entrance, elevator,
+  steps, corridor and other features found inside buildings) with English labels, plus
+  `deprecated.json`; `presets/overlay.json` adds "Indoor Level Outline" (`indoor=level`,
+  `level:ref`), a generic Door preset and door fields (`swinging`, `automatic_door`, `handle`).
+  `PresetIndex` matches like iD (indexed by key, cached per tags object) and searches by name
+  and terms.
+- Inspector: click to select (feature-state highlight), preset name and icon, "Change type"
+  picker (defaults per geometry, search), fields (text, combo with suggestions, check, select,
+  textarea), raw tag text, undo/redo buttons and shortcuts, Escape to deselect.
+- Validation (`validation/validate.ts`) on the selected feature and on every edited one before
+  upload, with one-click fixes: outdated tags (`room=stairs|elevator`, `buildingpart=*`, and the
+  schema's `deprecated.json`, e.g. `diaper` → `changing_table`); vertical features using
+  `repeat_on` → `level=a;b;c`; unreadable levels (a comma explains `;`, no guessed fix); door
+  not on a wall or room outline.
+- Login and upload: osm-auth popup with PKCE and `/auth/callback`; upload dialog with comment,
+  source, review request and `imagery_used` from the backgrounds picked; one atomic osmChange;
+  each API error explained, with the edits kept. The e2e test asserts the exact osmChange.
+- Icons: the presets' Maki and Temaki icons (CC0) on the map and in the inspector, falling back
+  to the 1.x icons; rooms, walls, doors and other structure get none. Icon files are loaded on
+  demand rather than inlined in the bundle.
+- Performance: building the features of 10,000 rooms with presets takes ~290 ms the first time
+  (matching every preset) and ~40 ms after, thanks to the match cache.
+
+Moved out of P3: the spatial rules (level outside the building's levels, missing `indoor=level`
+outline) and the empty key/value check → P5, with the geometry tools; translations of presets
+and recent presets → P6 (i18n); number fields and semiCombo lists edited as plain text for now
+(values are kept as typed, never rewritten). Upload tests mock the API with `page.route` in each
+test instead of a shared `mock-osm.ts`.
 
 ### P4: Floor plans
 
@@ -222,11 +240,14 @@ incline/conveying arrows → P5.
   tags; copy level.
 - Building, Levels and Features workflows; simple multipolygons (outer + inner).
 - Door widths and incline/conveying arrows on the map; incremental source updates on edit.
+- Spatial validation (from P3): level outside the building's levels, missing `indoor=level`
+  outline; empty keys or values.
 - History autosaved to IndexedDB with a restore prompt and a `beforeunload` guard.
 
 ### P6: Parity and polish
 
-- i18n with Paraglide; migrate 1.x UI translations (en, fr, de, it, hu, cs, es).
+- i18n with Paraglide; migrate 1.x UI translations (en, fr, de, it, hu, cs, es); preset and
+  field translations from the schema; recent presets in the type picker.
 - Keyboard shortcuts, help, indoor= preview (origin-checked `postMessage`), conflict dialog,
   README and usage docs. Release gate: an e2e checklist of 1.x features.
 
@@ -234,8 +255,8 @@ incline/conveying arrows → P5.
 
 - Unit (Vitest, node environment): at least 90% coverage on `osm`, `levels`, `georef`.
 - E2E (Playwright, Chromium with SwiftShader WebGL, `vite preview`): all external requests
-  blocked or mocked through `tests/e2e/fixtures.ts`; a mock OSM API (`mock-osm.ts`, P3) with
-  injectable 409/412 errors; rendering checked with `pixelAt()` rather than screenshots.
+  blocked or mocked through `tests/e2e/fixtures.ts`; the OSM API mocked per test with
+  `page.route` (including 409/412 errors); rendering checked with `pixelAt()` rather than screenshots.
 - TDD per the `tdd` skill: agree on seams before writing tests.
 
 ## Risks

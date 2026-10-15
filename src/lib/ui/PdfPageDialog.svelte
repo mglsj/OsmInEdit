@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { Button } from "#lib/components/shadcn/button/index.ts";
+	import { Checkbox } from "#lib/components/shadcn/checkbox/index.ts";
 	import * as Dialog from "#lib/components/shadcn/dialog/index.ts";
 	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import { Input } from "#lib/components/shadcn/input/index.ts";
-	import * as RadioGroup from "#lib/components/shadcn/radio-group/index.ts";
 	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
 	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
 	import type { PdfDocument } from "#lib/floorplans/import.ts";
 
 	interface Props {
 		pdf: PdfDocument;
-		/** Called with the chosen page (from 1) and resolution; resolves once imported. */
-		onimport: (page: number, dpi: number) => Promise<void>;
+		/** Called with the chosen pages (from 1, in order) and resolution; resolves once imported. */
+		onimport: (pages: number[], dpi: number) => Promise<void>;
 		onclose: () => void;
 	}
 
@@ -21,7 +21,8 @@
 		Array.from({ length: pdf.pageCount }, (_, i) => i + 1),
 	);
 	let open = $state(true);
-	let page = $state("1");
+	/** The chosen pages, in page order. */
+	let chosen = $state<number[]>([1]);
 	let dpi = $state(150);
 	let busy = $state(false);
 	let thumbnails = $state<Record<number, string>>({});
@@ -44,18 +45,27 @@
 		};
 	});
 
+	// The size in pixels shown is the first chosen page's.
 	$effect(() => {
-		const n = Number(page);
+		const n = chosen[0];
+		if (n === undefined) return;
 		void pdf.pageSize(n).then((inches) => {
-			if (Number(page) === n) size = inches;
+			if (chosen[0] === n) size = inches;
 		});
 	});
 
+	function choose(n: number, on: boolean) {
+		chosen = on
+			? [...new Set([...chosen, n])].sort((a, b) => a - b)
+			: chosen.filter((p) => p !== n);
+	}
+
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
+		if (chosen.length === 0) return;
 		busy = true;
 		try {
-			await onimport(Number(page), dpi);
+			await onimport(chosen, dpi);
 			open = false;
 		} finally {
 			busy = false;
@@ -75,16 +85,18 @@
 		interactOutsideBehavior={busy ? "ignore" : "close"}
 	>
 		<Dialog.Header>
-			<Dialog.Title>Import a PDF page</Dialog.Title>
+			<Dialog.Title>Import PDF pages</Dialog.Title>
 			<Dialog.Description>
-				Choose the page with the floor plan, and how finely to render it.
+				Choose the pages with floor plans, and how finely to render them. Each
+				page becomes a plan, the first on the level shown and each next one a
+				level up.
 			</Dialog.Description>
 		</Dialog.Header>
 		<form class="flex flex-col gap-6" onsubmit={submit}>
 			<Field.Set>
-				<Field.Legend class="sr-only">Page</Field.Legend>
+				<Field.Legend class="sr-only">Pages</Field.Legend>
 				<ScrollArea class="*:data-[slot=scroll-area-viewport]:max-h-72">
-					<RadioGroup.Root bind:value={page} class="grid grid-cols-3 gap-3">
+					<div class="grid grid-cols-3 gap-3">
 						{#each pages as n (n)}
 							{@const id = `pdf-page-${n}`}
 							<Field.Label
@@ -101,12 +113,16 @@
 									<span class="flex h-24 items-center"><Spinner /></span>
 								{/if}
 								<span class="flex items-center gap-2">
-									<RadioGroup.Item value={String(n)} {id} />
+									<Checkbox
+										{id}
+										checked={chosen.includes(n)}
+										onCheckedChange={(on) => choose(n, on)}
+									/>
 									Page {n}
 								</span>
 							</Field.Label>
 						{/each}
-					</RadioGroup.Root>
+					</div>
 				</ScrollArea>
 			</Field.Set>
 			<Field.Field>
@@ -137,11 +153,11 @@
 				>
 					Cancel
 				</Button>
-				<Button type="submit" disabled={busy}>
+				<Button type="submit" disabled={busy || chosen.length === 0}>
 					{#if busy}
 						<Spinner data-icon="inline-start" />
 					{/if}
-					Import
+					{chosen.length > 1 ? `Import ${chosen.length} pages` : "Import"}
 				</Button>
 			</Dialog.Footer>
 		</form>

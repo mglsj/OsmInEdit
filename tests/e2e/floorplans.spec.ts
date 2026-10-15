@@ -107,11 +107,14 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 }) => {
 	await importPlan(page, "plan.pdf");
 
-	const dialog = page.getByRole("dialog", { name: "Import a PDF page" });
-	const pages = dialog.getByRole("radio");
+	const dialog = page.getByRole("dialog", { name: "Import PDF pages" });
+	const pages = dialog.getByRole("checkbox");
 	await expect(pages).toHaveCount(2);
+	// The first page is chosen to start with.
+	await expect(dialog.getByRole("checkbox", { name: "Page 1" })).toBeChecked();
 	await expect(dialog.getByLabel("Resolution (DPI)")).toHaveValue("150");
-	await dialog.getByRole("radio", { name: "Page 2" }).click();
+	await dialog.getByRole("checkbox", { name: "Page 1" }).click();
+	await dialog.getByRole("checkbox", { name: "Page 2" }).click();
 	await dialog.getByRole("button", { name: "Import" }).click();
 
 	// 4 × 3 inches at 150 DPI.
@@ -120,6 +123,30 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 		"plan, page 2",
 	);
 	await expectPlanDrawn(page, [0, 0, 255], 4 / 3);
+});
+
+test("imports several PDF pages as plans, each a level above the one before", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.pdf");
+	const dialog = page.getByRole("dialog", { name: "Import PDF pages" });
+	await dialog.getByRole("checkbox", { name: "Page 2" }).click();
+	await dialog.getByRole("button", { name: "Import 2 pages" }).click();
+	// Rendering two pages in software takes a while when the machine is busy.
+	await expect(dialog).toBeHidden({ timeout: 20_000 });
+
+	// Top first: page 2, imported last and in Edit, then page 1.
+	await expect(planRows(page)).toHaveCount(2);
+	await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(
+		"plan, page 2",
+	);
+	const level = page.getByRole("textbox", { name: "Level", exact: true });
+	await expect(level).toHaveValue("1");
+	await expect(planRows(page).nth(1)).toContainText("plan, page 1");
+	await page.getByRole("button", { name: "Edit plan, page 1" }).click();
+	await expect(level).toHaveValue("0");
+	// Both in the same spot: page 1 on level 0, the level shown.
+	await expectPlanDrawn(page, [255, 0, 0], 4 / 3);
 });
 
 /** A mall 0.0008° (~600 px at zoom 19) wide around (LON, LAT), tagged as the one in Rennes. */

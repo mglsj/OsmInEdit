@@ -24,7 +24,7 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P2    | Fast read-only viewer                      | Done        |
 | P3    | Presets, validation, upload                | Done        |
 | P4    | Floor plans                                | Done        |
-| P4.1  | Floor plan layers, edit sessions, align UX | In progress |
+| P4.1  | Floor plan layers, edit sessions, align UX | Done        |
 | P5    | Geometry editing                           | Next        |
 | P6    | Parity and polish                          | Not started |
 
@@ -262,7 +262,7 @@ Moved out of P4, to P5 with the editing tools: snapping control points to buildi
 (edges, not only nodes), numeric offset inputs, and assigning plans to a building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
 with fallback fonts (P6).
 
-### P4.1: Floor plan layers, edit sessions, align fixes — in progress (slices 1–5 done)
+### P4.1: Floor plan layers, edit sessions, align fixes — done
 
 Feedback from placing real plans (Vindhya Bhavan, 4-page A3 PDF). Decisions agreed with the
 user are marked ✔; the rest follow from them.
@@ -331,7 +331,7 @@ user are marked ✔; the rest follow from them.
    where they overlap; buildings moved under a plan are hidden by it; buildings hidden.
 5. ✅ Rows. Unit: `levelToShow(planLevel, shown)` with `null`, `0`, `0;1`, `0-2`, `-1`. E2E:
    clicking a row switches the level; inline rename saved by Done, dropped by Cancel.
-6. PDF pages. E2E: importing pages 1 and 2 of `plan.pdf` adds two plans on levels 0 and 1.
+6. ✅ PDF pages. E2E: importing pages 1 and 2 of `plan.pdf` adds two plans on levels 0 and 1.
 
 ### P5: Geometry editing
 

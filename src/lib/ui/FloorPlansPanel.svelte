@@ -215,20 +215,29 @@
 		}
 	}
 
-	function add(image: Parameters<FloorPlans["add"]>[0], name: string) {
+	/** Adds a plan in the middle of the view, on `onLevel` (the level shown by default). */
+	function add(
+		image: Parameters<FloorPlans["add"]>[0],
+		name: string,
+		onLevel = level,
+	) {
 		const view = getView();
 		if (!view) throw new Error("The map is not ready yet.");
-		floorplans.add(image, name, view, String(level));
+		floorplans.add(image, name, view, String(onLevel));
 	}
 
-	async function importPdfPage(page: number, dpi: number) {
+	/** Each page becomes a plan in the same spot: the first on the level shown, the next a level up. */
+	async function importPdfPages(pages: number[], dpi: number) {
 		if (!pdf) return;
 		const { document, name } = pdf;
 		try {
-			add(
-				await document.render(page, dpi),
-				document.pageCount > 1 ? `${name}, page ${page}` : name,
-			);
+			for (const [i, page] of pages.entries()) {
+				add(
+					await document.render(page, dpi),
+					document.pageCount > 1 ? `${name}, page ${page}` : name,
+					level + i,
+				);
+			}
 		} catch (e) {
 			error = (e as Error).message;
 		}
@@ -799,7 +808,7 @@
 {#if pdf}
 	<PdfPageDialog
 		pdf={pdf.document}
-		onimport={importPdfPage}
+		onimport={importPdfPages}
 		onclose={closePdf}
 	/>
 {/if}

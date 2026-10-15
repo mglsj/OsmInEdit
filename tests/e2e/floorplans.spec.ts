@@ -4,6 +4,7 @@ import { PLAN_COLORS } from "../../src/lib/floorplans/colors.ts";
 import {
 	BACKGROUND,
 	blend,
+	camera,
 	expect,
 	expectPixel,
 	LAT,
@@ -149,7 +150,7 @@ test("floor plan mode shows only building outlines, without selection", async ({
 	await page.mouse.click(centre.x, centre.y);
 	await expect(editor).toBeHidden();
 
-	await page.getByRole("button", { name: "Done" }).click();
+	await page.getByRole("button", { name: "Close" }).click();
 	await expect(planEditor).toBeHidden();
 	await expect(page.getByRole("group", { name: "Edit history" })).toBeVisible();
 	await expectPixel(page, centre.x, centre.y, editing);
@@ -160,7 +161,7 @@ test("draws a plan over the rooms already mapped", async ({ page }) => {
 	await importPlan(page, "plan.png");
 	// The plan, ~540 px wide, covers the room in the map's centre.
 	const { mx, cy } = await initialLayout(page, 300);
-	await page.getByRole("button", { name: "Done" }).click();
+	await page.getByRole("button", { name: "Close" }).click();
 	// Back to editing: the room's fill (80% opaque), then the plan at half opacity on top.
 	const roomFill = blend([0xd6, 0xd1, 0xc7], 0.8, BACKGROUND);
 	await expectPixel(page, mx, cy, blend(RED, 0.5, roomFill));
@@ -335,6 +336,9 @@ test("keeps plans, where they were placed, after a reload", async ({
 		bottom: cy + 150 * s,
 	};
 	await expectPlanAt(page, scaled);
+	await untilSaved(page, () =>
+		page.getByRole("button", { name: "Done" }).click(),
+	);
 
 	await page.reload();
 
@@ -377,6 +381,36 @@ async function drag(
 	await page.mouse.down();
 	await page.mouse.move(to.x, to.y, { steps: 8 });
 	await page.mouse.up();
+}
+
+/**
+ * The plans' settings as saved in the browser's IndexedDB, as JSON. Saving takes a moment:
+ * a test reloads once what it saved is there, or the reload may cut the write short.
+ */
+function storedPlans(page: Page): Promise<string> {
+	return page.evaluate(
+		() =>
+			new Promise<string>((resolve, reject) => {
+				const open = indexedDB.open("indoorid-floorplans");
+				open.onerror = () => reject(open.error);
+				open.onsuccess = () => {
+					const db = open.result;
+					const all = db.transaction("plans").objectStore("plans").getAll();
+					all.onerror = () => reject(all.error);
+					all.onsuccess = () => {
+						db.close();
+						resolve(JSON.stringify(all.result));
+					};
+				};
+			}),
+	);
+}
+
+/** Runs `change`, then waits until the saved plans differ from before it. */
+async function untilSaved(page: Page, change: () => Promise<void>) {
+	const before = await storedPlans(page);
+	await change();
+	await expect.poll(() => storedPlans(page)).not.toBe(before);
 }
 
 /** Where the 400 × 300 px plan is once imported: centred, 60% of the map tall. */
@@ -513,20 +547,23 @@ test("keeps a dragged plan where it was left after a reload", async ({
 		bottom: plan.bottom + 40,
 	};
 	await expectPlanAt(page, moved);
+	await untilSaved(page, () =>
+		page.getByRole("button", { name: "Done" }).click(),
+	);
 
 	await page.reload();
 
 	await expectPlanAt(page, moved);
 });
 
-/** The colour of a plan, as its row's swatch shows it (the `nth` plan of that name). */
+/** The colour of the `nth` plan, as its row's swatch shows it. */
 async function planColor(
 	page: Page,
-	name = "plan",
 	nth = 0,
 ): Promise<[number, number, number]> {
 	const css = await page
-		.getByRole("button", { name: `Colour of ${name}` })
+		.getByRole("list", { name: "Floor plans" })
+		.getByRole("listitem")
 		.nth(nth)
 		.locator("[data-slot=swatch]")
 		.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -646,6 +683,9 @@ test("clears the control points, leaving the plan where they put it", async ({
 	await expect(points).toHaveCount(0);
 	await expect(clear).toBeDisabled();
 	await expectPlanAt(page, moved);
+	await untilSaved(page, () =>
+		page.getByRole("button", { name: "Done" }).click(),
+	);
 	await page.reload();
 	await expectPlanAt(page, moved);
 });
@@ -668,8 +708,8 @@ test("draws each plan's frame in its own colour, which can be changed", async ({
 		{ x: plan.cx, y: plan.cy },
 		{ x: plan.cx + 120, y: plan.cy },
 	);
-	const first = await planColor(page, "plan", 0);
-	const second = await planColor(page, "plan", 1);
+	const first = await planColor(page, 0);
+	const second = await planColor(page, 1);
 	expect(first).not.toEqual(second);
 
 	// Each left edge is drawn in its plan's colour, and not the other's.
@@ -689,18 +729,129 @@ test("draws each plan's frame in its own colour, which can be changed", async ({
 		(c) => c.value !== hex(first) && c.value !== hex(second),
 	);
 	if (!other) throw new Error("No free colour");
-	await page.getByRole("button", { name: "Colour of plan" }).first().click();
+	// The second plan, moved, is saved before the first one opens in Edit.
+	await page.getByRole("button", { name: "Edit plan" }).click();
+	await page
+		.getByRole("dialog", { name: "Save changes to plan?" })
+		.getByRole("button", { name: "Save" })
+		.click();
+	await page.getByRole("button", { name: "Colour of plan" }).click();
 	await page.getByRole("button", { name: other.name, exact: true }).click();
-	const picked = await planColor(page, "plan", 0);
+	const picked = await planColor(page, 0);
 	expect(hex(picked)).toBe(other.value);
 	await expect
 		.poll(() => colorPixels(page, plan.left - 4, y, 8, picked))
 		.toBeGreaterThan(0);
+	await untilSaved(page, () =>
+		page.getByRole("button", { name: "Done" }).click(),
+	);
 
 	await page.reload();
 	await page.getByRole("button", { name: "Floor plans" }).click();
-	expect(hex(await planColor(page, "plan", 0))).toBe(other.value);
+	expect(hex(await planColor(page, 0))).toBe(other.value);
+	// The second plan stayed where it was moved.
+	await expect
+		.poll(() => colorPixels(page, plan.left + 116, y, 8, second))
+		.toBeGreaterThan(0);
 	await expect
 		.poll(() => colorPixels(page, plan.left - 4, y, 8, picked))
 		.toBeGreaterThan(0);
+});
+
+test("leaves a locked plan in place: dragging it pans the map", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	await page.getByRole("button", { name: "Done" }).click();
+	await expect(page.getByRole("button", { name: "Edit plan" })).toBeVisible();
+	const before = await camera(page);
+
+	await drag(
+		page,
+		{ x: plan.cx, y: plan.cy },
+		{ x: plan.cx + 100, y: plan.cy + 50 },
+	);
+
+	// The map moved under the pointer, the plan with it.
+	await expect.poll(async () => (await camera(page)).lon).not.toBe(before.lon);
+	await expect.poll(async () => (await camera(page)).lat).not.toBe(before.lat);
+});
+
+test("puts a plan back as it was when Edit was pressed on Cancel", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	await page.getByRole("button", { name: "Done" }).click();
+	await page.getByRole("button", { name: "Edit plan" }).click();
+
+	await drag(
+		page,
+		{ x: plan.cx, y: plan.cy },
+		{ x: plan.cx + 100, y: plan.cy + 50 },
+	);
+	await expectPlanAt(page, {
+		left: plan.left + 100,
+		top: plan.top + 50,
+		right: plan.right + 100,
+		bottom: plan.bottom + 50,
+	});
+	await page.getByRole("button", { name: "Cancel" }).click();
+
+	await expectPlanAt(page, plan);
+	await expect(page.getByRole("button", { name: "Edit plan" })).toBeVisible();
+	await page.reload();
+	await expectPlanAt(page, plan);
+});
+
+test("asks to save or discard a plan's changes when closing floor plans", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	const moved = {
+		left: plan.left + 100,
+		top: plan.top + 50,
+		right: plan.right + 100,
+		bottom: plan.bottom + 50,
+	};
+	const panel = page.getByRole("complementary", {
+		name: "Floor plan editor",
+	});
+	const question = page.getByRole("dialog", { name: "Save changes to plan?" });
+	await drag(
+		page,
+		{ x: plan.cx, y: plan.cy },
+		{ x: plan.cx + 100, y: plan.cy + 50 },
+	);
+
+	// Keep editing: nothing changes.
+	await page.getByRole("button", { name: "Close" }).click();
+	await question.getByRole("button", { name: "Keep editing" }).click();
+	await expect(question).toBeHidden();
+	await expect(panel).toBeVisible();
+	await expectPlanAt(page, moved);
+
+	// Discard: the plan goes back to where it was imported.
+	await page.getByRole("button", { name: "Close" }).click();
+	await question.getByRole("button", { name: "Discard" }).click();
+	await expect(panel).toBeHidden();
+	await expectPlanAt(page, plan);
+
+	// Save: the move survives a reload.
+	await page.getByRole("button", { name: "Floor plans" }).click();
+	await page.getByRole("button", { name: "Edit plan" }).click();
+	await drag(
+		page,
+		{ x: plan.cx, y: plan.cy },
+		{ x: plan.cx + 100, y: plan.cy + 50 },
+	);
+	await page.keyboard.press("Escape");
+	await untilSaved(page, () =>
+		question.getByRole("button", { name: "Save" }).click(),
+	);
+	await expect(panel).toBeHidden();
+	await page.reload();
+	await expectPlanAt(page, moved);
 });

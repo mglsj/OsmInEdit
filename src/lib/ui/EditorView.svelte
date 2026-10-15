@@ -50,6 +50,7 @@
 	import MapView from "#lib/ui/MapView.svelte";
 	import SaveDialog from "#lib/ui/SaveDialog.svelte";
 	import SearchPlace from "#lib/ui/SearchPlace.svelte";
+	import UnsavedPlanDialog from "#lib/ui/UnsavedPlanDialog.svelte";
 	import { goto } from "$app/navigation";
 	import { resolve } from "$app/paths";
 
@@ -88,7 +89,13 @@
 	function setPlanMode(on: boolean) {
 		planMode = on;
 		if (on) editor.select(null);
-		else floorplans.setTool(null);
+		// Locks the plan in Edit: callers ask first about unsaved changes (closePlanMode).
+		else floorplans.cancel();
+	}
+
+	/** Leaves floor plan mode, once unsaved changes to the plan in Edit are saved or dropped. */
+	function closePlanMode() {
+		floorplans.whenSaved(() => setPlanMode(false));
 	}
 
 	const floorplans = new FloorPlans({
@@ -149,7 +156,7 @@
 				? planFrames(floorplans.plans, level).features
 				: [];
 			const tools = toolFeatures(
-				floorplans.selected,
+				floorplans.editing,
 				floorplans.tool,
 				planMode,
 				pointer,
@@ -162,8 +169,8 @@
 		// In floor plan mode, the selected plan can be dragged (unless a tool takes the clicks).
 		const dragging = new PlanDragging(instance, {
 			plan: () =>
-				planMode && !floorplans.tool && floorplans.selected?.visible
-					? floorplans.selected
+				planMode && !floorplans.tool && floorplans.editing?.visible
+					? floorplans.editing
 					: null,
 			onmove: (id, transform) => floorplans.preview(id, transform),
 			onend: (id) => floorplans.commitPlacement(id),
@@ -300,9 +307,11 @@
 	function onKeydown(event: KeyboardEvent) {
 		const target = event.target as HTMLElement | null;
 		const typing = target?.closest("input, textarea, select") !== null;
+		// The unsaved changes dialog handles its own keys.
+		if (floorplans.confirming) return;
 		if (event.key === "Escape" && !typing) {
 			if (floorplans.tool) floorplans.setTool(null);
-			else if (planMode) setPlanMode(false);
+			else if (planMode) closePlanMode();
 			else editor.select(null);
 			return;
 		}
@@ -383,7 +392,7 @@
 				getView={planView}
 				{level}
 				{toolMessage}
-				onclose={() => setPlanMode(false)}
+				onclose={closePlanMode}
 			/>
 		{/if}
 	</div>
@@ -441,7 +450,7 @@
 		<Button
 			variant={planMode ? "secondary" : "outline"}
 			aria-pressed={planMode}
-			onclick={() => setPlanMode(!planMode)}
+			onclick={() => (planMode ? closePlanMode() : setPlanMode(true))}
 		>
 			<FileImage data-icon="inline-start" />
 			Floor plans
@@ -477,3 +486,5 @@
 		onclose={() => (saving = false)}
 	/>
 {/if}
+
+<UnsavedPlanDialog {floorplans} />

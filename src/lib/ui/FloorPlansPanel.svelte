@@ -5,6 +5,7 @@
 	import Eye from "@lucide/svelte/icons/eye";
 	import EyeOff from "@lucide/svelte/icons/eye-off";
 	import Info from "@lucide/svelte/icons/info";
+	import Pencil from "@lucide/svelte/icons/pencil";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import Upload from "@lucide/svelte/icons/upload";
 	import X from "@lucide/svelte/icons/x";
@@ -69,7 +70,7 @@
 	const tool = $derived(floorplans.tool);
 	/** Whether the plan has control points, or the tool a half-done pick, to clear. */
 	const canClear = $derived.by(() => {
-		if ((floorplans.selected?.controlPoints.length ?? 0) > 0) return true;
+		if ((floorplans.editing?.controlPoints.length ?? 0) > 0) return true;
 		switch (tool?.kind) {
 			case "points":
 				return tool.pending !== null;
@@ -123,7 +124,8 @@
 	let pdf = $state.raw<{ document: PdfDocument; name: string } | null>(null);
 	let input = $state<HTMLInputElement>();
 
-	const selected = $derived(floorplans.selected);
+	/** The plan in Edit, whose settings and tools show. */
+	const selected = $derived(floorplans.editing);
 
 	async function onFileChange(
 		event: Event & { currentTarget: HTMLInputElement },
@@ -253,6 +255,16 @@
 	}
 </script>
 
+{#snippet swatch(
+	color: string,
+)}
+	<span
+		data-slot="swatch"
+		class="size-4 rounded-full ring-1 ring-foreground/20"
+		style:background-color={color}
+	></span>
+{/snippet}
+
 <aside
 	aria-label="Floor plan editor"
 	class="flex h-full w-88 max-w-[calc(100vw-2rem)] flex-col border-r bg-background shadow-lg"
@@ -265,13 +277,20 @@
 				or PDF.
 			</p>
 		</div>
-		<Button size="sm" onclick={onclose}>Done</Button>
+		<Button size="sm" variant="outline" onclick={onclose}>
+			<X data-icon="inline-start" />
+			Close
+		</Button>
 	</header>
 	<Separator />
 	<ScrollArea class="min-h-0 flex-1">
 		<div class="flex flex-col gap-4 p-4">
 			<div class="flex gap-2">
-				<Button size="sm" disabled={busy} onclick={() => input?.click()}>
+				<Button
+					size="sm"
+					disabled={busy}
+					onclick={() => floorplans.whenSaved(() => input?.click())}
+				>
 					{#if busy}
 						<Spinner data-icon="inline-start" />
 					{:else}
@@ -317,75 +336,74 @@
 			{:else}
 				<ul aria-label="Floor plans" class="flex flex-col gap-1">
 					{#each floorplans.plans as plan (plan.id)}
-						<li class="flex items-center gap-2">
-							<Popover.Root
-								open={choosingColor === plan.id}
-								onOpenChange={(open) => (choosingColor = open ? plan.id : null)}
-							>
-								<Popover.Trigger
-									class="flex size-6 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-									aria-label={`Colour of ${plan.name}`}
+						{@const editing = plan.id === floorplans.editingId}
+						<li
+							class={[
+								"flex items-center gap-2 rounded-md p-1",
+								editing && "bg-muted",
+							]}
+							aria-current={editing}
+						>
+							{#if editing}
+								<Popover.Root
+									open={choosingColor === plan.id}
+									onOpenChange={(open) =>
+										(choosingColor = open ? plan.id : null)}
 								>
-									<span
-										data-slot="swatch"
-										class="size-4 rounded-full ring-1 ring-foreground/20"
-										style:background-color={plan.color}
-									></span>
-								</Popover.Trigger>
-								<Popover.Content align="start" class="w-auto p-2">
-									<fieldset class="grid grid-cols-4 gap-1">
-										<legend class="sr-only">Colours for {plan.name}</legend>
-										{#each PLAN_COLORS as color (color.value)}
-											<button
-												type="button"
-												aria-label={color.name}
-												title={color.name}
-												aria-pressed={plan.color === color.value}
-												class="flex size-8 items-center justify-center rounded-md outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:bg-muted"
-												onclick={() => {
-													floorplans.update(plan.id, { color: color.value });
-													choosingColor = null;
-												}}
-											>
-												<span
-													class="size-5 rounded-full ring-1 ring-foreground/20"
-													style:background-color={color.value}
-												></span>
-											</button>
-										{/each}
-									</fieldset>
-								</Popover.Content>
-							</Popover.Root>
-							<button
-								type="button"
-								class={[
-									"flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left text-sm hover:bg-muted",
-									plan.id === floorplans.selectedId && "bg-muted",
-								]}
-								aria-current={plan.id === floorplans.selectedId}
-								onclick={() => floorplans.select(plan.id)}
-							>
-								<img
-									{@attach thumbnail(plan.image.blob)}
-									alt=""
-									class="size-10 shrink-0 rounded-sm border object-contain"
-								>
-								<span class="min-w-0">
-									<span class="block truncate font-medium">{plan.name}</span>
-									{" "}
-									<span class="block text-xs text-muted-foreground"
-										>{plan.image.width}
-										× {plan.image.height} px</span
+									<Popover.Trigger
+										class="flex size-6 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+										aria-label={`Colour of ${plan.name}`}
 									>
+										{@render swatch(plan.color)}
+									</Popover.Trigger>
+									<Popover.Content align="start" class="w-auto p-2">
+										<fieldset class="grid grid-cols-4 gap-1">
+											<legend class="sr-only">Colours for {plan.name}</legend>
+											{#each PLAN_COLORS as color (color.value)}
+												<button
+													type="button"
+													aria-label={color.name}
+													title={color.name}
+													aria-pressed={plan.color === color.value}
+													class="flex size-8 items-center justify-center rounded-md outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:bg-muted"
+													onclick={() => {
+														floorplans.update(plan.id, { color: color.value });
+														choosingColor = null;
+													}}
+												>
+													<span
+														class="size-5 rounded-full ring-1 ring-foreground/20"
+														style:background-color={color.value}
+													></span>
+												</button>
+											{/each}
+										</fieldset>
+									</Popover.Content>
+								</Popover.Root>
+							{:else}
+								<span class="flex size-6 shrink-0 items-center justify-center">
+									{@render swatch(plan.color)}
 								</span>
-							</button>
+							{/if}
+							<img
+								{@attach thumbnail(plan.image.blob)}
+								alt=""
+								class="size-10 shrink-0 rounded-sm border object-contain"
+							>
+							<span class="min-w-0 flex-1 text-sm">
+								<span class="block truncate font-medium">{plan.name}</span>
+								{" "}
+								<span class="block text-xs text-muted-foreground"
+									>{plan.image.width}
+									× {plan.image.height} px</span
+								>
+							</span>
 							<Button
 								variant="ghost"
 								size="icon-sm"
 								aria-label={`Show ${plan.name}`}
 								aria-pressed={plan.visible}
-								onclick={() =>
-									floorplans.update(plan.id, { visible: !plan.visible })}
+								onclick={() => floorplans.setVisible(plan.id, !plan.visible)}
 							>
 								{#if plan.visible}
 									<Eye />
@@ -393,6 +411,17 @@
 									<EyeOff />
 								{/if}
 							</Button>
+							{#if !editing}
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									aria-label={`Edit ${plan.name}`}
+									onclick={() =>
+										floorplans.whenSaved(() => floorplans.edit(plan.id))}
+								>
+									<Pencil />
+								</Button>
+							{/if}
 							<Button
 								variant="ghost"
 								size="icon-sm"
@@ -404,168 +433,194 @@
 						</li>
 					{/each}
 				</ul>
+				{#if !selected}
+					<p class="text-sm text-muted-foreground">
+						Plans are locked: press Edit on one to move, align or change it.
+					</p>
+				{/if}
 			{/if}
 
 			{#if selected}
-				<Field.Field>
-					<Field.Label for="plan-level">Level</Field.Label>
-					<Input
-						id="plan-level"
-						type="text"
-						autocomplete="off"
-						placeholder="Every level"
-						value={selected.level ?? ""}
-						onchange={(event) =>
-							floorplans.update(selected.id, {
-								level: event.currentTarget.value.trim() || null,
-							})}
-					/>
-					<Field.Description>
-						The plan only shows on this level, like 0 or -1.
-					</Field.Description>
-				</Field.Field>
-
-				<Field.Field>
-					<Field.Label for="plan-opacity">Opacity</Field.Label>
-					<Slider
-						id="plan-opacity"
-						type="single"
-						min={0}
-						max={1}
-						step={0.05}
-						value={selected.opacity}
-						onValueChange={(opacity: number) =>
-							floorplans.update(selected.id, { opacity })}
-					/>
-				</Field.Field>
-
-				<Field.Field>
-					<Field.Label id="plan-tool-label">Align</Field.Label>
-					<ToggleGroup.Root
-						type="single"
-						variant="outline"
-						size="sm"
-						aria-labelledby="plan-tool-label"
-						class="w-full"
-						value={tool?.kind ?? ""}
-						onValueChange={(kind) =>
-							floorplans.setTool((kind || null) as Tool["kind"] | null)}
-					>
-						<ToggleGroup.Item value="points" class="flex-1"
-							>Control points
-						</ToggleGroup.Item>
-						<ToggleGroup.Item value="measure" class="flex-1"
-							>Measure
-						</ToggleGroup.Item>
-						<ToggleGroup.Item value="rotate" class="flex-1"
-							>Rotate
-						</ToggleGroup.Item>
-					</ToggleGroup.Root>
-					<Field.Description>{hint}</Field.Description>
-					{#if tool}
+				<section
+					aria-label={`Editing ${selected.name}`}
+					class="flex flex-col gap-4 rounded-md border p-3"
+				>
+					<div class="flex items-center gap-2">
+						<h3 class="min-w-0 flex-1 truncate text-sm font-medium">
+							Editing {selected.name}
+						</h3>
 						<Button
-							variant="outline"
 							size="sm"
-							class="self-start"
-							disabled={!canClear}
-							onclick={() => floorplans.clearPoints()}
+							variant="outline"
+							onclick={() => floorplans.cancel()}
+							>Cancel</Button
 						>
-							<Eraser data-icon="inline-start" />
-							Clear
-						</Button>
-					{/if}
-				</Field.Field>
-
-				{#if toolMessage && tool}
-					<Alert.Root>
-						<Info />
-						<Alert.Description>{toolMessage}</Alert.Description>
-					</Alert.Root>
-				{/if}
-
-				{#if tool?.kind === "points"}
-					{#if selected.controlPoints.length > 0}
-						<ol aria-label="Control points" class="flex flex-col gap-1 text-sm">
-							{#each selected.controlPoints as _, i (i)}
-								<li class="flex items-center gap-2">
-									<span class="w-5 text-muted-foreground tabular-nums"
-										>{i + 1}</span
-									>{" "}
-									<span class="flex-1 tabular-nums">
-										{fit
-											? `${(fit.residuals[i] ?? 0).toFixed(2)} m`
-											: "Moves the plan"}
-									</span>
-									<Button
-										variant="ghost"
-										size="icon-xs"
-										aria-label={`Remove control point ${i + 1}`}
-										onclick={() => floorplans.removeControlPoint(i)}
-									>
-										<X />
-									</Button>
-								</li>
-							{/each}
-						</ol>
-					{/if}
+						<Button size="sm" onclick={() => floorplans.done()}>Done</Button>
+					</div>
 					<Field.Field>
-						<Field.Label id="plan-fit-label">Fit</Field.Label>
+						<Field.Label for="plan-level">Level</Field.Label>
+						<Input
+							id="plan-level"
+							type="text"
+							autocomplete="off"
+							placeholder="Every level"
+							value={selected.level ?? ""}
+							onchange={(event) =>
+								floorplans.update(selected.id, {
+									level: event.currentTarget.value.trim() || null,
+								})}
+						/>
+						<Field.Description>
+							The plan only shows on this level, like 0 or -1.
+						</Field.Description>
+					</Field.Field>
+
+					<Field.Field>
+						<Field.Label for="plan-opacity">Opacity</Field.Label>
+						<Slider
+							id="plan-opacity"
+							type="single"
+							min={0}
+							max={1}
+							step={0.05}
+							value={selected.opacity}
+							onValueChange={(opacity: number) =>
+								floorplans.update(selected.id, { opacity })}
+						/>
+					</Field.Field>
+
+					<Field.Field>
+						<Field.Label id="plan-tool-label">Align</Field.Label>
 						<ToggleGroup.Root
 							type="single"
 							variant="outline"
 							size="sm"
-							aria-labelledby="plan-fit-label"
+							aria-labelledby="plan-tool-label"
 							class="w-full"
-							value={selected.fitKind}
-							onValueChange={(kind) => {
-								if (kind) floorplans.setFitKind(kind as TransformKind);
-							}}
+							value={tool?.kind ?? ""}
+							onValueChange={(kind) =>
+								floorplans.setTool((kind || null) as Tool["kind"] | null)}
 						>
-							{#each FIT_KINDS as { kind, label } (kind)}
-								<ToggleGroup.Item value={kind} class="flex-1"
-									>{label}</ToggleGroup.Item
-								>
-							{/each}
+							<ToggleGroup.Item value="points" class="flex-1"
+								>Control points
+							</ToggleGroup.Item>
+							<ToggleGroup.Item value="measure" class="flex-1"
+								>Measure
+							</ToggleGroup.Item>
+							<ToggleGroup.Item value="rotate" class="flex-1"
+								>Rotate
+							</ToggleGroup.Item>
 						</ToggleGroup.Root>
-						<Field.Description>
-							{#if selected.controlPoints.length < MIN_POINTS[selected.fitKind]}
-								Needs {MIN_POINTS[selected.fitKind]} points; until then the plan
-								keeps its shape.
-							{:else if fit}
-								RMS error {fit.rms.toFixed(2)} m
-							{/if}
-						</Field.Description>
+						<Field.Description>{hint}</Field.Description>
+						{#if tool}
+							<Button
+								variant="outline"
+								size="sm"
+								class="self-start"
+								disabled={!canClear}
+								onclick={() => floorplans.clearPoints()}
+							>
+								<Eraser data-icon="inline-start" />
+								Clear
+							</Button>
+						{/if}
 					</Field.Field>
-				{:else if tool?.kind === "measure" && tool.points.length === 2}
-					<form class="flex items-end gap-2" onsubmit={scale}>
+
+					{#if toolMessage && tool}
+						<Alert.Root>
+							<Info />
+							<Alert.Description>{toolMessage}</Alert.Description>
+						</Alert.Root>
+					{/if}
+
+					{#if tool?.kind === "points"}
+						{#if selected.controlPoints.length > 0}
+							<ol
+								aria-label="Control points"
+								class="flex flex-col gap-1 text-sm"
+							>
+								{#each selected.controlPoints as _, i (i)}
+									<li class="flex items-center gap-2">
+										<span class="w-5 text-muted-foreground tabular-nums"
+											>{i + 1}</span
+										>{" "}
+										<span class="flex-1 tabular-nums">
+											{fit
+												? `${(fit.residuals[i] ?? 0).toFixed(2)} m`
+												: "Moves the plan"}
+										</span>
+										<Button
+											variant="ghost"
+											size="icon-xs"
+											aria-label={`Remove control point ${i + 1}`}
+											onclick={() => floorplans.removeControlPoint(i)}
+										>
+											<X />
+										</Button>
+									</li>
+								{/each}
+							</ol>
+						{/if}
 						<Field.Field>
-							<Field.Label for="plan-distance">Real distance (m)</Field.Label>
-							<Input
-								id="plan-distance"
-								type="number"
-								min={0}
-								step="any"
-								required
-								bind:value={distance}
-							/>
+							<Field.Label id="plan-fit-label">Fit</Field.Label>
+							<ToggleGroup.Root
+								type="single"
+								variant="outline"
+								size="sm"
+								aria-labelledby="plan-fit-label"
+								class="w-full"
+								value={selected.fitKind}
+								onValueChange={(kind) => {
+									if (kind) floorplans.setFitKind(kind as TransformKind);
+								}}
+							>
+								{#each FIT_KINDS as { kind, label } (kind)}
+									<ToggleGroup.Item value={kind} class="flex-1"
+										>{label}</ToggleGroup.Item
+									>
+								{/each}
+							</ToggleGroup.Root>
+							<Field.Description>
+								{#if selected.controlPoints.length <
+									MIN_POINTS[selected.fitKind]}
+									Needs {MIN_POINTS[selected.fitKind]} points; until then the
+									plan keeps its shape.
+								{:else if fit}
+									RMS error {fit.rms.toFixed(2)} m
+								{/if}
+							</Field.Description>
 						</Field.Field>
-						<Button type="submit">Scale</Button>
-					</form>
-				{:else if tool?.kind === "rotate" && tool.pin}
-					<form class="flex items-end gap-2" onsubmit={rotate}>
-						<Field.Field>
-							<Field.Label for="plan-angle">Angle (°, clockwise)</Field.Label>
-							<Input
-								id="plan-angle"
-								type="number"
-								step="any"
-								required
-								bind:value={angle}
-							/>
-						</Field.Field>
-						<Button type="submit">Rotate</Button>
-					</form>
-				{/if}
+					{:else if tool?.kind === "measure" && tool.points.length === 2}
+						<form class="flex items-end gap-2" onsubmit={scale}>
+							<Field.Field>
+								<Field.Label for="plan-distance">Real distance (m)</Field.Label>
+								<Input
+									id="plan-distance"
+									type="number"
+									min={0}
+									step="any"
+									required
+									bind:value={distance}
+								/>
+							</Field.Field>
+							<Button type="submit">Scale</Button>
+						</form>
+					{:else if tool?.kind === "rotate" && tool.pin}
+						<form class="flex items-end gap-2" onsubmit={rotate}>
+							<Field.Field>
+								<Field.Label for="plan-angle">Angle (°, clockwise)</Field.Label>
+								<Input
+									id="plan-angle"
+									type="number"
+									step="any"
+									required
+									bind:value={angle}
+								/>
+							</Field.Field>
+							<Button type="submit">Rotate</Button>
+						</form>
+					{/if}
+				</section>
 			{/if}
 		</div>
 	</ScrollArea>

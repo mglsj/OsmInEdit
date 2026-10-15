@@ -79,15 +79,28 @@ export class FloorPlans {
 	plans = $state.raw<readonly FloorPlan[]>([]);
 	/** Set when plans could not be saved or restored. */
 	storageError = $state<string | null>(null);
-	selectedId = $state<string | null>(null);
-	readonly selected = $derived(
-		this.plans.find((p) => p.id === this.selectedId) ?? null,
+	/**
+	 * The plan in Edit, the only one that can be changed; other plans are locked. Its changes are
+	 * kept out of storage until Done, and Cancel puts it back as it was when Edit was pressed.
+	 */
+	editingId = $state<string | null>(null);
+	readonly editing = $derived(
+		this.plans.find((p) => p.id === this.editingId) ?? null,
 	);
-	/** Alignment tool for the selected plan; map clicks go to it instead of the indoor data. */
+	/** The plan in Edit as it was when Edit was pressed. */
+	#before = $state.raw<FloorPlan | null>(null);
+	/** Whether the plan in Edit has changes Done would save. */
+	readonly dirty = $derived(
+		this.editing !== null && this.editing !== this.#before,
+	);
+	/** Set while `whenSaved` asks whether to save or discard the plan in Edit. */
+	confirming = $state(false);
+	#afterConfirm: (() => void) | null = null;
+	/** Alignment tool for the plan in Edit; map clicks go to it instead of the indoor data. */
 	tool = $state.raw<Tool | null>(null);
-	/** How well the selected plan fits its control points. */
+	/** How well the plan in Edit fits its control points. */
 	readonly fit = $derived.by((): Fit | null => {
-		const plan = this.selected;
+		const plan = this.editing;
 		if (!plan || plan.controlPoints.length < 2) return null;
 		return fitPlan(plan.controlPoints, usableKind(plan));
 	});
@@ -133,7 +146,7 @@ export class FloorPlans {
 		}
 	}
 
-	/** Adds a plan north up in the middle of the view, 60% of its height tall, and selects it. */
+	/** Adds a plan north up in the middle of the view, 60% of its height tall, in Edit. */
 	add(image: PlanImage, name: string, view: View, level: string | null): void {
 		const transform = place(
 			{
@@ -157,8 +170,8 @@ export class FloorPlans {
 	}
 
 	/**
-	 * Adds an already placed plan (from a file) on top of the others, and selects it. Without a
-	 * colour, it gets one no other plan has.
+	 * Adds an already placed plan (from a file) on top of the others, saved as it is and opened in
+	 * Edit. Without a colour, it gets one no other plan has.
 	 */
 	insert(
 		fields: Omit<FloorPlan, "id" | "color"> & { readonly color?: string },
@@ -169,17 +182,90 @@ export class FloorPlans {
 			color: fields.color ?? pickColor(this.plans.map((p) => p.color)),
 		};
 		this.plans = [...this.plans, plan];
-		this.select(plan.id);
 		this.#persist(this.#store?.saveImage(plan.id, plan.image.blob));
 		this.#save(plan);
+		this.edit(plan.id);
 	}
 
-	select(id: string | null): void {
-		this.selectedId = id;
+	/**
+	 * Opens a plan in Edit. Unsaved changes to another plan in Edit are dropped: ask first with
+	 * `whenSaved`.
+	 */
+	edit(id: string): void {
+		if (this.editingId) this.cancel();
+		const plan = this.plans.find((p) => p.id === id);
+		if (!plan) return;
+		this.editingId = id;
+		this.#before = plan;
+	}
+
+	/** Saves the plan in Edit and locks it again. */
+	done(): void {
+		const plan = this.editing;
+		this.#endEdit();
+		if (plan) this.#save(plan);
+	}
+
+	/** Puts the plan in Edit back as it was when Edit was pressed, and locks it again. */
+	cancel(): void {
+		const before = this.#before;
+		if (before) {
+			this.plans = this.plans.map((p) => (p.id === before.id ? before : p));
+		}
+		this.#endEdit();
+	}
+
+	#endEdit(): void {
+		this.editingId = null;
+		this.#before = null;
 		this.tool = null;
 	}
 
+	/**
+	 * Runs `action` once the plan in Edit has no unsaved changes: at once, or after asking to
+	 * save or discard them (`confirming`, answered with `resolve`).
+	 */
+	whenSaved(action: () => void): void {
+		if (!this.dirty) {
+			action();
+			return;
+		}
+		this.#afterConfirm = action;
+		this.confirming = true;
+	}
+
+	/** The answer to `whenSaved`'s question; "keep" goes back to editing and drops the action. */
+	resolve(choice: "save" | "discard" | "keep"): void {
+		const action = this.#afterConfirm;
+		this.#afterConfirm = null;
+		this.confirming = false;
+		if (choice === "keep") return;
+		if (choice === "save") this.done();
+		else this.cancel();
+		action?.();
+	}
+
+	/** Shows or hides a plan, saved at once: not part of an edit session. */
+	setVisible(id: string, visible: boolean): void {
+		const plan = this.plans.find((p) => p.id === id);
+		if (!plan) return;
+		const shown = { ...plan, visible };
+		const before = this.#before;
+		if (id === this.editingId && before) {
+			// Cancel keeps it, and storage gets it without the changes still in Edit.
+			this.#before = this.dirty ? { ...before, visible } : shown;
+			this.#save(this.#before);
+		} else {
+			this.#save(shown);
+		}
+		this.plans = this.plans.map((p) => (p.id === id ? shown : p));
+	}
+
 	setTool(kind: Tool["kind"] | null): void {
+		if (!this.editing) {
+			this.tool = null;
+			return;
+		}
 		switch (kind) {
 			case "points":
 				this.tool = { kind, pending: null };
@@ -200,7 +286,7 @@ export class FloorPlans {
 	 * when close to one). Returns a message when the click can't be used.
 	 */
 	click(position: LngLat): string | null {
-		const plan = this.selected;
+		const plan = this.editing;
 		const tool = this.tool;
 		if (!plan || !tool) return null;
 		const onPlan = pixelOn(plan, position);
@@ -232,7 +318,7 @@ export class FloorPlans {
 	}
 
 	removeControlPoint(index: number): void {
-		const plan = this.selected;
+		const plan = this.editing;
 		if (!plan) return;
 		this.#setControlPoints(
 			plan,
@@ -241,11 +327,11 @@ export class FloorPlans {
 	}
 
 	/**
-	 * Removes every control point of the selected plan, which stays where they put it, and the
+	 * Removes every control point of the plan in Edit, which stays where they put it, and the
 	 * active tool's half-done pick.
 	 */
 	clearPoints(): void {
-		const plan = this.selected;
+		const plan = this.editing;
 		if (plan && plan.controlPoints.length > 0) {
 			this.#replace({ ...plan, controlPoints: [] });
 		}
@@ -253,14 +339,14 @@ export class FloorPlans {
 	}
 
 	setFitKind(fitKind: TransformKind): void {
-		const plan = this.selected;
+		const plan = this.editing;
 		if (!plan) return;
 		this.#setControlPoints({ ...plan, fitKind }, plan.controlPoints);
 	}
 
-	/** Scales the selected plan so the two measured spots are `metres` apart. */
+	/** Scales the plan in Edit so the two measured spots are `metres` apart. */
 	scaleTo(metres: number): void {
-		const plan = this.selected;
+		const plan = this.editing;
 		const tool = this.tool;
 		if (!plan || tool?.kind !== "measure") return;
 		const [a, b] = tool.points;
@@ -269,20 +355,21 @@ export class FloorPlans {
 		this.tool = { kind: "measure", points: [] };
 	}
 
-	/** Shows a plan at a new place while it is being dragged, without saving it. */
+	/** Shows the plan in Edit at a new place while it is being dragged. */
 	preview(id: string, transform: Transform): void {
+		if (id !== this.editingId) return;
 		this.plans = this.plans.map((p) => (p.id === id ? { ...p, transform } : p));
 	}
 
-	/** Saves where a dragged plan was dropped. */
+	/** Where the plan in Edit was dropped: its control points no longer match, and go. */
 	commitPlacement(id: string): void {
-		const plan = this.plans.find((p) => p.id === id);
-		if (plan) this.#place(plan, plan.transform);
+		const plan = this.editing;
+		if (plan?.id === id) this.#place(plan, plan.transform);
 	}
 
-	/** Turns the selected plan clockwise around the picked spot. */
+	/** Turns the plan in Edit clockwise around the picked spot. */
 	rotate(degrees: number): void {
-		const plan = this.selected;
+		const plan = this.editing;
 		const tool = this.tool;
 		if (!plan || tool?.kind !== "rotate" || !tool.pin) return;
 		this.#place(plan, rotateAbout(plan.transform, tool.pin, degrees));
@@ -317,20 +404,24 @@ export class FloorPlans {
 		this.#replace({ ...plan, transform, controlPoints: [] });
 	}
 
+	/** A change to the plan in Edit, saved by Done. */
 	#replace(plan: FloorPlan): void {
 		this.plans = this.plans.map((p) => (p.id === plan.id ? plan : p));
-		this.#save(plan);
 	}
 
-	update(id: string, changes: Partial<Omit<FloorPlan, "id" | "image">>): void {
-		const plan = this.plans.find((p) => p.id === id);
-		if (plan) this.#replace({ ...plan, ...changes });
+	/** Changes the plan in Edit; locked plans are left alone. */
+	update(
+		id: string,
+		changes: Partial<Omit<FloorPlan, "id" | "image" | "visible">>,
+	): void {
+		const plan = this.editing;
+		if (plan?.id === id) this.#replace({ ...plan, ...changes });
 	}
 
 	remove(id: string): void {
 		const plan = this.plans.find((p) => p.id === id);
 		this.plans = this.plans.filter((p) => p.id !== id);
-		if (this.selectedId === id) this.select(null);
+		if (this.editingId === id) this.#endEdit();
 		for (const level of plan?.image.levels ?? []) {
 			for (const { bitmap } of level.tiles) bitmap.close();
 		}

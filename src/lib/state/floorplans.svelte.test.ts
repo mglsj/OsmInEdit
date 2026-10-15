@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { PLAN_COLORS } from "#lib/floorplans/colors.ts";
-import { place } from "#lib/floorplans/georef.ts";
+import { place, translateTo } from "#lib/floorplans/georef.ts";
 import type { PlanImage } from "#lib/floorplans/import.ts";
 import { offset, RENNES } from "#lib/floorplans/test-geometry.ts";
-import { FloorPlans } from "./floorplans.svelte.ts";
+import type { PlanStore, StoredPlan } from "#lib/persist/plan-store.ts";
+import { type FloorPlan, FloorPlans } from "./floorplans.svelte.ts";
 
 const image: PlanImage = {
 	width: 400,
@@ -32,20 +33,20 @@ describe("FloorPlans.clearPoints", () => {
 		floorplans.click(offset(RENNES, -11, 6.5));
 		floorplans.click(offset(RENNES, 7, -6.5));
 		floorplans.click(offset(RENNES, 7, -6.5));
-		const placed = floorplans.selected?.transform;
-		expect(floorplans.selected?.controlPoints).toHaveLength(2);
+		const placed = floorplans.editing?.transform;
+		expect(floorplans.editing?.controlPoints).toHaveLength(2);
 
 		floorplans.clearPoints();
 
-		expect(floorplans.selected?.controlPoints).toEqual([]);
-		expect(floorplans.selected?.transform).toEqual(placed);
+		expect(floorplans.editing?.controlPoints).toEqual([]);
+		expect(floorplans.editing?.transform).toEqual(placed);
 		expect(floorplans.tool).toEqual({ kind: "points", pending: null });
 	});
 
 	it("drops a half-done pick: a pending control point, measured spots, the rotation pin", () => {
 		const floorplans = withPlan();
 		const onPlan = offset(RENNES, 0, 0);
-		const placed = floorplans.selected?.transform;
+		const placed = floorplans.editing?.transform;
 
 		floorplans.setTool("points");
 		floorplans.click(onPlan);
@@ -61,7 +62,7 @@ describe("FloorPlans.clearPoints", () => {
 		floorplans.click(onPlan);
 		floorplans.clearPoints();
 		expect(floorplans.tool).toEqual({ kind: "rotate", pin: null });
-		expect(floorplans.selected?.transform).toBe(placed);
+		expect(floorplans.editing?.transform).toBe(placed);
 	});
 });
 
@@ -136,8 +137,195 @@ describe("plan colours", () => {
 
 	it("changes a plan's colour", () => {
 		const floorplans = withPlan();
-		const id = floorplans.selected?.id ?? "";
+		const id = floorplans.editingId ?? "";
 		floorplans.update(id, { color: "#78350f" });
-		expect(floorplans.selected?.color).toBe("#78350f");
+		expect(floorplans.editing?.color).toBe("#78350f");
+	});
+});
+
+/** A store keeping what was saved, in order. */
+function memoryStore() {
+	const saved: StoredPlan[] = [];
+	const store: PlanStore = {
+		load: async () => [],
+		saveImage: async () => {},
+		save: async (plan) => {
+			saved.push(plan);
+		},
+		delete: async () => {},
+	};
+	return { store, saved };
+}
+
+const view = { center: RENNES, heightMetres: 25 };
+
+/** Two plans, `a` then `b`, neither in Edit, and the store they were saved in. */
+function twoPlans() {
+	const { store, saved } = memoryStore();
+	const floorplans = new FloorPlans({ store });
+	floorplans.add(image, "a", view, "0");
+	floorplans.add(image, "b", view, "0");
+	floorplans.done();
+	const [a, b] = floorplans.plans;
+	if (!a || !b) throw new Error("No plans");
+	saved.length = 0;
+	return { floorplans, saved, a, b };
+}
+
+/** The plan's transform moved so its top-left pixel is 20 m west, 10 m north of RENNES. */
+function moved(plan: FloorPlan) {
+	return translateTo(plan.transform, [0, 0], offset(RENNES, -20, 10));
+}
+
+/** Moves the plan in Edit 2 m west by a control point on its pixel (20, 20). */
+function moveWest(floorplans: FloorPlans) {
+	floorplans.setTool("points");
+	floorplans.click(offset(RENNES, -9, 6.5));
+	floorplans.click(offset(RENNES, -11, 6.5));
+	floorplans.setTool(null);
+}
+
+describe("editing a plan", () => {
+	it("opens a new plan in Edit, saved as imported", () => {
+		const { store, saved } = memoryStore();
+		const floorplans = new FloorPlans({ store });
+		floorplans.add(image, "plan", view, "0");
+		const [plan] = floorplans.plans;
+		expect(floorplans.editingId).toBe(plan?.id);
+		expect(floorplans.dirty).toBe(false);
+		expect(saved.map((p) => p.id)).toEqual([plan?.id]);
+	});
+
+	it("keeps changes out of storage until Done, then saves them once", () => {
+		const { floorplans, saved, a } = twoPlans();
+		floorplans.edit(a.id);
+		moveWest(floorplans);
+		floorplans.update(a.id, { opacity: 0.8, level: "1", color: "#78350f" });
+		floorplans.preview(a.id, moved(a));
+		floorplans.commitPlacement(a.id);
+		expect(floorplans.dirty).toBe(true);
+		expect(saved).toEqual([]);
+
+		floorplans.done();
+
+		expect(floorplans.editingId).toBeNull();
+		expect(floorplans.dirty).toBe(false);
+		expect(saved).toHaveLength(1);
+		expect(saved[0]).toMatchObject({
+			id: a.id,
+			opacity: 0.8,
+			level: "1",
+			color: "#78350f",
+			transform: floorplans.plans[0]?.transform,
+		});
+	});
+
+	it("puts the plan back as it was when Edit was pressed on Cancel", () => {
+		const { floorplans, saved, a } = twoPlans();
+		floorplans.edit(a.id);
+		moveWest(floorplans);
+		floorplans.update(a.id, { opacity: 0.8, name: "renamed" });
+
+		floorplans.cancel();
+
+		expect(floorplans.plans[0]).toBe(a);
+		expect(floorplans.editingId).toBeNull();
+		expect(floorplans.tool).toBeNull();
+		expect(saved).toEqual([]);
+	});
+
+	it("edits one plan at a time", () => {
+		const { floorplans, a, b } = twoPlans();
+		floorplans.edit(a.id);
+		floorplans.update(a.id, { opacity: 0.9 });
+
+		// Callers ask first (whenSaved): editing another plan drops unsaved changes.
+		floorplans.edit(b.id);
+
+		expect(floorplans.editingId).toBe(b.id);
+		expect(floorplans.plans[0]).toBe(a);
+	});
+
+	it("leaves locked plans alone", () => {
+		const { floorplans, saved, a } = twoPlans();
+		floorplans.update(a.id, { opacity: 0.9 });
+		floorplans.preview(a.id, moved(a));
+		floorplans.commitPlacement(a.id);
+		floorplans.setTool("points");
+
+		expect(floorplans.plans[0]).toBe(a);
+		expect(floorplans.tool).toBeNull();
+		expect(floorplans.click(offset(RENNES, 0, 0))).toBeNull();
+		expect(saved).toEqual([]);
+	});
+
+	it("shows and hides plans at once, even in Edit, and Cancel keeps that", () => {
+		const { floorplans, saved, a, b } = twoPlans();
+		floorplans.setVisible(b.id, false);
+		expect(saved).toEqual([
+			expect.objectContaining({ id: b.id, visible: false }),
+		]);
+
+		floorplans.edit(a.id);
+		floorplans.update(a.id, { opacity: 0.9 });
+		floorplans.setVisible(a.id, false);
+		// Saved hidden, without the change still in Edit.
+		expect(saved[1]).toMatchObject({ id: a.id, visible: false, opacity: 0.5 });
+
+		floorplans.cancel();
+		expect(floorplans.plans[0]).toMatchObject({ visible: false, opacity: 0.5 });
+	});
+
+	it("ends the session when the plan in Edit is removed", () => {
+		const { floorplans, a } = twoPlans();
+		floorplans.edit(a.id);
+		floorplans.remove(a.id);
+		expect(floorplans.editingId).toBeNull();
+		expect(floorplans.dirty).toBe(false);
+	});
+});
+
+describe("whenSaved", () => {
+	it("goes ahead at once without unsaved changes", () => {
+		const { floorplans, a } = twoPlans();
+		floorplans.edit(a.id);
+		let ran = 0;
+		floorplans.whenSaved(() => ran++);
+		expect(ran).toBe(1);
+		expect(floorplans.confirming).toBe(false);
+	});
+
+	it("asks first when the plan in Edit has unsaved changes", () => {
+		const { floorplans, saved, a } = twoPlans();
+		let ran = 0;
+
+		floorplans.edit(a.id);
+		floorplans.update(a.id, { opacity: 0.9 });
+		floorplans.whenSaved(() => ran++);
+		expect(floorplans.confirming).toBe(true);
+		expect(ran).toBe(0);
+
+		// Keep editing: nothing happens.
+		floorplans.resolve("keep");
+		expect(floorplans.confirming).toBe(false);
+		expect(ran).toBe(0);
+		expect(floorplans.editingId).toBe(a.id);
+
+		// Save: the changes are saved, then it goes ahead.
+		floorplans.whenSaved(() => ran++);
+		floorplans.resolve("save");
+		expect(ran).toBe(1);
+		expect(saved.at(-1)).toMatchObject({ id: a.id, opacity: 0.9 });
+		expect(floorplans.editingId).toBeNull();
+
+		// Discard: the plan goes back, then it goes ahead.
+		floorplans.edit(a.id);
+		const before = floorplans.plans[0];
+		floorplans.update(a.id, { opacity: 0.2 });
+		floorplans.whenSaved(() => ran++);
+		floorplans.resolve("discard");
+		expect(ran).toBe(2);
+		expect(floorplans.plans[0]).toBe(before);
+		expect(floorplans.editingId).toBeNull();
 	});
 });

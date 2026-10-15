@@ -47,8 +47,10 @@ runs the same commands.
   `bun run presets` after changing the overlay or the schema version.
 - Floor plans (P4): `floorplans/` (`georef.ts` transforms fitted in Web Mercator, `plan-file.ts`
   JSON and 1.x files, `tiling.ts`, `import.ts` raster/SVG/PDF), `map/floorplan-layers.ts`,
-  `state/floorplans.svelte.ts` (`FloorPlans`: plans, alignment tools), `persist/plan-store.ts`
-  (IndexedDB), `ui/FloorPlansPanel.svelte`. Import pdf.js only from its legacy build, lazily.
+  `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),
+  `persist/plan-store.ts` (IndexedDB), `ui/FloorPlansPanel.svelte`. Import pdf.js only from its
+  legacy build, lazily. E2E tests that reload after saving a plan wait for IndexedDB first
+  (`untilSaved` in `floorplans.spec.ts`): a reload can cut a write short.
 - Planned modules (see plan.md): `edit`, `persist/autosave`. Pure modules (`osm`, `levels`,
   `actions`, `presets`, `validation`, `floorplans/georef`, `floorplans/plan-file`,
   `floorplans/tiling`) must not touch the DOM or Svelte.

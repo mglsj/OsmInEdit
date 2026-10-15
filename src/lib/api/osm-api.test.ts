@@ -44,6 +44,38 @@ function api(fetch: typeof globalThis.fetch, token: string | null = "secret") {
 }
 
 describe("loadMap", () => {
+	it("keeps who last edited each element, and when", async () => {
+		const { fetch } = fakeFetch({
+			"GET /api/0.6/map.json": () =>
+				Response.json({
+					version: "0.6",
+					elements: [
+						{
+							type: "node",
+							id: 1,
+							lat: 48.85,
+							lon: 2.35,
+							version: 3,
+							user: "Alice",
+							timestamp: "2024-05-01T10:00:00Z",
+						},
+					],
+				}),
+		});
+
+		const [node] = await api(fetch).loadMap({
+			west: 2.3,
+			south: 48.8,
+			east: 2.4,
+			north: 48.9,
+		});
+
+		expect(node).toMatchObject({
+			user: "Alice",
+			timestamp: "2024-05-01T10:00:00Z",
+		});
+	});
+
 	it("downloads an area and returns its entities", async () => {
 		const { fetch, requests } = fakeFetch({
 			"GET /api/0.6/map.json": () =>

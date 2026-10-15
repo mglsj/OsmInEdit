@@ -389,7 +389,9 @@
 {#if editor.selected || planMode}
 	<div bind:this={sidePanel} class="absolute inset-y-0 left-0 z-30">
 		{#if editor.selected}
-			<Inspector {editor} entity={editor.selected} />
+			{#key editor.selected.id}
+				<Inspector {editor} entity={editor.selected} {websiteUrl} />
+			{/key}
 		{:else}
 			<FloorPlansPanel
 				{floorplans}

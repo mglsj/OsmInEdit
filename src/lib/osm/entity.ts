@@ -18,6 +18,9 @@ interface EntityBase {
 	readonly tags: Tags;
 	/** Server version; undefined for entities created locally. */
 	readonly version?: number;
+	/** Who saved this version on the server, and when (ISO 8601); unknown for new entities. */
+	readonly user?: string;
+	readonly timestamp?: string;
 }
 
 export interface Node extends EntityBase {

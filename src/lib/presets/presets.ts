@@ -174,6 +174,11 @@ export class PresetIndex {
 		return this.#fields.get(id);
 	}
 
+	/** Whether a preset is the generic one of a geometry ("Point", "Line", "Area"…). */
+	isFallback(preset: Preset): boolean {
+		return Object.values(FALLBACKS).includes(preset.id);
+	}
+
 	/** Fields that can be added to any feature, by label. */
 	universalFields(): Field[] {
 		return [...this.#fields.values()]

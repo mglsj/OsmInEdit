@@ -182,6 +182,8 @@ interface JsonElement {
 	type: EntityType;
 	id: number;
 	version?: number;
+	user?: string;
+	timestamp?: string;
 	tags?: Record<string, string>;
 	lat?: number;
 	lon?: number;
@@ -192,7 +194,12 @@ interface JsonElement {
 /** Converts the elements of an OSM JSON document into entities. */
 function parseElements(json: { elements?: JsonElement[] }): Entity[] {
 	return (json.elements ?? []).flatMap((e): Entity[] => {
-		const common = { version: e.version, tags: e.tags ?? {} };
+		const common = {
+			version: e.version,
+			...(e.user === undefined ? {} : { user: e.user }),
+			...(e.timestamp === undefined ? {} : { timestamp: e.timestamp }),
+			tags: e.tags ?? {},
+		};
 		switch (e.type) {
 			case "node":
 				return [

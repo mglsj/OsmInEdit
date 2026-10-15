@@ -177,8 +177,8 @@ export async function serveOsm(page: Page, elements: Element[]) {
 export async function selectRoom(
 	page: Page,
 	tags: Record<string, string> = {},
+	elements: Element[] = room(100, LON, LAT, "0"),
 ) {
-	const elements = room(100, LON, LAT, "0");
 	const way = elements.at(-1) as { tags: Record<string, string> };
 	way.tags = { ...way.tags, ...tags };
 	await serveOsm(page, elements);
@@ -194,7 +194,12 @@ export async function selectRoom(
 	return editor;
 }
 
-/** The raw tag editor of the feature editor. */
-export function tagsBox(page: Page): Locator {
-	return page.getByRole("textbox", { name: "Tags" });
+/** The raw tag editor of the feature editor, its section opened if it was closed. */
+export async function tagsBox(page: Page): Promise<Locator> {
+	const editor = page.getByRole("complementary", { name: "Feature editor" });
+	const section = editor.getByRole("button", { name: /^Tags \(\d+\)$/ });
+	if ((await section.getAttribute("aria-expanded")) === "false") {
+		await section.click();
+	}
+	return editor.getByRole("textbox", { name: "Tags", exact: true });
 }

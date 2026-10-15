@@ -15,8 +15,7 @@ export interface FieldContext {
 	readonly deprecated: (key: string) => readonly string[];
 }
 
-/** Changes to tags: a value sets the key, undefined removes it. */
-export type TagPatch = Record<string, string | undefined>;
+export type { TagPatch } from "#lib/presets/combo.ts";
 
 /** The id of a field's input, which its label points at. */
 export function fieldInputId(field: Field): string {

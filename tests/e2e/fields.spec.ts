@@ -1,10 +1,4 @@
-import {
-	expect,
-	selectRoom,
-	serveTaginfo,
-	tagsBox,
-	test,
-} from "./fixtures.ts";
+import { expect, selectRoom, serveTaginfo, tagsBox, test } from "./fixtures.ts";
 
 test("a combo suggests the values used elsewhere, and stores what is typed as a tag value", async ({
 	page,
@@ -42,7 +36,9 @@ test("a combo completes what is typed, as in iD", async ({ page }) => {
 
 test("a fixed list shows labels and stores their values", async ({ page }) => {
 	const editor = await selectRoom(page, { amenity: "cafe" });
-	const internet = editor.getByRole("combobox", { name: "Internet Connection" });
+	const internet = editor.getByRole("combobox", {
+		name: "Internet Connection",
+	});
 	await expect(internet).toHaveAttribute("readonly");
 	await internet.click();
 	await page.getByRole("option", { name: "Wifi" }).click();
@@ -56,5 +52,74 @@ test("a fixed list shows labels and stores their values", async ({ page }) => {
 	await expect(internet).toHaveValue("");
 	await expect(await tagsBox(page)).toHaveValue(
 		"amenity=cafe\nindoor=room\nlevel=0",
+	);
+});
+
+test("a list field shows its values as chips: added, moved and removed", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page, { amenity: "cafe" });
+	const cuisine = editor.getByRole("combobox", { name: "Cuisines" });
+	await cuisine.fill("pizza");
+	await cuisine.press("Enter");
+	await cuisine.fill("Thai Food, italian");
+	await cuisine.press("Enter");
+	const chips = editor.getByRole("list", { name: "Cuisines" });
+	await expect(chips.getByRole("listitem")).toHaveText([
+		"Pizza",
+		"thai_food",
+		"Italian",
+	]);
+	await expect(await tagsBox(page)).toHaveValue(
+		"amenity=cafe\ncuisine=pizza;thai_food;italian\nindoor=room\nlevel=0",
+	);
+
+	// Alt+← moves the focused chip, as in the floor plan list.
+	await editor
+		.getByRole("button", { name: "Remove Italian" })
+		.press("Alt+ArrowLeft");
+	await expect(await tagsBox(page)).toHaveValue(
+		"amenity=cafe\ncuisine=pizza;italian;thai_food\nindoor=room\nlevel=0",
+	);
+	await expect(
+		editor.getByRole("button", { name: "Remove Italian" }),
+	).toBeFocused();
+
+	// Dragging one onto another puts it there.
+	await chips
+		.getByRole("listitem")
+		.filter({ hasText: "thai_food" })
+		.dragTo(chips.getByRole("listitem").filter({ hasText: "Pizza" }));
+	await expect(await tagsBox(page)).toHaveValue(
+		"amenity=cafe\ncuisine=thai_food;pizza;italian\nindoor=room\nlevel=0",
+	);
+
+	await editor.getByRole("button", { name: "Remove Pizza" }).click();
+	await expect(chips.getByRole("listitem")).toHaveText([
+		"thai_food",
+		"Italian",
+	]);
+});
+
+test("a multi-key field switches each key between yes and no", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page, {
+		amenity: "cafe",
+		"payment:cash": "yes",
+	});
+	const cash = editor.getByRole("checkbox", { name: "Cash" });
+	await expect(cash).toBeChecked();
+	await cash.click();
+	await expect(await tagsBox(page)).toHaveValue(
+		"amenity=cafe\nindoor=room\nlevel=0\npayment:cash=no",
+	);
+
+	const payment = editor.getByRole("combobox", { name: "Payment Types" });
+	await payment.fill("Coins");
+	await payment.press("Enter");
+	await expect(editor.getByRole("checkbox", { name: "Coins" })).toBeChecked();
+	await expect(await tagsBox(page)).toHaveValue(
+		"amenity=cafe\nindoor=room\nlevel=0\npayment:cash=no\npayment:coins=yes",
 	);
 });

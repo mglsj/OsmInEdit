@@ -19,10 +19,18 @@
 		context: FieldContext;
 		locked: boolean;
 		/** Called with the new value once accepted (Enter, Tab, a click, leaving the field). */
-		onchange: (value: string | undefined) => void;
+		onchange?: (value: string | undefined) => void;
+		/**
+		 * The input of a chip list instead: what is accepted goes to `onadd` (as typed) and the
+		 * input empties; values in `chosen` aren't offered again.
+		 */
+		adding?: {
+			readonly chosen: readonly string[];
+			readonly onadd: (typed: string) => void;
+		};
 	}
 
-	let { field, value, context, locked, onchange }: Props = $props();
+	let { field, value, context, locked, onchange, adding }: Props = $props();
 
 	const id = $derived(fieldInputId(field));
 	const listId = $derived(`${id}-list`);
@@ -44,20 +52,26 @@
 	const suggestions = $derived(
 		comboSuggestions(field, query, suggested, {
 			deprecated: field.key ? context.deprecated(field.key) : [],
+			chosen: adding?.chosen ?? [],
 		}),
 	);
-	const shown = $derived(displayValue(field, value));
+	const shown = $derived(adding ? "" : displayValue(field, value));
+	/** iD asks taginfo for every combo but manyCombo, unless the field says not to. */
+	const asksTaginfo = $derived(
+		context.suggest !== undefined &&
+			field.autoSuggestions &&
+			field.type !== "manyCombo" &&
+			field.key !== undefined,
+	);
 	const hasList = $derived(
-		!locked &&
-			(field.options.length > 0 ||
-				(context.suggest !== undefined && field.autoSuggestions)),
+		!locked && (field.options.length > 0 || asksTaginfo),
 	);
 
 	/** Asks taginfo for values matching `q`, after a pause while typing (as iD). */
 	function fetchValues(q: string) {
 		clearTimeout(pending);
 		const suggest = context.suggest;
-		if (!suggest || !field.autoSuggestions || !field.key) return;
+		if (!suggest || !asksTaginfo) return;
 		asked = q;
 		const run = () =>
 			suggest(field, q)
@@ -123,9 +137,16 @@
 	function commit() {
 		if (!input || !dirty) return;
 		dirty = false;
+		if (adding) {
+			const text = input.value.trim();
+			input.value = "";
+			query = "";
+			if (text) adding.onadd(text);
+			return;
+		}
 		const next = tagValue(field, input.value);
 		input.value = displayValue(field, next);
-		if (next !== value) onchange(next);
+		if (next !== value) onchange?.(next);
 	}
 
 	function accept() {
@@ -195,10 +216,10 @@
 			case "Backspace":
 			case "Delete":
 				// A fixed list's value can't be typed over: these keys take it off (as iD).
-				if (readonly && !locked && value !== undefined) {
+				if (readonly && !locked && !adding && value !== undefined) {
 					event.preventDefault();
 					open = false;
-					onchange(undefined);
+					onchange?.(undefined);
 				}
 				break;
 		}
@@ -223,6 +244,7 @@
 			: undefined}
 		value={shown}
 		placeholder={field.placeholder ??
+			(adding ? "Add…" : undefined) ??
 			suggestions
 				.slice(0, 3)
 				.map((s) => s.label)

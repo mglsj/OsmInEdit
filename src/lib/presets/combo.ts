@@ -2,7 +2,11 @@
  * Values of iD's combo fields (`ui/fields/combo.js`): what is typed as a tag value, a value as
  * shown, and the suggestions offered (the field's options, then taginfo's values).
  */
+import type { Tags } from "#lib/osm/tags.ts";
 import type { Field } from "./presets.ts";
+
+/** Changes to tags: a value sets the key, undefined removes it. */
+export type TagPatch = Record<string, string | undefined>;
 
 /** A value offered by a combo field. */
 export interface ComboSuggestion {
@@ -147,4 +151,114 @@ export function comboSuggestions(
 		if (label.includes(q) || value.includes(q)) return true;
 		return !s.raw && (fuzzyMatch(q, label) || fuzzyMatch(q, value));
 	});
+}
+
+/** A chip of a semiCombo, multiCombo or manyCombo. */
+export interface Chip {
+	/** The tag key: the field's for a semiCombo, the chip's own otherwise. */
+	readonly key: string;
+	/** The value in the list, or the key's suffix (`cash` of `payment:cash`). */
+	readonly value: string;
+	readonly label: string;
+	/** A multiCombo or manyCombo key's value, lowercase (`yes`, `no`…). */
+	readonly state?: string;
+	readonly raw: boolean;
+}
+
+/** A multiCombo's key prefix, ending with `:` (iD adds it when missing). */
+function prefix(field: Field): string {
+	const key = field.key ?? "";
+	return key && !key.endsWith(":") ? `${key}:` : key;
+}
+
+const isList = (field: Field) => field.type === "semiCombo";
+
+/** The values a semiCombo's list holds, each once unless the field allows duplicates. */
+function listValues(field: Field, tags: Tags): string[] {
+	const values = splitSemicolons(field.key ? tags[field.key] : undefined);
+	return field.allowDuplicates ? values : [...new Set(values)];
+}
+
+/** Keys a multiCombo or manyCombo has set, in the tags' order. */
+function chipKeys(field: Field, tags: Tags): string[] {
+	const start = prefix(field);
+	return Object.keys(tags).filter((key) =>
+		start ? key.startsWith(start) && key !== start : field.keys?.includes(key),
+	);
+}
+
+/** The chips a list or multi-key field shows. */
+export function chipsOf(field: Field, tags: Tags): Chip[] {
+	const chip = (key: string, value: string, state?: string): Chip => {
+		const option = field.options.find((o) => o.value === value);
+		return {
+			key,
+			value,
+			label: option?.label ?? value,
+			...(state !== undefined ? { state } : {}),
+			raw: !option,
+		};
+	};
+	if (isList(field)) {
+		return listValues(field, tags).map((v) => chip(field.key ?? "", v));
+	}
+	const start = prefix(field);
+	return chipKeys(field, tags).map((key) =>
+		chip(key, key.slice(start.length), tags[key]?.toLowerCase()),
+	);
+}
+
+/** Tags adding what was typed: to the end of a list, or as keys set to `yes`. */
+export function addChips(field: Field, tags: Tags, typed: string): TagPatch {
+	const values = typed
+		.split(/[;,]/)
+		.map((part) => tagValue({ ...field, type: "combo" }, part))
+		.filter((v): v is string => v !== undefined);
+	if (values.length === 0) return {};
+	if (isList(field)) {
+		if (!field.key) return {};
+		const all = [...listValues(field, tags), ...values];
+		const list = field.allowDuplicates ? all : [...new Set(all)];
+		return { [field.key]: list.join(";") };
+	}
+	const patch: TagPatch = {};
+	for (const value of values) {
+		const key = `${prefix(field)}${value}`;
+		const old = tags[key];
+		// `language:de=main` stays: only an unset or `no` key becomes yes.
+		if (old !== undefined && old.toLowerCase() !== "no") continue;
+		patch[key] = "yes";
+	}
+	return patch;
+}
+
+/** Tags without the chip at `index`. */
+export function removeChip(field: Field, tags: Tags, index: number): TagPatch {
+	if (isList(field)) {
+		if (!field.key) return {};
+		const list = listValues(field, tags).filter((_, i) => i !== index);
+		return { [field.key]: list.length ? list.join(";") : undefined };
+	}
+	const key = chipKeys(field, tags)[index];
+	return key ? { [key]: undefined } : {};
+}
+
+/** A multi-key chip switched between yes and no (any other value becomes yes). */
+export function toggleChip(tags: Tags, key: string): TagPatch {
+	return { [key]: tags[key] === "yes" ? "no" : "yes" };
+}
+
+/** A list with the chip at `from` moved to `to`. */
+export function moveChip(
+	field: Field,
+	tags: Tags,
+	from: number,
+	to: number,
+): TagPatch {
+	if (!field.key) return {};
+	const list = listValues(field, tags);
+	const [moved] = list.splice(from, 1);
+	if (moved === undefined) return {};
+	list.splice(to, 0, moved);
+	return { [field.key]: list.join(";") };
 }

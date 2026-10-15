@@ -7,6 +7,7 @@
 	import { Textarea } from "#lib/components/shadcn/textarea/index.ts";
 	import type { Tags } from "#lib/osm/tags.ts";
 	import type { Field as PresetField } from "#lib/presets/presets.ts";
+	import ChipsField from "#lib/ui/ChipsField.svelte";
 	import ComboField from "#lib/ui/ComboField.svelte";
 	import {
 		type FieldContext,
@@ -52,6 +53,7 @@
 			case "semiCombo":
 			case "multiCombo":
 			case "manyCombo":
+				return "chips";
 			case "access":
 				return "combo";
 			case "textarea":
@@ -90,6 +92,8 @@
 	</div>
 	{#if kind === "single-combo"}
 		<ComboField {field} {value} {context} {locked} onchange={set} />
+	{:else if kind === "chips"}
+		<ChipsField {field} {tags} {context} {locked} {onchange} />
 	{:else if kind === "check" || kind === "select"}
 		<NativeSelect.Root
 			{id}

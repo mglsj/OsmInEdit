@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+	addChips,
+	chipsOf,
 	comboSuggestions,
 	displayValue,
 	fuzzyMatch,
+	moveChip,
+	removeChip,
 	tagValue,
+	toggleChip,
 } from "./combo.ts";
 import type { Field } from "./presets.ts";
 
@@ -135,5 +140,148 @@ describe("comboSuggestions", () => {
 				(s) => s.value,
 			),
 		).toEqual(["kiosk"]);
+	});
+});
+
+const cuisine = field({
+	key: "cuisine",
+	type: "semiCombo",
+	options: [
+		{ value: "pizza", label: "Pizza" },
+		{ value: "italian", label: "Italian" },
+	],
+});
+const payment = field({
+	key: "payment:",
+	type: "multiCombo",
+	options: [
+		{ value: "cash", label: "Cash" },
+		{ value: "cards", label: "Payment Card" },
+	],
+});
+const gender = field({
+	key: undefined,
+	keys: ["male", "female", "unisex"],
+	type: "manyCombo",
+	options: [
+		{ value: "male", label: "Male" },
+		{ value: "female", label: "Female" },
+		{ value: "unisex", label: "Unisex" },
+	],
+});
+
+describe("chips of a semiCombo (a ; list)", () => {
+	it("are the values of the list, each once", () => {
+		expect(
+			chipsOf(cuisine, { cuisine: "pizza; kebab;pizza" }).map((c) => [
+				c.value,
+				c.label,
+			]),
+		).toEqual([
+			["pizza", "Pizza"],
+			["kebab", "kebab"],
+		]);
+	});
+
+	it("adds what is typed at the end, split at ; or commas", () => {
+		expect(addChips(cuisine, { cuisine: "pizza" }, "Italian")).toEqual({
+			cuisine: "pizza;italian",
+		});
+		expect(addChips(cuisine, {}, "Thai Food, pizza;pizza")).toEqual({
+			cuisine: "thai_food;pizza",
+		});
+		expect(addChips(cuisine, { cuisine: "pizza" }, "  ")).toEqual({});
+	});
+
+	it("keeps a value twice only when the field allows it", () => {
+		expect(addChips(cuisine, { cuisine: "pizza" }, "pizza")).toEqual({
+			cuisine: "pizza",
+		});
+		const stops = field({ ...cuisine, key: "via", allowDuplicates: true });
+		expect(addChips(stops, { via: "a" }, "a")).toEqual({ via: "a;a" });
+	});
+
+	it("removes one, and the tag with the last", () => {
+		expect(removeChip(cuisine, { cuisine: "pizza;italian" }, 0)).toEqual({
+			cuisine: "italian",
+		});
+		expect(removeChip(cuisine, { cuisine: "pizza" }, 0)).toEqual({
+			cuisine: undefined,
+		});
+	});
+
+	it("moves one to another place", () => {
+		expect(moveChip(cuisine, { cuisine: "pizza;italian;thai" }, 2, 0)).toEqual({
+			cuisine: "thai;pizza;italian",
+		});
+		expect(moveChip(cuisine, { cuisine: "pizza;italian;thai" }, 0, 1)).toEqual({
+			cuisine: "italian;pizza;thai",
+		});
+	});
+});
+
+describe("chips of a multiCombo (key:value=yes)", () => {
+	const tags = {
+		"payment:cash": "yes",
+		"payment:cards": "no",
+		amenity: "cafe",
+	};
+
+	it("are the keys under its prefix, with their state", () => {
+		expect(chipsOf(payment, tags)).toEqual([
+			{
+				key: "payment:cash",
+				value: "cash",
+				label: "Cash",
+				state: "yes",
+				raw: false,
+			},
+			{
+				key: "payment:cards",
+				value: "cards",
+				label: "Payment Card",
+				state: "no",
+				raw: false,
+			},
+		]);
+	});
+
+	it("adds a key set to yes, but never over a value other than no", () => {
+		expect(addChips(payment, tags, "Coins")).toEqual({
+			"payment:coins": "yes",
+		});
+		expect(addChips(payment, tags, "Payment Card")).toEqual({
+			"payment:cards": "yes",
+		});
+		expect(addChips(payment, tags, "cash")).toEqual({});
+	});
+
+	it("toggles yes and no, and removes the key", () => {
+		expect(toggleChip(tags, "payment:cash")).toEqual({ "payment:cash": "no" });
+		expect(toggleChip(tags, "payment:cards")).toEqual({
+			"payment:cards": "yes",
+		});
+		expect(removeChip(payment, tags, 1)).toEqual({
+			"payment:cards": undefined,
+		});
+	});
+});
+
+describe("chips of a manyCombo (one of its keys=yes)", () => {
+	it("are its keys that are set", () => {
+		expect(
+			chipsOf(gender, { female: "yes", male: "no", name: "WC" }).map((c) => [
+				c.key,
+				c.state,
+			]),
+		).toEqual([
+			// In the tags' order, as iD.
+			["female", "yes"],
+			["male", "no"],
+		]);
+	});
+
+	it("adds one of its keys by label", () => {
+		expect(addChips(gender, {}, "Unisex")).toEqual({ unisex: "yes" });
 	});
 });

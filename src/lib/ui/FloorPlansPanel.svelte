@@ -48,9 +48,19 @@
 		level: number;
 		/** Why the alignment tool ignored the last map click, if it did. */
 		toolMessage?: string | null;
+		/** Whether floor plan mode is on: the panel shows, and the map only has buildings. */
+		open: boolean;
+		onopenchange: (open: boolean) => void;
 	}
 
-	let { floorplans, getView, level, toolMessage = null }: Props = $props();
+	let {
+		floorplans,
+		getView,
+		level,
+		toolMessage = null,
+		open,
+		onopenchange,
+	}: Props = $props();
 
 	let distance = $state<number>();
 	let angle = $state<number>(90);
@@ -91,7 +101,6 @@
 		if (Number.isFinite(angle)) floorplans.rotate(angle);
 	}
 
-	let open = $state(false);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let pdf = $state.raw<{ document: PdfDocument; name: string } | null>(null);
@@ -226,7 +235,11 @@
 </script>
 
 <div class="rounded-md bg-background shadow-md">
-	<Button variant="outline" aria-expanded={open} onclick={() => (open = !open)}>
+	<Button
+		variant="outline"
+		aria-pressed={open}
+		onclick={() => onopenchange(!open)}
+	>
 		<FileImage data-icon="inline-start" />
 		Floor plans
 	</Button>
@@ -240,10 +253,15 @@
 		<Card.Header>
 			<Card.Title>Floor plans</Card.Title>
 			<Card.Description>
-				PNG, JPEG, WebP, SVG or PDF. Plans are drawn over the rooms, under their
-				outlines.
+				Place plans against the building outlines. Import PNG, JPEG, WebP, SVG
+				or PDF.
 			</Card.Description>
 			<Card.Action>
+				<Button size="sm" onclick={() => onopenchange(false)}>Done</Button>
+			</Card.Action>
+		</Card.Header>
+		<Card.Content class="flex flex-col gap-4">
+			<div class="flex gap-2">
 				<Button size="sm" disabled={busy} onclick={() => input?.click()}>
 					{#if busy}
 						<Spinner data-icon="inline-start" />
@@ -271,9 +289,7 @@
 					tabindex="-1"
 					onchange={onFileChange}
 				>
-			</Card.Action>
-		</Card.Header>
-		<Card.Content class="flex flex-col gap-4">
+			</div>
 			{#if error}
 				<Alert.Root variant="destructive">
 					<CircleAlert />

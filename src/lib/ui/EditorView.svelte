@@ -76,6 +76,18 @@
 	});
 	let saving = $state(false);
 	// Plans saved in earlier visits come back once their images are decoded.
+	/**
+	 * Floor plan mode: the map only shows building outlines to place plans against, and OSM
+	 * features can't be selected or edited.
+	 */
+	let planMode = $state(false);
+
+	function setPlanMode(on: boolean) {
+		planMode = on;
+		if (on) editor.select(null);
+		else floorplans.setTool(null);
+	}
+
 	const floorplans = new FloorPlans({
 		store: new IndexedDbPlanStore(),
 		decode: importRaster,
@@ -107,9 +119,10 @@
 		$effect(() => indoor.setData(editor.features.collection));
 		$effect(() => indoor.setLevel(level));
 		$effect(() => indoor.setSelected(editor.selectedId));
+		$effect(() => indoor.setPlanMode(planMode));
 		const stopClicks = indoor.onClick((id) => {
 			// While aligning a floor plan, clicks go to the alignment tool.
-			if (!floorplans.tool) editor.select(id as EntityId | null);
+			if (!planMode) editor.select(id as EntityId | null);
 		});
 		return () => {
 			stopClicks();
@@ -240,10 +253,12 @@
 		const typing = target?.closest("input, textarea, select") !== null;
 		if (event.key === "Escape" && !typing) {
 			if (floorplans.tool) floorplans.setTool(null);
+			else if (planMode) setPlanMode(false);
 			else editor.select(null);
 			return;
 		}
-		if (typing || !(event.ctrlKey || event.metaKey)) return;
+		// OSM edits can't be seen in floor plan mode: don't undo them blindly.
+		if (typing || planMode || !(event.ctrlKey || event.metaKey)) return;
 		const key = event.key.toLowerCase();
 		if (key === "z" && !event.shiftKey) {
 			event.preventDefault();
@@ -314,40 +329,53 @@
 		onselect={showPlace}
 		baseUrl={config.nominatim_url}
 	/>
-	<!-- Map controls sit on an opaque surface: shadcn's dark outline styles are translucent. -->
-	<div class="rounded-md bg-background shadow-md">
-		<ButtonGroup.Root aria-label="Edit history">
-			{@render iconButton("Undo", "Undo (Ctrl+Z)", Undo2, !editor.canUndo, () =>
-				editor.undo(),
-			)}
-			{@render iconButton(
-				"Redo",
-				"Redo (Ctrl+Shift+Z)",
-				Redo2,
-				!editor.canRedo,
-				() => editor.redo(),
-			)}
-			<Button
-				variant="outline"
-				disabled={editor.editCount === 0}
-				onclick={() => (saving = true)}
-			>
-				<Upload data-icon="inline-start" />
-				Save
-				<Badge class="tabular-nums" data-testid="edit-count"
-					>{editor.editCount}</Badge
+	{#if !planMode}
+		<!-- Map controls sit on an opaque surface: shadcn's dark outline styles are translucent. -->
+		<div class="rounded-md bg-background shadow-md">
+			<ButtonGroup.Root aria-label="Edit history">
+				{@render iconButton(
+					"Undo",
+					"Undo (Ctrl+Z)",
+					Undo2,
+					!editor.canUndo,
+					() => editor.undo(),
+				)}
+				{@render iconButton(
+					"Redo",
+					"Redo (Ctrl+Shift+Z)",
+					Redo2,
+					!editor.canRedo,
+					() => editor.redo(),
+				)}
+				<Button
+					variant="outline"
+					disabled={editor.editCount === 0}
+					onclick={() => (saving = true)}
 				>
-				<span class="sr-only">edits</span>
-			</Button>
-		</ButtonGroup.Root>
-	</div>
+					<Upload data-icon="inline-start" />
+					Save
+					<Badge class="tabular-nums" data-testid="edit-count"
+						>{editor.editCount}</Badge
+					>
+					<span class="sr-only">edits</span>
+				</Button>
+			</ButtonGroup.Root>
+		</div>
+	{/if}
 	<ImageryPicker
 		center={camera && [camera.lon, camera.lat]}
 		selected={background?.id ?? null}
 		onselect={showBackground}
 		indexUrl={config.imagery_index_url}
 	/>
-	<FloorPlansPanel {floorplans} getView={planView} {level} {toolMessage} />
+	<FloorPlansPanel
+		{floorplans}
+		getView={planView}
+		{level}
+		{toolMessage}
+		open={planMode}
+		onopenchange={setPlanMode}
+	/>
 </div>
 
 <div

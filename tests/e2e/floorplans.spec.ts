@@ -8,6 +8,7 @@ import {
 	LAT,
 	LON,
 	mapLocator,
+	pixelAt,
 	room,
 	serveOsm,
 	test,
@@ -15,6 +16,8 @@ import {
 
 const FILES = path.join(import.meta.dirname, "files");
 const RED: [number, number, number] = [255, 0, 0];
+/** Colour of building outlines in floor plan mode. */
+const BUILDING_OUTLINE: [number, number, number] = [0xd6, 0x24, 0x9f];
 
 /** Opens the floor plans panel and imports a file from tests/e2e/files. */
 async function importPlan(page: Page, file: string) {
@@ -90,12 +93,47 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 	await expectPlanDrawn(page, [0, 0, 255], 4 / 3);
 });
 
+test("floor plan mode shows only building outlines, without selection", async ({
+	page,
+}) => {
+	// A room inside a building 0.0008° (~600 px at zoom 19) wide.
+	const building = room(200, LON, LAT, "0", 0.0004).map((e) =>
+		e.type === "way" ? { ...e, tags: { building: "yes" } } : e,
+	);
+	await serveOsm(page, [...room(100, LON, LAT, "0"), ...building]);
+	await page.goto(`/#19/${LAT}/${LON}/0`);
+	const box = await mapLocator(page).boundingBox();
+	if (!box) throw new Error("No map");
+	const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	const editor = page.getByRole("complementary", { name: "Feature editor" });
+	await expect(async () => {
+		await page.mouse.click(centre.x, centre.y);
+		await expect(editor).toBeVisible({ timeout: 500 });
+	}).toPass({ timeout: 10_000 });
+	const editing = await pixelAt(page, centre.x, centre.y);
+
+	await page.getByRole("button", { name: "Floor plans" }).click();
+	await expect(editor).toBeHidden();
+	await expect(page.getByRole("group", { name: "Edit history" })).toBeHidden();
+	// Rooms and fills are hidden; the building's outline is drawn ~298 px right of the centre.
+	await expectPixel(page, centre.x, centre.y, BACKGROUND);
+	await expectPixel(page, centre.x + 298, centre.y, BUILDING_OUTLINE, 40);
+	// Clicking a room selects nothing.
+	await page.mouse.click(centre.x, centre.y);
+	await expect(editor).toBeHidden();
+
+	await page.getByRole("button", { name: "Done" }).click();
+	await expect(page.getByRole("group", { name: "Edit history" })).toBeVisible();
+	await expectPixel(page, centre.x, centre.y, editing);
+});
+
 test("draws a plan over the rooms already mapped", async ({ page }) => {
 	await serveOsm(page, room(100, LON, LAT, "0"));
 	await importPlan(page, "plan.png");
+	await page.getByRole("button", { name: "Done" }).click();
 	const box = await mapLocator(page).boundingBox();
 	if (!box) throw new Error("No map");
-	// The room's fill (80% opaque), then the plan at half opacity on top.
+	// Back to editing: the room's fill (80% opaque), then the plan at half opacity on top.
 	const roomFill = blend([0xd6, 0xd1, 0xc7], 0.8, BACKGROUND);
 	await expectPixel(
 		page,

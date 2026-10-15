@@ -26,6 +26,11 @@ const ABOVE_LABELS = new Set([
 	"indoor-selection-point",
 ]);
 
+/** Outlines of the buildings, drawn only in floor plan mode to place plans against. */
+const BUILDINGS_LAYER = "indoor-buildings";
+/** Magenta, like the floor plan tools: it stands out on plans and imagery. */
+const BUILDING_OUTLINE = "#d6249f";
+
 /** Click tolerance, in pixels around the pointer. */
 const CLICK_TOLERANCE = 4;
 
@@ -35,6 +40,7 @@ export class IndoorMap {
 	#data: Collection = { type: "FeatureCollection", features: [] };
 	#level = 0;
 	#selected: string | null = null;
+	#planMode = false;
 
 	constructor(map: MapLibreMap) {
 		this.#map = map;
@@ -57,6 +63,31 @@ export class IndoorMap {
 				this.#map.setFilter(layer.id, layer.filter as FilterSpecification);
 			}
 		}
+	}
+
+	/**
+	 * Floor plan mode: only the buildings' outlines are drawn, as a reference to place plans
+	 * against; rooms, icons, labels and the selection are hidden.
+	 */
+	setPlanMode(on: boolean): void {
+		this.#planMode = on;
+		if (this.#ready) this.#applyPlanMode();
+	}
+
+	#applyPlanMode(): void {
+		const visibility = (shown: boolean) => (shown ? "visible" : "none");
+		for (const layer of indoorLayers(this.#level)) {
+			this.#map.setLayoutProperty(
+				layer.id,
+				"visibility",
+				visibility(!this.#planMode),
+			);
+		}
+		this.#map.setLayoutProperty(
+			BUILDINGS_LAYER,
+			"visibility",
+			visibility(this.#planMode),
+		);
 	}
 
 	/** Highlights a feature, by `@id`, or nothing. */
@@ -113,8 +144,11 @@ export class IndoorMap {
 
 	remove(): void {
 		if (!this.#ready) return;
-		for (const layer of indoorLayers(this.#level)) {
-			if (this.#map.getLayer(layer.id)) this.#map.removeLayer(layer.id);
+		for (const { id } of [
+			...indoorLayers(this.#level),
+			{ id: BUILDINGS_LAYER },
+		]) {
+			if (this.#map.getLayer(id)) this.#map.removeLayer(id);
 		}
 		if (this.#map.getSource(INDOOR_SOURCE))
 			this.#map.removeSource(INDOOR_SOURCE);
@@ -134,7 +168,20 @@ export class IndoorMap {
 		for (const layer of indoorLayers(this.#level)) {
 			map.addLayer(layer, ABOVE_LABELS.has(layer.id) ? undefined : firstLabel);
 		}
+		map.addLayer({
+			id: BUILDINGS_LAYER,
+			type: "line",
+			source: INDOOR_SOURCE,
+			filter: [
+				"all",
+				["==", ["get", "@kind"], "building"],
+				["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]],
+			],
+			layout: { visibility: "none" },
+			paint: { "line-color": BUILDING_OUTLINE, "line-width": 3 },
+		});
 		this.#ready = true;
+		this.#applyPlanMode();
 		this.setSelected(this.#selected);
 	}
 

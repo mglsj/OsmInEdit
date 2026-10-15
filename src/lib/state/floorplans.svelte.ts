@@ -213,6 +213,18 @@ export class FloorPlans {
 		);
 	}
 
+	/**
+	 * Removes every control point of the selected plan, which stays where they put it, and the
+	 * active tool's half-done pick.
+	 */
+	clearPoints(): void {
+		const plan = this.selected;
+		if (plan && plan.controlPoints.length > 0) {
+			this.#replace({ ...plan, controlPoints: [] });
+		}
+		if (this.tool) this.setTool(this.tool.kind);
+	}
+
 	setFitKind(fitKind: TransformKind): void {
 		const plan = this.selected;
 		if (!plan) return;

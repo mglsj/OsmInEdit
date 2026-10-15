@@ -1,6 +1,7 @@
 <script lang="ts">
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
 	import Download from "@lucide/svelte/icons/download";
+	import Eraser from "@lucide/svelte/icons/eraser";
 	import Eye from "@lucide/svelte/icons/eye";
 	import EyeOff from "@lucide/svelte/icons/eye-off";
 	import Info from "@lucide/svelte/icons/info";
@@ -64,6 +65,20 @@
 	let angle = $state<number>(90);
 
 	const tool = $derived(floorplans.tool);
+	/** Whether the plan has control points, or the tool a half-done pick, to clear. */
+	const canClear = $derived.by(() => {
+		if ((floorplans.selected?.controlPoints.length ?? 0) > 0) return true;
+		switch (tool?.kind) {
+			case "points":
+				return tool.pending !== null;
+			case "measure":
+				return tool.points.length > 0;
+			case "rotate":
+				return tool.pin !== null;
+			default:
+				return false;
+		}
+	});
 	const fit = $derived(floorplans.fit);
 	const hint = $derived.by(() => {
 		switch (tool?.kind) {
@@ -403,6 +418,18 @@
 						</ToggleGroup.Item>
 					</ToggleGroup.Root>
 					<Field.Description>{hint}</Field.Description>
+					{#if tool}
+						<Button
+							variant="outline"
+							size="sm"
+							class="self-start"
+							disabled={!canClear}
+							onclick={() => floorplans.clearPoints()}
+						>
+							<Eraser data-icon="inline-start" />
+							Clear
+						</Button>
+					{/if}
 				</Field.Field>
 
 				{#if toolMessage && tool}

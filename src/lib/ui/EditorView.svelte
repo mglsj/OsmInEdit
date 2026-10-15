@@ -144,7 +144,7 @@
 		$effect(() => layers.setLevel(level));
 		$effect(() =>
 			marks.setData(
-				toolFeatures(floorplans.selected, floorplans.tool, planMode),
+				toolFeatures(floorplans.selected, floorplans.tool, planMode, pointer),
 			),
 		);
 		// In floor plan mode, the selected plan can be dragged (unless a tool takes the clicks).
@@ -160,14 +160,25 @@
 			if (!floorplans.tool) return;
 			toolMessage = floorplans.click(snap(event.point, event.lngLat));
 		};
+		// The measure line follows the pointer from the first spot.
+		const onPointer = (event: MapMouseEvent) => {
+			const tool = floorplans.tool;
+			const following = tool?.kind === "measure" && tool.points.length === 1;
+			if (following) pointer = [event.lngLat.lng, event.lngLat.lat];
+			else if (pointer) pointer = null;
+		};
+		const onLeave = () => (pointer = null);
 		instance.on("click", onClick);
+		instance.on("mousemove", onPointer);
+		instance.on("mouseout", onLeave);
+		// On the canvas itself: MapLibre's own cursor rule on its container wins over a class.
 		$effect(() => {
-			instance
-				.getCanvasContainer()
-				.classList.toggle("cursor-crosshair", floorplans.tool !== null);
+			instance.getCanvas().style.cursor = floorplans.tool ? "crosshair" : "";
 		});
 		return () => {
 			instance.off("click", onClick);
+			instance.off("mousemove", onPointer);
+			instance.off("mouseout", onLeave);
 			dragging.remove();
 			marks.remove();
 			layers.remove();
@@ -176,6 +187,8 @@
 
 	/** Message from the alignment tool about the last click. */
 	let toolMessage = $state<string | null>(null);
+	/** Where the pointer is on the map, while the measure line follows it. */
+	let pointer = $state.raw<LngLat | null>(null);
 
 	/**
 	 * A clicked position, moved onto the OSM node drawn within 8 px of it, if any: control points

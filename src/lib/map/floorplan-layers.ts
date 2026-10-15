@@ -203,12 +203,15 @@ export const HANDLES_LAYER = `${TOOL_SOURCE}-points`;
 
 /**
  * Marks of the alignment tools: control points, measured spots, the rotation pin, and with
- * `handles` the plan's frame and the corner handles to drag.
+ * `handles` the plan's frame and the corner handles to drag. While measuring, a line follows
+ * the `pointer` from the first spot (`role: "rubber"`), then joins the two spots
+ * (`role: "measured"`).
  */
 export function toolFeatures(
 	plan: FloorPlan | null,
 	tool: Tool | null,
 	handles = false,
+	pointer?: LngLat | null,
 ): FeatureCollection<Point | LineString> {
 	const features: Feature<Point | LineString>[] = [];
 	const point = (position: LngLat, role: string, label = "") =>
@@ -217,11 +220,11 @@ export function toolFeatures(
 			geometry: { type: "Point", coordinates: position },
 			properties: { role, label },
 		});
-	const line = (from: LngLat, to: LngLat) =>
+	const line = (from: LngLat, to: LngLat, role = "link") =>
 		features.push({
 			type: "Feature",
 			geometry: { type: "LineString", coordinates: [from, to] },
-			properties: { role: "link" },
+			properties: { role },
 		});
 	if (plan) {
 		const at = (pixel: Pixel) => project(plan.transform, pixel);
@@ -264,7 +267,8 @@ export function toolFeatures(
 		}
 		if (tool?.kind === "measure") {
 			const [a, b] = tool.points.map(at);
-			if (a && b) line(a, b);
+			if (a && b) line(a, b, "measured");
+			else if (a && pointer) line(a, pointer, "rubber");
 			for (const p of [a, b]) if (p) point(p, "plan");
 		}
 		if (tool?.kind === "rotate" && tool.pin) {
@@ -292,10 +296,17 @@ export class PlanToolLayer {
 				paint: { "line-color": TOOL_COLOR, "line-width": 1 },
 			});
 			map.addLayer({
+				id: `${TOOL_SOURCE}-measured`,
+				type: "line",
+				source: TOOL_SOURCE,
+				filter: ["==", ["get", "role"], "measured"],
+				paint: { "line-color": TOOL_COLOR, "line-width": 2 },
+			});
+			map.addLayer({
 				id: `${TOOL_SOURCE}-links`,
 				type: "line",
 				source: TOOL_SOURCE,
-				filter: ["==", ["get", "role"], "link"],
+				filter: ["in", ["get", "role"], ["literal", ["link", "rubber"]]],
 				paint: {
 					"line-color": TOOL_COLOR,
 					"line-width": 2,
@@ -344,6 +355,7 @@ export class PlanToolLayer {
 		for (const id of [
 			HANDLES_LAYER,
 			`${TOOL_SOURCE}-links`,
+			`${TOOL_SOURCE}-measured`,
 			`${TOOL_SOURCE}-frame`,
 		]) {
 			if (this.#map.getLayer(id)) this.#map.removeLayer(id);

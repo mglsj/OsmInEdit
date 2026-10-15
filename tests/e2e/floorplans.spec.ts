@@ -514,3 +514,113 @@ test("keeps a dragged plan where it was left after a reload", async ({
 
 	await expectPlanAt(page, moved);
 });
+
+/** Colour of the alignment marks. */
+const TOOL: [number, number, number] = [0xd6, 0x24, 0x9f];
+
+/**
+ * How many pixels of the 2 px tall, `width` px long strip starting at (x, y) are in the marks'
+ * colour: enough to tell a dashed line (some) from a solid one (all) and from none.
+ */
+async function toolPixels(page: Page, x: number, y: number, width: number) {
+	const clip = { x: Math.round(x), y: Math.round(y) - 1, width, height: 2 };
+	const png = await page.screenshot({ clip });
+	const pixels = await page.evaluate(
+		async ({ base64, w }) => {
+			const blob = await (
+				await fetch(`data:image/png;base64,${base64}`)
+			).blob();
+			const canvas = new OffscreenCanvas(w, 2);
+			const context = canvas.getContext("2d");
+			if (!context) throw new Error("No 2D context");
+			context.drawImage(await createImageBitmap(blob), 0, 0);
+			return [...context.getImageData(0, 0, w, 2).data];
+		},
+		{ base64: png.toString("base64"), w: width },
+	);
+	let count = 0;
+	for (let i = 0; i < pixels.length; i += 4) {
+		const rgb = pixels.slice(i, i + 3);
+		if (rgb.every((c, j) => Math.abs(c - (TOOL[j] ?? 0)) <= 40)) count++;
+	}
+	return count;
+}
+
+test("shows a crosshair over the map while an align tool is on", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	const canvas = page.locator("canvas.maplibregl-canvas");
+	// Over the plan, without a tool, the plan can be dragged.
+	await page.mouse.move(plan.cx, plan.cy);
+	await expect(canvas).toHaveCSS("cursor", "move");
+
+	for (const name of ["Control points", "Measure", "Rotate"]) {
+		await page.getByRole("radio", { name }).click();
+		await page.mouse.move(plan.cx + 10, plan.cy);
+		await expect(canvas).toHaveCSS("cursor", "crosshair");
+		await page.mouse.move(plan.right + 40, plan.cy);
+		await expect(canvas).toHaveCSS("cursor", "crosshair");
+	}
+
+	await page.getByRole("radio", { name: "Rotate" }).click();
+	await expect(canvas).not.toHaveCSS("cursor", "crosshair");
+});
+
+test("draws the measure line to the pointer, then between the two spots", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	await page.getByRole("radio", { name: "Measure" }).click();
+	const x1 = Math.round(plan.left + 20);
+	const y = Math.round(plan.cy);
+	await page.mouse.click(x1, y);
+
+	// A dashed line follows the pointer: some of the strip along it is in the marks' colour.
+	await page.mouse.move(x1 + 200, y, { steps: 4 });
+	await expect.poll(() => toolPixels(page, x1 + 60, y, 24)).toBeGreaterThan(4);
+	await expect.poll(() => toolPixels(page, x1 + 60, y, 24)).toBeLessThan(40);
+	// Pointer moved down: the line turns away from the strip.
+	await page.mouse.move(x1 + 200, y + 120, { steps: 4 });
+	await expect.poll(() => toolPixels(page, x1 + 120, y, 24)).toBe(0);
+
+	// The second spot: a solid line joins the two, and stays when the pointer leaves.
+	await page.mouse.click(x1 + 200, y);
+	await page.mouse.move(plan.cx, plan.bottom - 10, { steps: 4 });
+	await expect.poll(() => toolPixels(page, x1 + 60, y, 24)).toBe(48);
+});
+
+test("clears the control points, leaving the plan where they put it", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	await page.getByRole("radio", { name: "Control points" }).click();
+	const clear = page.getByRole("button", { name: "Clear" });
+	await expect(clear).toBeDisabled();
+	// The plan's centre, then 60 px to the right: one point moves the whole plan.
+	await page.mouse.click(plan.cx, plan.cy);
+	await expect(clear).toBeEnabled();
+	await page.mouse.click(plan.cx + 60, plan.cy);
+	const points = page
+		.getByRole("list", { name: "Control points" })
+		.getByRole("listitem");
+	await expect(points).toHaveCount(1);
+	const moved = {
+		left: plan.left + 60,
+		top: plan.top,
+		right: plan.right + 60,
+		bottom: plan.bottom,
+	};
+	await expectPlanAt(page, moved);
+
+	await clear.click();
+
+	await expect(points).toHaveCount(0);
+	await expect(clear).toBeDisabled();
+	await expectPlanAt(page, moved);
+	await page.reload();
+	await expectPlanAt(page, moved);
+});

@@ -24,7 +24,7 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P2    | Fast read-only viewer                      | Done        |
 | P3    | Presets, validation, upload                | Done        |
 | P4    | Floor plans                                | Done        |
-| P4.1  | Floor plan layers, edit sessions, align UX | Planned     |
+| P4.1  | Floor plan layers, edit sessions, align UX | In progress |
 | P5    | Geometry editing                           | Next        |
 | P6    | Parity and polish                          | Not started |
 
@@ -262,7 +262,7 @@ Moved out of P4, to P5 with the editing tools: snapping control points to buildi
 (edges, not only nodes), numeric offset inputs, and assigning plans to a building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
 with fallback fonts (P6).
 
-### P4.1: Floor plan layers, edit sessions, align fixes — planned
+### P4.1: Floor plan layers, edit sessions, align fixes — in progress (slice 1 done)
 
 Feedback from placing real plans (Vindhya Bhavan, 4-page A3 PDF). Decisions agreed with the
 user are marked ✔; the rest follow from them.
@@ -306,7 +306,7 @@ user are marked ✔; the rest follow from them.
   same spot; the first chosen page goes on the level shown, each next one a level up ✔.
 
 **Slices and test seams** (to agree before writing tests)
-1. Align fixes. Unit: `toolFeatures` with a pointer position (dashed segment, then solid
+1. ✅ Align fixes. Unit: `toolFeatures` with a pointer position (dashed segment, then solid
    pair); `FloorPlans.clearPoints()`. E2E: canvas cursor is `crosshair` for each tool; the
    measure line's colour is drawn under the pointer; Clear empties the control point list and
    leaves the plan in place.

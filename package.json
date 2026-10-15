@@ -68,7 +68,8 @@
 		"bits-ui": "2.19.5",
 		"idb": "8.0.4",
 		"maplibre-gl": "6.14.0",
-		"pdfjs-dist": "6.4.299"
+		"pdfjs-dist": "6.4.299",
+		"wmf-sitematrix": "0.2.0"
 	},
 	"packageManager": "bun@1.4.2"
 }

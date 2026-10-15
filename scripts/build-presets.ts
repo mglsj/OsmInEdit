@@ -94,6 +94,7 @@ for (const [id, preset] of Object.entries(presets)) {
 		searchable: preset.searchable,
 		fields: preset.fields ?? [],
 		moreFields: preset.moreFields ?? [],
+		reference: preset.reference,
 	};
 	for (const field of [...own.fields, ...own.moreFields] as string[]) {
 		usedFields.add(field);

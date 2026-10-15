@@ -25,6 +25,8 @@ export interface Preset {
 	readonly searchable?: boolean;
 	readonly fields: readonly string[];
 	readonly moreFields: readonly string[];
+	/** What its ⓘ documents, when not its main tag. */
+	readonly reference?: { readonly key?: string; readonly value?: string };
 }
 
 export interface FieldOption {

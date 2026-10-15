@@ -49,6 +49,24 @@ export class History {
 	}
 
 	/**
+	 * Applies an action to the current step instead of adding one, so one undo takes back both
+	 * (iD's `replace`: a Wikipedia tag following a Wikidata choice). Performs it when there is
+	 * no step to fold it into.
+	 */
+	replace(action: Action): Graph {
+		const step = this.#current;
+		if (this.#index === 0 || step.annotation === null) {
+			return this.perform(action, "Change tags");
+		}
+		const graph = action(step.graph);
+		this.#steps = [
+			...this.#steps.slice(0, this.#index),
+			{ graph, annotation: step.annotation },
+		];
+		return graph;
+	}
+
+	/**
 	 * Adds downloaded entities to the server data of every step. Entities already known in the
 	 * same or a newer version are ignored. A newer version of an entity edited locally is not
 	 * taken: the local edit stays, the upload will be refused for it, and it is reported here.

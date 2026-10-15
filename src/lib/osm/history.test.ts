@@ -41,6 +41,25 @@ describe("History", () => {
 		expect(history.graph.entity("n1")?.tags).toEqual({ amenity: "chair" });
 	});
 
+	it("folds a follow-up change into the last step (iD's replace)", () => {
+		const history = new History(Graph.fromEntities([bench]));
+		history.perform(retag({ amenity: "bench" }), "Tag as bench");
+		history.replace(retag({ amenity: "bench", backrest: "yes" }));
+
+		expect(history.graph.entity("n1")?.tags).toEqual({
+			amenity: "bench",
+			backrest: "yes",
+		});
+		// One undo takes both away.
+		expect(history.undo()).toBe("Tag as bench");
+		expect(history.graph.entity("n1")?.tags).toEqual({});
+		expect(history.redo()).toBe("Tag as bench");
+		expect(history.graph.entity("n1")?.tags).toEqual({
+			amenity: "bench",
+			backrest: "yes",
+		});
+	});
+
 	it("keeps the base graph to compare edits against", () => {
 		const history = new History(Graph.fromEntities([bench]));
 		history.perform(retag({ amenity: "bench" }), "Tag as bench");

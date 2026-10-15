@@ -96,9 +96,11 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 test("floor plan mode shows only building outlines, without selection", async ({
 	page,
 }) => {
-	// A room inside a building 0.0008° (~600 px at zoom 19) wide.
+	// A room inside a mall 0.0008° (~600 px at zoom 19) wide, tagged as the one in Rennes.
 	const building = room(200, LON, LAT, "0", 0.0004).map((e) =>
-		e.type === "way" ? { ...e, tags: { building: "yes" } } : e,
+		e.type === "way"
+			? { ...e, tags: { building: "retail", shop: "mall", name: "Mall" } }
+			: e,
 	);
 	await serveOsm(page, [...room(100, LON, LAT, "0"), ...building]);
 	await page.goto(`/#19/${LAT}/${LON}/0`);

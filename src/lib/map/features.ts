@@ -22,6 +22,7 @@ import {
 	classify,
 	type GeometryType,
 	iconFor,
+	isBuildingOutline,
 	isRestricted,
 	labelFor,
 } from "./classify.ts";
@@ -91,7 +92,10 @@ export function buildFeatures(
 	return { collection: { type: "FeatureCollection", features }, levels };
 }
 
-/** Properties the style uses: `@kind`, and when relevant `@icon`, `@label`, `@restricted`. */
+/**
+ * Properties the style uses: `@kind`, and when relevant `@icon`, `@label`, `@restricted`, and
+ * `@building` for the building outlines floor plans are placed against.
+ */
 function drawingProperties(
 	tags: Tags,
 	geometry: GeometryType,
@@ -104,6 +108,7 @@ function drawingProperties(
 	const label = labelFor(tags);
 	if (label) props["@label"] = label;
 	if (isRestricted(tags)) props["@restricted"] = "yes";
+	if (isBuildingOutline(tags, geometry)) props["@building"] = "yes";
 	return props;
 }
 

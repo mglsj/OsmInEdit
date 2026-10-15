@@ -172,11 +172,7 @@ export class IndoorMap {
 			id: BUILDINGS_LAYER,
 			type: "line",
 			source: INDOOR_SOURCE,
-			filter: [
-				"all",
-				["==", ["get", "@kind"], "building"],
-				["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]],
-			],
+			filter: ["has", "@building"],
 			layout: { visibility: "none" },
 			paint: { "line-color": BUILDING_OUTLINE, "line-width": 3 },
 		});

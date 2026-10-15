@@ -29,9 +29,11 @@ const read = (file: string) =>
 const presets: Record<string, Json> = read("presets.json");
 const fields: Record<string, Json> = read("fields.json");
 const deprecated: unknown[] = read("deprecated.json");
+const categories: Record<string, Json> = read("preset_categories.json");
 const strings = read("translations/en.json").en.presets as {
 	presets: Record<string, Json>;
 	fields: Record<string, Json>;
+	categories: Record<string, Json>;
 };
 
 /** Top-level preset ids kept whole: things found inside buildings, and the fallbacks. */
@@ -108,6 +110,11 @@ for (const preset of overlay.presets) {
 	outPresets.push(preset);
 }
 
+// Universal fields can be added to any feature, whether or not its preset lists them.
+for (const [id, field] of Object.entries(fields)) {
+	if (field.universal) usedFields.add(id);
+}
+
 const outFields: Json[] = [];
 for (const id of usedFields) {
 	const field = fields[id];
@@ -116,7 +123,7 @@ for (const id of usedFields) {
 	const text = strings.fields[id] ?? {};
 	const labels = (text.options ?? {}) as Record<
 		string,
-		string | { title: string }
+		string | { title: string; description?: string }
 	>;
 	const values =
 		(local?.options as string[] | undefined) ??
@@ -131,13 +138,46 @@ for (const id of usedFields) {
 		placeholder: text.placeholder,
 		options: values.map((value) => {
 			const label = labels[value];
+			if (typeof label === "string") return { value, label };
 			return {
 				value,
-				label:
-					typeof label === "string" ? label : (label?.title ?? humanize(value)),
+				label: label?.title ?? humanize(value),
+				...(label?.description ? { description: label.description } : {}),
 			};
 		}),
+		terms: (text.terms as string[] | undefined) ?? [],
+		universal: field?.universal === true,
 		prerequisiteTag: field?.prerequisiteTag,
+		// iD's defaults when the schema says nothing.
+		snakeCase: field?.snake_case !== false,
+		caseSensitive: field?.caseSensitive === true,
+		customValues: field?.customValues !== false,
+		autoSuggestions: field?.autoSuggestions !== false,
+		allowDuplicates: field?.allowDuplicates === true,
+		increment: field?.increment,
+		minValue: field?.minValue,
+		maxValue: field?.maxValue,
+		urlFormat: field?.urlFormat,
+		pattern: field?.pattern,
+		reference: field?.reference,
+		default: field?.default,
+		geometry: field?.geometry,
+	});
+}
+
+/** Categories of presets, with the kept presets they hold. */
+const keptPresets = new Set(outPresets.map((p) => p.id));
+const outCategories: Json[] = [];
+for (const [id, category] of Object.entries(categories)) {
+	const members = (category.members as string[]).filter((m) =>
+		keptPresets.has(m),
+	);
+	if (members.length === 0) continue;
+	outCategories.push({
+		id,
+		name: (strings.categories[id]?.name as string | undefined) ?? id,
+		icon: category.icon,
+		members,
 	});
 }
 
@@ -153,6 +193,7 @@ const write = (file: string, data: unknown) =>
 write("presets.json", outPresets);
 write("fields.json", outFields);
 write("deprecated.json", deprecated);
+write("categories.json", outCategories);
 
 /** Icon sets bundled for the map, by the prefix of iD's icon names (`maki-toilet`). */
 const ICON_SETS: Record<string, string> = {
@@ -175,5 +216,5 @@ for (const icon of new Set(outPresets.map((p) => p.icon))) {
 }
 
 console.log(
-	`Presets: ${outPresets.length} presets, ${outFields.length} fields, ${icons} icons → src/lib/presets/generated/`,
+	`Presets: ${outPresets.length} presets, ${outFields.length} fields, ${outCategories.length} categories, ${icons} icons → src/lib/presets/generated/`,
 );

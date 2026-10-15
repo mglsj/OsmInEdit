@@ -27,16 +27,76 @@ export interface Preset {
 export interface FieldOption {
 	readonly value: string;
 	readonly label: string;
+	readonly description?: string;
 }
 
+/**
+ * When a field applies (iD's `prerequisiteTag`): `key` set (to `value`, one of `values`, not
+ * `valueNot`, none of `valuesNot`), or `keyNot` unset.
+ */
+export interface PrerequisiteTag {
+	readonly key?: string;
+	readonly value?: string;
+	readonly values?: readonly string[];
+	readonly valueNot?: string;
+	readonly valuesNot?: readonly string[];
+	readonly keyNot?: string;
+}
+
+/** A field of iD's schema, as the feature editor uses it. */
 export interface Field {
 	readonly id: string;
 	readonly key?: string;
 	readonly keys?: readonly string[];
+	/** `combo`, `semiCombo`, `check`, `text`, `number`… (see iD's `modules/ui/fields`). */
 	readonly type: string;
 	readonly label: string;
 	readonly placeholder?: string;
 	readonly options: readonly FieldOption[];
+	/** Other words to find the field by in "Add field". */
+	readonly terms: readonly string[];
+	/** Can be added to any feature (name, note, fixme…). */
+	readonly universal: boolean;
+	readonly prerequisiteTag?: PrerequisiteTag;
+	/** Values typed are turned into snake_case (`Fast Food` → `fast_food`). */
+	readonly snakeCase: boolean;
+	/** Values typed keep their case. */
+	readonly caseSensitive: boolean;
+	/** Values other than the options can be typed. */
+	readonly customValues: boolean;
+	/** Values used elsewhere (taginfo) are suggested. */
+	readonly autoSuggestions: boolean;
+	/** A `;` list may repeat a value. */
+	readonly allowDuplicates: boolean;
+	readonly increment?: number;
+	readonly minValue?: number;
+	readonly maxValue?: number;
+	/** Link for identifier values: `{value}` is replaced. */
+	readonly urlFormat?: string;
+	/** Regular expression a value must match to be linked. */
+	readonly pattern?: string;
+	/** What the ⓘ help shows, when not the field's key. */
+	readonly reference?: { readonly key?: string; readonly value?: string };
+	/** Value set when the field is added. */
+	readonly default?: string;
+	/** Geometries the field applies to, when not all of its preset's. */
+	readonly geometry?: readonly PresetGeometry[];
+}
+
+/** A group of presets offered together in the feature type list ("Building Features"). */
+export interface PresetCategory {
+	readonly id: string;
+	readonly name: string;
+	readonly icon?: string;
+	readonly members: readonly Preset[];
+}
+
+/** A category as stored: its members by preset id. */
+export interface CategoryData {
+	readonly id: string;
+	readonly name: string;
+	readonly icon?: string;
+	readonly members: readonly string[];
 }
 
 /** Presets offered before typing a search, by geometry: the common indoor ones. */
@@ -72,13 +132,18 @@ const FALLBACKS: Record<PresetGeometry, string> = {
 export class PresetIndex {
 	readonly #presets: readonly Preset[];
 	readonly #searchText: ReadonlyMap<Preset, SearchText>;
+	readonly #categories: readonly PresetCategory[];
 	readonly #byId: ReadonlyMap<string, Preset>;
 	readonly #fields: ReadonlyMap<string, Field>;
 	/** Positions of the presets with tags, by their first key: only those can match. */
 	readonly #byKey = new Map<string, number[]>();
 	readonly #matches = new WeakMap<Tags, Map<PresetGeometry, Preset>>();
 
-	constructor(presets: readonly Preset[], fields: readonly Field[]) {
+	constructor(
+		presets: readonly Preset[],
+		fields: readonly Field[],
+		categories: readonly CategoryData[] = [],
+	) {
 		this.#presets = presets;
 		this.#searchText = new Map(
 			presets.map((p) => [
@@ -88,6 +153,10 @@ export class PresetIndex {
 		);
 		this.#byId = new Map(presets.map((p) => [p.id, p]));
 		this.#fields = new Map(fields.map((f) => [f.id, f]));
+		this.#categories = categories.map((c) => ({
+			...c,
+			members: c.members.flatMap((id) => this.#byId.get(id) ?? []),
+		}));
 		presets.forEach((preset, i) => {
 			const [key] = Object.keys(preset.tags);
 			if (key === undefined) return;
@@ -103,6 +172,18 @@ export class PresetIndex {
 
 	field(id: string): Field | undefined {
 		return this.#fields.get(id);
+	}
+
+	/** Fields that can be added to any feature, by label. */
+	universalFields(): Field[] {
+		return [...this.#fields.values()]
+			.filter((f) => f.universal)
+			.sort((a, b) => a.label.localeCompare(b.label));
+	}
+
+	/** Categories of the feature type list, with their presets. */
+	categories(): readonly PresetCategory[] {
+		return this.#categories;
 	}
 
 	/** The fields of a preset, then its optional "more" fields, skipping unknown ones. */

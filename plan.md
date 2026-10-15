@@ -355,6 +355,13 @@ Measured on a synthetic area of 10,000 rooms (50,000 entities, 3.2 MB of GeoJSON
 
 #### P5.1 Feature editor, as in iD
 
+Slices: (1) ✅ preset data: field properties, universal fields, categories
+(`generated/categories.json`); (2) layout and sections; (3) feature type list; (4) Fields
+section; (5) combo, chip and choice fields with taginfo; (6) text, number, date, colour,
+localized, address and access fields; (7) Wikidata, Wikipedia and wiki references; (8) tag
+table; (9) relations and members; (10) one undo step per field edit. Hover preview and
+multi-selection come with P5.3.
+
 The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`,
 `entity_editor.js`, `sections/*`, `fields/*`), with shadcn components.
 - **Layout**: a header ("Edit feature", or "Edit features" for several; back to "Change

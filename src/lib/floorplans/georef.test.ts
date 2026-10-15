@@ -3,6 +3,7 @@ import {
 	type ControlPoint,
 	corners,
 	dragCorner,
+	dragRotation,
 	fitPlan,
 	GeorefError,
 	type LngLat,
@@ -302,15 +303,15 @@ describe("dragCorner", () => {
 		});
 	}
 
-	it("turns and resizes the plan around the opposite corner", () => {
-		// The 25 m diagonal BL → TR (20 east, 15 north) is dragged to point due north, still
-		// 25 m long: a turn by (0 + 25i) / (20 + 15i) = 0.6 + 0.8i (a 3-4-5 triangle). The
-		// left edge, 15 m north, becomes (−12, 9); the bottom edge, 20 m east, (12, 16).
+	it("resizes the plan around the opposite corner, without turning it", () => {
+		// The corner is dragged 25 m due north of BL. Along the diagonal BL → TR (20 east, 15
+		// north, 25 m), that point is 15 m out (0·20 + 25·15) / 25: the plan becomes 0.6 times
+		// as large, 12 × 9 m, still north up.
 		const moved = dragCorner(start, 400, 300, TOP_RIGHT, offset(BL, 0, 25));
 		expectCorners(moved, [
-			offset(BL, -12, 9),
-			offset(BL, 0, 25),
-			offset(BL, 12, 16),
+			offset(BL, 0, 9),
+			offset(BL, 12, 9),
+			offset(BL, 12, 0),
 			BL,
 		]);
 	});
@@ -341,5 +342,48 @@ describe("dragCorner", () => {
 		});
 		expect(moved.kind).toBe("projective");
 		expectCorners(moved, [TL, offset(TR, 3, 2), BR, BL]);
+	});
+});
+
+describe("dragRotation", () => {
+	// A 400 × 300 px plan at 5 cm per pixel, north up: 20 × 15 m around RENNES.
+	const start = place(
+		{ center: RENNES, metresPerPixel: 0.05, bearing: 0 },
+		400,
+		300,
+	);
+
+	function expectCorners(transform: Transform, expected: LngLat[]) {
+		corners(transform, 400, 300).forEach((corner, i) => {
+			expect(distance(corner, expected[i] as LngLat)).toBeLessThan(0.01);
+		});
+	}
+
+	it("turns the plan around its centre so that its top faces the pointer", () => {
+		// Pointer due east: a quarter turn clockwise, (x, y) → (y, −x) around the centre.
+		const turned = dragRotation(start, 400, 300, offset(RENNES, 30, 0));
+		expectCorners(turned, [
+			offset(RENNES, 7.5, 10),
+			offset(RENNES, 7.5, -10),
+			offset(RENNES, -7.5, -10),
+			offset(RENNES, -7.5, 10),
+		]);
+	});
+
+	it("snaps to 15° steps with snap", () => {
+		// Pointer at a bearing of 50°, snapped to 45°: (x, y) → ((x + y)·√½, (y − x)·√½).
+		const pointer = offset(
+			RENNES,
+			30 * Math.sin((50 * Math.PI) / 180),
+			30 * Math.cos((50 * Math.PI) / 180),
+		);
+		const turned = dragRotation(start, 400, 300, pointer, { snap: true });
+		const r = Math.SQRT1_2;
+		expectCorners(turned, [
+			offset(RENNES, (-10 + 7.5) * r, (7.5 + 10) * r),
+			offset(RENNES, (10 + 7.5) * r, (7.5 - 10) * r),
+			offset(RENNES, (10 - 7.5) * r, (-7.5 - 10) * r),
+			offset(RENNES, (-10 - 7.5) * r, (-7.5 + 10) * r),
+		]);
 	});
 });

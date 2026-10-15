@@ -1,10 +1,12 @@
 /**
- * Dragging a floor plan on the map: its body to move it, a corner handle to turn and resize it
- * as in photo editors (Shift: change the proportions, Ctrl/⌘: from the centre, Alt: move that
- * corner alone). Moves are previewed live and saved once, on release.
+ * Dragging a floor plan on the map, as in photo editors: its body to move it, a corner handle
+ * to resize it (Shift: change the proportions, Ctrl/⌘: from the centre, Alt: move that corner
+ * alone), the handle above it to turn it (Shift: in 15° steps). Moves are previewed live and
+ * saved once, on release.
  */
 import {
 	dragCorner,
+	dragRotation,
 	type LngLat,
 	type Pixel,
 	type Transform,
@@ -27,6 +29,7 @@ export interface PlanDraggingOptions {
 
 type Grab =
 	| { readonly kind: "corner"; readonly corner: number }
+	| { readonly kind: "rotate" }
 	| { readonly kind: "body"; readonly pixel: Pixel };
 
 export class PlanDragging {
@@ -71,18 +74,26 @@ export class PlanDragging {
 		const transform =
 			grab.kind === "body"
 				? translateTo(plan.transform, grab.pixel, target)
-				: dragCorner(
-						plan.transform,
-						plan.image.width,
-						plan.image.height,
-						grab.corner,
-						target,
-						{
-							freeAspect: shiftKey,
-							fromCenter: ctrlKey || metaKey,
-							distort: altKey,
-						},
-					);
+				: grab.kind === "rotate"
+					? dragRotation(
+							plan.transform,
+							plan.image.width,
+							plan.image.height,
+							target,
+							{ snap: shiftKey },
+						)
+					: dragCorner(
+							plan.transform,
+							plan.image.width,
+							plan.image.height,
+							grab.corner,
+							target,
+							{
+								freeAspect: shiftKey,
+								fromCenter: ctrlKey || metaKey,
+								distort: altKey,
+							},
+						);
 		this.#options.onmove(plan.id, transform);
 	};
 
@@ -105,8 +116,12 @@ export class PlanDragging {
 						],
 						{ layers: [HANDLES_LAYER] },
 					)
-					.find((f) => f.properties.role === "handle")
+					.find(
+						(f) =>
+							f.properties.role === "handle" || f.properties.role === "rotate",
+					)
 			: undefined;
+		if (handle?.properties.role === "rotate") return { kind: "rotate" };
 		if (handle)
 			return { kind: "corner", corner: Number(handle.properties.corner) };
 		const [u, v] = unproject(plan.transform, [
@@ -125,10 +140,12 @@ export class PlanDragging {
 		const grab = this.#grab(plan, event);
 		const cursor =
 			grab?.kind === "corner"
-				? "crosshair"
-				: grab?.kind === "body"
-					? "move"
-					: "";
+				? "nwse-resize"
+				: grab?.kind === "rotate"
+					? "grab"
+					: grab?.kind === "body"
+						? "move"
+						: "";
 		this.#map.getCanvas().style.cursor = cursor;
 	}
 }

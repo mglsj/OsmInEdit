@@ -192,7 +192,13 @@ export class FloorPlanLayers {
 }
 
 const TOOL_SOURCE = "floorplan-tool";
-/** The tools' points, corner handles included (`role: "handle"`, `corner` 0–3). */
+/** How far above the plan's top edge its rotation handle sits, in plan heights. */
+export const ROTATE_HANDLE_OFFSET = 0.08;
+
+/**
+ * The tools' points, handles included: corners (`role: "handle"`, `corner` 0–3) and the
+ * rotation handle (`role: "rotate"`).
+ */
 export const HANDLES_LAYER = `${TOOL_SOURCE}-points`;
 
 /**
@@ -237,6 +243,15 @@ export function toolFeatures(
 					properties: { role: "handle", corner: i },
 				});
 			}
+			const { width, height } = plan.image;
+			features.push({
+				type: "Feature",
+				geometry: {
+					type: "Point",
+					coordinates: at([width / 2, -ROTATE_HANDLE_OFFSET * height]),
+				},
+				properties: { role: "rotate" },
+			});
 		}
 		plan.controlPoints.forEach(({ image, map }, i) => {
 			const onPlan = at(image);
@@ -293,10 +308,17 @@ export class PlanToolLayer {
 				source: TOOL_SOURCE,
 				filter: ["==", ["geometry-type"], "Point"],
 				paint: {
-					"circle-radius": ["case", ["==", ["get", "role"], "handle"], 7, 6],
+					"circle-radius": [
+						"match",
+						["get", "role"],
+						["handle", "rotate"],
+						7,
+						6,
+					],
 					"circle-color": [
-						"case",
-						["==", ["get", "role"], "target"],
+						"match",
+						["get", "role"],
+						["target", "rotate"],
 						TOOL_COLOR,
 						"#ffffff",
 					],

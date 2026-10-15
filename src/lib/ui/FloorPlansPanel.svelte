@@ -82,7 +82,7 @@
 					? "Turn the plan around the picked spot."
 					: "Click the spot on the plan to turn around.";
 			default:
-				return "Drag the plan to move it, and a corner to turn and resize it. While dragging a corner: Shift stretches, Ctrl (⌘) resizes from the centre, Alt moves that corner alone. For precise placement, pick a tool.";
+				return "Drag the plan to move it, a corner to resize it, the round handle above it to turn it. While dragging a corner: Shift stretches, Ctrl (⌘) resizes from the centre, Alt moves that corner alone. Shift turns in 15° steps. For precise placement, pick a tool.";
 		}
 	});
 	const FIT_KINDS: { kind: TransformKind; label: string }[] = [

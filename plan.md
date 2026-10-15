@@ -247,11 +247,13 @@ test instead of a shared `mock-osm.ts`.
   active tool instead of selecting OSM features.
 - Storage (`persist/plan-store.ts`, `idb`): images and settings in IndexedDB, restored on
   reload. Each plan has a level and shows only on it.
-- Floor plan mode (as in 1.x): the map shows only building outlines; OSM selection, the feature
-  editor and the edit toolbar are off. The selected plan is dragged to move it, and by a corner
-  handle to turn and resize it around the opposite corner (`georef.dragCorner`, as in photo
-  editors: Shift stretches, Ctrl/⌘ resizes from the centre, Alt moves that corner alone, giving
-  a perspective). Drags are previewed live and saved on release (`map/plan-dragging.ts`).
+- Floor plan mode (as in 1.x): the map shows only building outlines (any area with a
+  `building` tag, malls included); OSM selection, the feature editor and the edit toolbar are
+  off. As in photo editors, the selected plan is dragged to move it, by a corner handle to
+  resize it around the opposite corner (`georef.dragCorner`: Shift stretches, Ctrl/⌘ resizes
+  from the centre, Alt moves that corner alone, giving a perspective), and by the handle above
+  it to turn it around its centre (`georef.dragRotation`, Shift for 15° steps). Drags are
+  previewed live and saved on release (`map/plan-dragging.ts`).
 
 Moved out of P4, to P5 with the editing tools: snapping control points to building outlines
 (edges, not only nodes), numeric offset inputs, and assigning plans to a building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render

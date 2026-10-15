@@ -427,6 +427,49 @@ test("turns and resizes a plan from a corner, around the opposite one", async ({
 	});
 });
 
+test("only resizes a plan when a corner is dragged off its diagonal", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+
+	// 100 px to the right of the top-right corner: along the diagonal from the bottom left,
+	// (w + 100, −h) reaches k = 1 + 100·w / (w² + h²) of it. No turning.
+	await drag(
+		page,
+		{ x: plan.right, y: plan.top },
+		{ x: plan.right + 100, y: plan.top },
+	);
+
+	const k = 1 + (100 * plan.w) / (plan.w ** 2 + plan.h ** 2);
+	await expectPlanAt(page, {
+		left: plan.left,
+		top: plan.bottom - plan.h * k,
+		right: plan.left + plan.w * k,
+		bottom: plan.bottom,
+	});
+});
+
+test("turns a plan with the handle above it", async ({ page }) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+
+	// The handle sits above the top edge's middle, 8% of the plan's height out. Dragged to
+	// the right of the centre, the plan turns a quarter clockwise around its centre.
+	await drag(
+		page,
+		{ x: plan.cx, y: plan.top - 0.08 * plan.h },
+		{ x: plan.cx + 250, y: plan.cy },
+	);
+
+	await expectPlanAt(page, {
+		left: plan.cx - plan.h / 2,
+		top: plan.cy - plan.w / 2,
+		right: plan.cx + plan.h / 2,
+		bottom: plan.cy + plan.w / 2,
+	});
+});
+
 test("stretches a plan from a corner with Shift", async ({ page }) => {
 	await importPlan(page, "plan.png");
 	const plan = await importedPlanBox(page);

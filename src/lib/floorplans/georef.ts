@@ -187,7 +187,8 @@ export interface CornerDragOptions {
 
 /**
  * The plan after dragging one of its corners (0 top left, then clockwise) to `target`, as in
- * photo editors: by default it turns and resizes around the opposite corner, keeping its shape.
+ * photo editors: by default it resizes around the opposite corner, keeping its shape and
+ * direction (turning has its own handle, see `dragRotation`).
  */
 export function dragCorner(
 	transform: Transform,
@@ -228,12 +229,12 @@ export function dragCorner(
 	const d: [number, number] = [dx - px, dy - py];
 	const t: [number, number] = [tx - px, ty - py];
 	if (!freeAspect) {
-		// Turn and scale by the complex ratio t / d.
+		// Scale by how far the pointer is along the diagonal: t projected on d. A plan is never
+		// flipped or shrunk to nothing.
 		const norm = d[0] * d[0] + d[1] * d[1];
 		if (norm === 0) return transform;
-		const a = (t[0] * d[0] + t[1] * d[1]) / norm;
-		const b = (t[1] * d[0] - t[0] * d[1]) / norm;
-		return aboutPoint(transform, pivot, [a, -b, b, a]);
+		const k = Math.max(0.01, (t[0] * d[0] + t[1] * d[1]) / norm);
+		return aboutPoint(transform, pivot, [k, 0, 0, k]);
 	}
 	// Stretch along the plan's own axes at the pivot (e for its u axis, f for v), so that its
 	// edges keep their directions: d = α·e + β·f becomes t = α'·e + β'·f.
@@ -262,6 +263,30 @@ export function dragCorner(
 	return transform.kind === "similarity"
 		? { ...stretched, kind: "affine" }
 		: stretched;
+}
+
+/**
+ * The plan turned around its centre so that its top faces `target`, the pointer dragging the
+ * rotation handle above it. With `snap`, the plan's direction goes in 15° steps.
+ */
+export function dragRotation(
+	transform: Transform,
+	width: number,
+	height: number,
+	target: LngLat,
+	{ snap = false }: { readonly snap?: boolean } = {},
+): Transform {
+	const centre: Pixel = [width / 2, height / 2];
+	const [cx, cy] = toMercator(project(transform, centre));
+	const [ux, uy] = toMercator(project(transform, [width / 2, 0]));
+	const [tx, ty] = toMercator(target);
+	if (tx === cx && ty === cy) return transform;
+	// Bearings, clockwise from north, of the plan's top and of the pointer.
+	const degrees = (x: number, y: number) => (Math.atan2(x, y) * 180) / Math.PI;
+	const current = degrees(ux - cx, uy - cy);
+	let wanted = degrees(tx - cx, ty - cy);
+	if (snap) wanted = Math.round(wanted / 15) * 15;
+	return rotateAbout(transform, centre, wanted - current);
 }
 
 /** Applies a 2×2 linear map on the map side, centred on where `pixel` currently is. */

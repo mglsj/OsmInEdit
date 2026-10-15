@@ -21,6 +21,14 @@ const RED: [number, number, number] = [255, 0, 0];
 /** Colour of building outlines in floor plan mode. */
 const BUILDING_OUTLINE: [number, number, number] = [0xd6, 0x24, 0x9f];
 
+/** The rows of the layer list that are plans, top first (the Buildings row left out). */
+function planRows(page: Page) {
+	return page
+		.getByRole("list", { name: "Layers" })
+		.getByRole("listitem")
+		.filter({ hasNot: page.getByText("Buildings", { exact: true }) });
+}
+
 /** Opens the floor plans panel and imports a file from tests/e2e/files. */
 async function importPlan(page: Page, file: string) {
 	await page.goto(`/#19/${LAT}/${LON}/0`);
@@ -79,9 +87,7 @@ for (const file of ["plan.png", "plan.jpg", "plan.webp"]) {
 		page,
 	}) => {
 		await importPlan(page, file);
-		await expect(
-			page.getByRole("list", { name: "Floor plans" }).getByRole("listitem"),
-		).toContainText(["plan 400 × 300 px"]);
+		await expect(planRows(page)).toContainText(["plan 400 × 300 px"]);
 		await expectPlanDrawn(page, RED, 4 / 3);
 	});
 }
@@ -105,22 +111,24 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 	await dialog.getByRole("button", { name: "Import" }).click();
 
 	// 4 × 3 inches at 150 DPI.
-	await expect(
-		page.getByRole("list", { name: "Floor plans" }).getByRole("listitem"),
-	).toContainText(["plan, page 2 600 × 450 px"]);
+	await expect(planRows(page)).toContainText(["plan, page 2 600 × 450 px"]);
 	await expectPlanDrawn(page, [0, 0, 255], 4 / 3);
 });
+
+/** A mall 0.0008° (~600 px at zoom 19) wide around (LON, LAT), tagged as the one in Rennes. */
+function mall() {
+	return room(200, LON, LAT, "0", 0.0004).map((e) =>
+		e.type === "way"
+			? { ...e, tags: { building: "retail", shop: "mall", name: "Mall" } }
+			: e,
+	);
+}
 
 test("floor plan mode shows only building outlines, without selection", async ({
 	page,
 }) => {
 	// A room inside a mall 0.0008° (~600 px at zoom 19) wide, tagged as the one in Rennes.
-	const building = room(200, LON, LAT, "0", 0.0004).map((e) =>
-		e.type === "way"
-			? { ...e, tags: { building: "retail", shop: "mall", name: "Mall" } }
-			: e,
-	);
-	await serveOsm(page, [...room(100, LON, LAT, "0"), ...building]);
+	await serveOsm(page, [...room(100, LON, LAT, "0"), ...mall()]);
 	await page.goto(`/#19/${LAT}/${LON}/0`);
 	const box = await mapLocator(page).boundingBox();
 	if (!box) throw new Error("No map");
@@ -344,9 +352,7 @@ test("keeps plans, where they were placed, after a reload", async ({
 
 	await expectPlanAt(page, scaled);
 	await page.getByRole("button", { name: "Floor plans" }).click();
-	await expect(
-		page.getByRole("list", { name: "Floor plans" }).getByRole("listitem"),
-	).toContainText(["plan 400 × 300 px"]);
+	await expect(planRows(page)).toContainText(["plan 400 × 300 px"]);
 });
 
 test("shows a plan only on its level", async ({ page }) => {
@@ -556,14 +562,12 @@ test("keeps a dragged plan where it was left after a reload", async ({
 	await expectPlanAt(page, moved);
 });
 
-/** The colour of the `nth` plan, as its row's swatch shows it. */
+/** The colour of the `nth` plan from the top of the list, as its row's swatch shows it. */
 async function planColor(
 	page: Page,
 	nth = 0,
 ): Promise<[number, number, number]> {
-	const css = await page
-		.getByRole("list", { name: "Floor plans" })
-		.getByRole("listitem")
+	const css = await planRows(page)
 		.nth(nth)
 		.locator("[data-slot=swatch]")
 		.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -698,18 +702,16 @@ test("draws each plan's frame in its own colour, which can be changed", async ({
 	await page
 		.getByLabel("Import a floor plan")
 		.setInputFiles(path.join(FILES, "plan.png"));
-	const rows = page
-		.getByRole("list", { name: "Floor plans" })
-		.getByRole("listitem");
-	await expect(rows).toHaveCount(2);
+	await expect(planRows(page)).toHaveCount(2);
 	// The second plan, imported on the first, is moved 120 px right.
 	await drag(
 		page,
 		{ x: plan.cx, y: plan.cy },
 		{ x: plan.cx + 120, y: plan.cy },
 	);
-	const first = await planColor(page, 0);
-	const second = await planColor(page, 1);
+	// The list is top first: the second plan, then the first.
+	const first = await planColor(page, 1);
+	const second = await planColor(page, 0);
 	expect(first).not.toEqual(second);
 
 	// Each left edge is drawn in its plan's colour, and not the other's.
@@ -737,7 +739,7 @@ test("draws each plan's frame in its own colour, which can be changed", async ({
 		.click();
 	await page.getByRole("button", { name: "Colour of plan" }).click();
 	await page.getByRole("button", { name: other.name, exact: true }).click();
-	const picked = await planColor(page, 0);
+	const picked = await planColor(page, 1);
 	expect(hex(picked)).toBe(other.value);
 	await expect
 		.poll(() => colorPixels(page, plan.left - 4, y, 8, picked))
@@ -748,7 +750,7 @@ test("draws each plan's frame in its own colour, which can be changed", async ({
 
 	await page.reload();
 	await page.getByRole("button", { name: "Floor plans" }).click();
-	expect(hex(await planColor(page, 0))).toBe(other.value);
+	expect(hex(await planColor(page, 1))).toBe(other.value);
 	// The second plan stayed where it was moved.
 	await expect
 		.poll(() => colorPixels(page, plan.left + 116, y, 8, second))
@@ -854,4 +856,65 @@ test("asks to save or discard a plan's changes when closing floor plans", async 
 	await expect(panel).toBeHidden();
 	await page.reload();
 	await expectPlanAt(page, moved);
+});
+
+test("draws the layers in the list's order, changed by dragging or Alt+arrows", async ({
+	page,
+}) => {
+	await serveOsm(page, mall());
+	await importPlan(page, "plan.png");
+	await page.getByRole("button", { name: "Done" }).click();
+	await page
+		.getByLabel("Import a floor plan")
+		.setInputFiles(path.join(FILES, "plan.svg"));
+	await page.getByRole("button", { name: "Done" }).click();
+	await expect(page.getByTestId("load-status")).toBeHidden();
+	// The two plans lie on each other; the mall's outline runs ~298 px right of the map
+	// centre, under both of them.
+	const { cx, cy, mx } = await initialLayout(page, 300);
+	const GREEN: [number, number, number] = [0, 255, 0];
+	const greenOnRed = blend(GREEN, 0.5, blend(RED, 0.5, BACKGROUND));
+	const redOnGreen = blend(RED, 0.5, blend(GREEN, 0.5, BACKGROUND));
+	await expectPixel(page, cx, cy, greenOnRed);
+	// The buildings start on top.
+	await expectPixel(page, mx + 298, cy, BUILDING_OUTLINE, 40);
+	await expect(
+		page.getByRole("list", { name: "Layers" }).getByRole("listitem").first(),
+	).toContainText("Buildings");
+
+	// The red plan's row (second plan row) dragged above the green one's: red on top.
+	const [green, red] = [planRows(page).nth(0), planRows(page).nth(1)];
+	await expect(red).toContainText("400 × 300 px");
+	await red
+		.getByRole("button", { name: "Move plan", exact: true })
+		.dragTo(green, { targetPosition: { x: 60, y: 3 } });
+	await expect(planRows(page).nth(0)).toContainText("400 × 300 px");
+	await expectPixel(page, cx, cy, redOnGreen);
+
+	// Alt+↓ on the red plan's grip: back under the green one.
+	await planRows(page)
+		.nth(0)
+		.getByRole("button", { name: "Move plan", exact: true })
+		.press("Alt+ArrowDown");
+	await expect(planRows(page).nth(1)).toContainText("400 × 300 px");
+	await expectPixel(page, cx, cy, greenOnRed);
+
+	// The buildings moved to the bottom: both plans are drawn over the outline.
+	const buildings = page.getByRole("button", { name: "Move buildings" });
+	await buildings.press("Alt+ArrowDown");
+	await buildings.press("Alt+ArrowDown");
+	await expect(
+		page.getByRole("list", { name: "Layers" }).getByRole("listitem").last(),
+	).toContainText("Buildings");
+	await expectPixel(
+		page,
+		mx + 298,
+		cy,
+		blend(GREEN, 0.5, blend(RED, 0.5, BUILDING_OUTLINE)),
+		12,
+	);
+
+	// Hidden: only the plans are left.
+	await page.getByRole("button", { name: "Show buildings" }).click();
+	await expectPixel(page, mx + 298, cy, greenOnRed);
 });

@@ -28,7 +28,7 @@ const ABOVE_LABELS = new Set([
 ]);
 
 /** Outlines of the buildings, drawn only in floor plan mode to place plans against. */
-const BUILDINGS_LAYER = "indoor-buildings";
+export const BUILDINGS_LAYER = "indoor-buildings";
 /** Magenta stands out on plans and imagery; plans' own colours stay clear of it. */
 const BUILDING_OUTLINE = BUILDING_COLOR;
 
@@ -42,6 +42,7 @@ export class IndoorMap {
 	#level = 0;
 	#selected: string | null = null;
 	#planMode = false;
+	#buildingsVisible = true;
 
 	constructor(map: MapLibreMap) {
 		this.#map = map;
@@ -75,6 +76,12 @@ export class IndoorMap {
 		if (this.#ready) this.#applyPlanMode();
 	}
 
+	/** Whether floor plan mode shows the building outlines. */
+	setBuildingsVisible(visible: boolean): void {
+		this.#buildingsVisible = visible;
+		if (this.#ready) this.#applyPlanMode();
+	}
+
 	#applyPlanMode(): void {
 		const visibility = (shown: boolean) => (shown ? "visible" : "none");
 		for (const layer of indoorLayers(this.#level)) {
@@ -87,7 +94,7 @@ export class IndoorMap {
 		this.#map.setLayoutProperty(
 			BUILDINGS_LAYER,
 			"visibility",
-			visibility(this.#planMode),
+			visibility(this.#planMode && this.#buildingsVisible),
 		);
 	}
 

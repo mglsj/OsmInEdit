@@ -1,14 +1,17 @@
 <script lang="ts">
+	import Building2 from "@lucide/svelte/icons/building-2";
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
 	import Download from "@lucide/svelte/icons/download";
 	import Eraser from "@lucide/svelte/icons/eraser";
 	import Eye from "@lucide/svelte/icons/eye";
 	import EyeOff from "@lucide/svelte/icons/eye-off";
+	import GripVertical from "@lucide/svelte/icons/grip-vertical";
 	import Info from "@lucide/svelte/icons/info";
 	import Pencil from "@lucide/svelte/icons/pencil";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import Upload from "@lucide/svelte/icons/upload";
 	import X from "@lucide/svelte/icons/x";
+	import { tick } from "svelte";
 	import type { Attachment } from "svelte/attachments";
 	import * as Alert from "#lib/components/shadcn/alert/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
@@ -20,7 +23,7 @@
 	import { Slider } from "#lib/components/shadcn/slider/index.ts";
 	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
 	import * as ToggleGroup from "#lib/components/shadcn/toggle-group/index.ts";
-	import { PLAN_COLORS } from "#lib/floorplans/colors.ts";
+	import { BUILDING_COLOR, PLAN_COLORS } from "#lib/floorplans/colors.ts";
 	import type { TransformKind } from "#lib/floorplans/georef.ts";
 	import {
 		ACCEPTED_FILES,
@@ -33,11 +36,13 @@
 	} from "#lib/floorplans/import.ts";
 	import {
 		exportPlans,
-		parsePlansFile,
+		parsePlanFile,
 		transformOf,
 	} from "#lib/floorplans/plan-file.ts";
 	import {
+		BUILDINGS,
 		type FloorPlans,
+		type LayerEntry,
 		MIN_POINTS,
 		type Tool,
 		type View,
@@ -117,6 +122,46 @@
 		if (Number.isFinite(angle)) floorplans.rotate(angle);
 	}
 
+	/** The layer list, top first: the map draws the first row on top. */
+	const rows = $derived([...floorplans.layers].reverse());
+	/** The row being dragged by its grip (plan id or BUILDINGS), and where it would land. */
+	let dragging = $state<string | null>(null);
+	/** Row index the dragged row would be dropped before (`rows.length`: after the last). */
+	let dropAt = $state<number | null>(null);
+
+	function keyOf(row: LayerEntry): string {
+		return row.kind === "plan" ? row.plan.id : BUILDINGS;
+	}
+
+	/** Moves the row `key` so it is shown at `row` in the list (0 = top). */
+	async function moveRow(key: string, row: number) {
+		floorplans.move(key, rows.length - 1 - row);
+		// Keyed rows move with their grip, which keeps the focus for further Alt+arrows.
+		await tick();
+		document.querySelector<HTMLElement>(`[data-grip="${key}"]`)?.focus();
+	}
+
+	function drop() {
+		const key = dragging;
+		const at = dropAt;
+		dragging = null;
+		dropAt = null;
+		if (key === null || at === null) return;
+		const from = rows.findIndex((r) => keyOf(r) === key);
+		void moveRow(key, at > from ? at - 1 : at);
+	}
+
+	function onGripKey(event: KeyboardEvent, key: string, row: number) {
+		if (!event.altKey) return;
+		if (event.key === "ArrowUp" && row > 0) {
+			event.preventDefault();
+			void moveRow(key, row - 1);
+		} else if (event.key === "ArrowDown" && row < rows.length - 1) {
+			event.preventDefault();
+			void moveRow(key, row + 1);
+		}
+	}
+
 	/** The plan whose colour palette is open. */
 	let choosingColor = $state<string | null>(null);
 	let busy = $state(false);
@@ -182,7 +227,9 @@
 
 	/** Adds the plans of an IndoorID or OsmInEdit 1.x plan file, placed as saved. */
 	async function importPlansFile(file: File) {
-		for (const entry of parsePlansFile(await file.text())) {
+		const { plans, buildings } = parsePlanFile(await file.text());
+		const existing = floorplans.plans.length;
+		for (const entry of plans) {
 			const blob = await (await fetch(entry.image)).blob();
 			const image =
 				blob.type === "image/svg+xml"
@@ -203,6 +250,14 @@
 				...(entry.color ? { color: entry.color } : {}),
 			});
 		}
+		// The outlines go where the file had them among its plans.
+		if (buildings) {
+			floorplans.move(
+				BUILDINGS,
+				existing + Math.min(buildings.below, plans.length),
+			);
+			floorplans.setBuildingsVisible(buildings.visible);
+		}
 	}
 
 	/** Downloads every plan, images included, as an IndoorID plan file. */
@@ -222,7 +277,9 @@
 			})),
 		);
 		const url = URL.createObjectURL(
-			new Blob([exportPlans(entries)], { type: "application/json" }),
+			new Blob([exportPlans(entries, floorplans.buildings)], {
+				type: "application/json",
+			}),
 		);
 		const link = document.createElement("a");
 		link.href = url;
@@ -331,19 +388,85 @@
 				</Alert.Root>
 			{/if}
 
-			{#if floorplans.plans.length === 0}
-				<p class="text-sm text-muted-foreground">No floor plan yet.</p>
-			{:else}
-				<ul aria-label="Floor plans" class="flex flex-col gap-1">
-					{#each floorplans.plans as plan (plan.id)}
-						{@const editing = plan.id === floorplans.editingId}
-						<li
-							class={[
-								"flex items-center gap-2 rounded-md p-1",
-								editing && "bg-muted",
-							]}
-							aria-current={editing}
+			<ul aria-label="Layers" class="flex flex-col">
+				{#each rows as row, i (keyOf(row))}
+					{@const key = keyOf(row)}
+					{@const editing =
+						row.kind === "plan" && row.plan.id === floorplans.editingId}
+					<li
+						class={[
+							"flex items-center gap-2 rounded-md border-y-2 border-transparent p-1",
+							editing && "bg-muted",
+							dropAt === i && "border-t-primary",
+							dropAt === rows.length &&
+								i === rows.length - 1 &&
+								"border-b-primary",
+						]}
+						aria-current={editing}
+						ondragover={(event) => {
+							if (!dragging) return;
+							event.preventDefault();
+							const box = event.currentTarget.getBoundingClientRect();
+							dropAt = event.clientY < box.top + box.height / 2 ? i : i + 1;
+						}}
+						ondrop={(event) => {
+							event.preventDefault();
+							drop();
+						}}
+					>
+						<button
+							type="button"
+							draggable="true"
+							data-grip={key}
+							class="flex h-8 w-4 shrink-0 cursor-grab items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+							aria-label={`Move ${row.kind === "plan" ? row.plan.name : "buildings"}`}
+							title="Drag to reorder, or Alt+↑ / Alt+↓"
+							ondragstart={(event) => {
+								dragging = key;
+								event.dataTransfer?.setData("text/plain", key);
+								if (event.dataTransfer)
+									event.dataTransfer.effectAllowed = "move";
+							}}
+							ondragend={() => {
+								dragging = null;
+								dropAt = null;
+							}}
+							onkeydown={(event) => onGripKey(event, key, i)}
 						>
+							<GripVertical class="size-4" />
+						</button>
+						{#if row.kind === "buildings"}
+							<span class="flex size-6 shrink-0 items-center justify-center">
+								{@render swatch(BUILDING_COLOR)}
+							</span>
+							<span
+								class="flex size-10 shrink-0 items-center justify-center rounded-sm border"
+							>
+								<Building2 class="size-5 text-muted-foreground" />
+							</span>
+							<span class="min-w-0 flex-1 text-sm">
+								<span class="block truncate font-medium">Buildings</span>
+								{" "}
+								<span class="block text-xs text-muted-foreground"
+									>Outlines from OpenStreetMap</span
+								>
+							</span>
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Show buildings"
+								aria-pressed={floorplans.buildings.visible}
+								onclick={() =>
+									floorplans.setBuildingsVisible(!floorplans.buildings.visible)}
+							>
+								{#if floorplans.buildings.visible}
+									<Eye />
+								{:else}
+									<EyeOff />
+								{/if}
+							</Button>
+						{:else}
+							{@const plan = row.plan}
 							{#if editing}
 								<Popover.Root
 									open={choosingColor === plan.id}
@@ -430,14 +553,16 @@
 							>
 								<Trash2 />
 							</Button>
-						</li>
-					{/each}
-				</ul>
-				{#if !selected}
-					<p class="text-sm text-muted-foreground">
-						Plans are locked: press Edit on one to move, align or change it.
-					</p>
-				{/if}
+						{/if}
+					</li>
+				{/each}
+			</ul>
+			{#if floorplans.plans.length === 0}
+				<p class="text-sm text-muted-foreground">No floor plan yet.</p>
+			{:else if !selected}
+				<p class="text-sm text-muted-foreground">
+					Plans are locked: press Edit on one to move, align or change it.
+				</p>
 			{/if}
 
 			{#if selected}

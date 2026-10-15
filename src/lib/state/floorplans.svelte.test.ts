@@ -3,7 +3,11 @@ import { PLAN_COLORS } from "#lib/floorplans/colors.ts";
 import { place, translateTo } from "#lib/floorplans/georef.ts";
 import type { PlanImage } from "#lib/floorplans/import.ts";
 import { offset, RENNES } from "#lib/floorplans/test-geometry.ts";
-import type { PlanStore, StoredPlan } from "#lib/persist/plan-store.ts";
+import type {
+	PlanStore,
+	StoredBuildings,
+	StoredPlan,
+} from "#lib/persist/plan-store.ts";
 import { type FloorPlan, FloorPlans } from "./floorplans.svelte.ts";
 
 const image: PlanImage = {
@@ -126,6 +130,8 @@ describe("plan colours", () => {
 				saveImage: async () => {},
 				save: async () => {},
 				delete: async () => {},
+				loadBuildings: async () => undefined,
+				saveBuildings: async () => {},
 			},
 			decode: async () => image,
 		});
@@ -153,6 +159,8 @@ function memoryStore() {
 			saved.push(plan);
 		},
 		delete: async () => {},
+		loadBuildings: async () => undefined,
+		saveBuildings: async () => {},
 	};
 	return { store, saved };
 }
@@ -327,5 +335,136 @@ describe("whenSaved", () => {
 		expect(ran).toBe(2);
 		expect(floorplans.plans[0]).toBe(before);
 		expect(floorplans.editingId).toBeNull();
+	});
+});
+
+/** A store keeping the latest of each record, like IndexedDB, to restore from. */
+function lastingStore() {
+	const plans = new Map<string, StoredPlan>();
+	let buildings: StoredBuildings | undefined;
+	const store: PlanStore = {
+		load: async () =>
+			[...plans.values()]
+				.sort((a, b) => a.order - b.order)
+				.map((plan) => ({ plan, image: new Blob() })),
+		saveImage: async () => {},
+		save: async (plan) => {
+			plans.set(plan.id, plan);
+		},
+		delete: async (id) => {
+			plans.delete(id);
+		},
+		loadBuildings: async () => buildings,
+		saveBuildings: async (b) => {
+			buildings = b;
+		},
+	};
+	return { store, plans };
+}
+
+/** The layer stack, bottom to top, by plan name. */
+function stack(floorplans: FloorPlans): string[] {
+	return floorplans.layers.map((l) =>
+		l.kind === "plan" ? l.plan.name : "buildings",
+	);
+}
+
+function idOf(floorplans: FloorPlans, name: string): string {
+	const plan = floorplans.plans.find((p) => p.name === name);
+	if (!plan) throw new Error(`No plan ${name}`);
+	return plan.id;
+}
+
+/** Lets the store's promises settle. */
+const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+describe("layer stack", () => {
+	it("starts with the buildings on top, and adds plans above the other plans", () => {
+		const floorplans = new FloorPlans();
+		expect(stack(floorplans)).toEqual(["buildings"]);
+		floorplans.add(image, "a", view, "0");
+		floorplans.add(image, "b", view, "0");
+		expect(stack(floorplans)).toEqual(["a", "b", "buildings"]);
+
+		floorplans.move("buildings", 0);
+		floorplans.add(image, "c", view, "0");
+		expect(stack(floorplans)).toEqual(["buildings", "a", "b", "c"]);
+	});
+
+	it("moves a plan or the buildings to a place in the stack", () => {
+		const floorplans = new FloorPlans();
+		for (const name of ["a", "b", "c"]) floorplans.add(image, name, view, "0");
+
+		floorplans.move(idOf(floorplans, "c"), 0);
+		expect(stack(floorplans)).toEqual(["c", "a", "b", "buildings"]);
+		floorplans.move("buildings", 1);
+		expect(stack(floorplans)).toEqual(["c", "buildings", "a", "b"]);
+		floorplans.move(idOf(floorplans, "c"), 3);
+		expect(stack(floorplans)).toEqual(["buildings", "a", "b", "c"]);
+		// Out of range: to the nearest end.
+		floorplans.move("buildings", 9);
+		expect(stack(floorplans)).toEqual(["a", "b", "c", "buildings"]);
+	});
+
+	it("keeps the buildings in place among the plans left when one is removed", () => {
+		const floorplans = new FloorPlans();
+		for (const name of ["a", "b"]) floorplans.add(image, name, view, "0");
+		floorplans.move("buildings", 1);
+		expect(stack(floorplans)).toEqual(["a", "buildings", "b"]);
+
+		floorplans.remove(idOf(floorplans, "a"));
+		expect(stack(floorplans)).toEqual(["buildings", "b"]);
+	});
+
+	it("brings back the stack, and hidden buildings, after a reload", async () => {
+		const { store } = lastingStore();
+		const before = new FloorPlans({ store, decode: async () => image });
+		for (const name of ["a", "b", "c"]) before.add(image, name, view, "0");
+		before.done();
+		before.move("buildings", 1);
+		before.move(idOf(before, "c"), 0);
+		before.setBuildingsVisible(false);
+		expect(stack(before)).toEqual(["c", "a", "buildings", "b"]);
+		await settled();
+
+		const after = new FloorPlans({ store, decode: async () => image });
+		await after.restore();
+
+		expect(stack(after)).toEqual(["c", "a", "buildings", "b"]);
+		expect(after.buildings.visible).toBe(false);
+	});
+
+	it("puts the buildings on top of plans saved before they were in the list", async () => {
+		const { store } = lastingStore();
+		const before = new FloorPlans({ store, decode: async () => image });
+		for (const name of ["a", "b"]) before.add(image, name, view, "0");
+		await settled();
+		// No buildings record: as saved before P4.1.
+		const after = new FloorPlans({
+			store: { ...store, loadBuildings: async () => undefined },
+			decode: async () => image,
+		});
+		await after.restore();
+
+		expect(stack(after)).toEqual(["a", "b", "buildings"]);
+		expect(after.buildings.visible).toBe(true);
+	});
+
+	it("saves a plan in Edit at its new place without its unsaved changes", async () => {
+		const { store, plans } = lastingStore();
+		const floorplans = new FloorPlans({ store });
+		for (const name of ["a", "b"]) floorplans.add(image, name, view, "0");
+		floorplans.edit(idOf(floorplans, "a"));
+		floorplans.update(idOf(floorplans, "a"), { opacity: 0.9 });
+
+		floorplans.move(idOf(floorplans, "a"), 2);
+		await settled();
+
+		const a = plans.get(idOf(floorplans, "a"));
+		const b = plans.get(idOf(floorplans, "b"));
+		expect(a?.opacity).toBe(0.5);
+		expect((a?.order ?? 0) > (b?.order ?? 0)).toBe(true);
+		// Still in Edit, with its changes.
+		expect(floorplans.editing?.opacity).toBe(0.9);
 	});
 });

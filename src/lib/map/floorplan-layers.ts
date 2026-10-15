@@ -13,7 +13,12 @@ import {
 } from "#lib/floorplans/georef.ts";
 import { tileCorners } from "#lib/floorplans/tiling.ts";
 import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
-import type { FloorPlan, Tool } from "#lib/state/floorplans.svelte.ts";
+import type {
+	FloorPlan,
+	LayerEntry,
+	Tool,
+} from "#lib/state/floorplans.svelte.ts";
+import { BUILDINGS_LAYER } from "./indoor-map.ts";
 import type {
 	ExpressionSpecification,
 	GeoJSONSource,
@@ -36,9 +41,12 @@ interface Shown {
 export class FloorPlanLayers {
 	readonly #map: MapLibreMap;
 	#ready = false;
+	#layers: readonly LayerEntry[] = [];
 	#plans: readonly FloorPlan[] = [];
 	#level = 0;
 	readonly #shown = new Map<string, Shown>();
+	/** The map layers in stack order last time, to reorder only when it changes. */
+	#order = "";
 
 	constructor(map: MapLibreMap) {
 		this.#map = map;
@@ -52,9 +60,10 @@ export class FloorPlanLayers {
 		else map.once("load", install);
 	}
 
-	/** Shows these plans, the last one on top. */
-	setPlans(plans: readonly FloorPlan[]): void {
-		this.#plans = plans;
+	/** Shows the plans of this stack, bottom first, the building outlines in their place. */
+	setLayers(layers: readonly LayerEntry[]): void {
+		this.#layers = layers;
+		this.#plans = layers.flatMap((l) => (l.kind === "plan" ? [l.plan] : []));
 		if (this.#ready) this.#sync();
 	}
 
@@ -92,13 +101,17 @@ export class FloorPlanLayers {
 				added = true;
 			} else if (shown.plan !== plan) this.#update(shown, plan);
 		}
-		if (!added) return;
-		// Keep the plans' order: each one moved below the indoor outlines, in turn.
-		for (const plan of wanted) {
-			for (const id of this.#shown.get(plan.id)?.ids ?? []) {
-				this.#map.moveLayer(id, this.#below());
-			}
-		}
+		const order = stackLayerIds(
+			this.#layers,
+			(id) => this.#shown.get(id)?.ids ?? [],
+			BUILDINGS_LAYER,
+		).filter((id) => this.#map.getLayer(id));
+		const key = order.join(",");
+		if (!added && key === this.#order) return;
+		this.#order = key;
+		// Each one moved below the indoor outlines in turn: the last ends up on top.
+		const below = this.#below();
+		for (const id of order) this.#map.moveLayer(id, below);
 	}
 
 	/**
@@ -190,6 +203,20 @@ export class FloorPlanLayers {
 			? "indoor-outline"
 			: this.#map.getStyle().layers.find((l) => l.type === "symbol")?.id;
 	}
+}
+
+/**
+ * The map layers of a layer stack, bottom first: each drawn plan's tiles (`tilesOf`), and the
+ * building outlines' layer in its place.
+ */
+export function stackLayerIds(
+	layers: readonly LayerEntry[],
+	tilesOf: (planId: string) => readonly string[],
+	buildingsLayer: string,
+): string[] {
+	return layers.flatMap((l) =>
+		l.kind === "plan" ? [...tilesOf(l.plan.id)] : [buildingsLayer],
+	);
 }
 
 const TOOL_SOURCE = "floorplan-tool";

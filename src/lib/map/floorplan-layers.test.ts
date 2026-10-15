@@ -9,7 +9,7 @@ import {
 	RENNES,
 } from "#lib/floorplans/test-geometry.ts";
 import type { FloorPlan, Tool } from "#lib/state/floorplans.svelte.ts";
-import { planFrames, toolFeatures } from "./floorplan-layers.ts";
+import { planFrames, stackLayerIds, toolFeatures } from "./floorplan-layers.ts";
 
 /** A 400 × 300 px plan, north up at 5 cm per pixel, its top-left pixel at RENNES. */
 const truth = northUpPlan(RENNES);
@@ -151,5 +151,42 @@ describe("toolFeatures, colours", () => {
 		for (const f of features) expect(f.properties?.color).toBe("#2563eb");
 		// Frames come from planFrames, for every plan alike.
 		expect(features.some((f) => f.properties?.role === "frame")).toBe(false);
+	});
+});
+
+describe("stackLayerIds", () => {
+	it("lists the map layers bottom to top: each plan's tiles, and the buildings in place", () => {
+		const a = { ...plan, id: "a" };
+		const b = { ...plan, id: "b" };
+		const tiles: Record<string, string[]> = {
+			a: ["floorplan-a-0", "floorplan-a-1"],
+			b: ["floorplan-b-0"],
+		};
+		expect(
+			stackLayerIds(
+				[
+					{ kind: "plan", plan: a },
+					{ kind: "buildings" },
+					{ kind: "plan", plan: b },
+				],
+				(id) => tiles[id] ?? [],
+				"indoor-buildings",
+			),
+		).toEqual([
+			"floorplan-a-0",
+			"floorplan-a-1",
+			"indoor-buildings",
+			"floorplan-b-0",
+		]);
+	});
+
+	it("skips plans not drawn", () => {
+		expect(
+			stackLayerIds(
+				[{ kind: "buildings" }, { kind: "plan", plan }],
+				() => [],
+				"indoor-buildings",
+			),
+		).toEqual(["indoor-buildings"]);
 	});
 });

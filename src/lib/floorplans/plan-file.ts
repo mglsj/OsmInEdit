@@ -32,18 +32,44 @@ export interface PlanFileEntry {
 	readonly controlPoints: readonly ControlPoint[];
 }
 
+/** Where the building outlines sit among the file's plans, and whether they show. */
+export interface PlanFileBuildings {
+	/** How many of the file's plans (listed bottom first) are drawn under the outlines. */
+	readonly below: number;
+	readonly visible: boolean;
+}
+
+export interface PlanFile {
+	readonly plans: PlanFileEntry[];
+	/** Missing from files written before the outlines had a place in the list. */
+	readonly buildings?: PlanFileBuildings;
+}
+
 export class PlanFileError extends Error {
 	override name = "PlanFileError";
 }
 
 const FORMAT = "indoorid-floorplans";
 
-export function exportPlans(plans: readonly PlanFileEntry[]): string {
-	return JSON.stringify({ format: FORMAT, version: 1, plans }, null, 2);
+/** An IndoorID plan file: `plans` bottom first, and where the building outlines sit. */
+export function exportPlans(
+	plans: readonly PlanFileEntry[],
+	buildings?: PlanFileBuildings,
+): string {
+	return JSON.stringify(
+		{ format: FORMAT, version: 1, plans, ...(buildings ? { buildings } : {}) },
+		null,
+		2,
+	);
+}
+
+/** The plans of an IndoorID or OsmInEdit 1.x floor plan file, bottom first. */
+export function parsePlansFile(text: string): PlanFileEntry[] {
+	return parsePlanFile(text).plans;
 }
 
 /** Reads an IndoorID or OsmInEdit 1.x floor plan file. */
-export function parsePlansFile(text: string): PlanFileEntry[] {
+export function parsePlanFile(text: string): PlanFile {
 	let data: unknown;
 	try {
 		data = JSON.parse(text);
@@ -51,9 +77,13 @@ export function parsePlansFile(text: string): PlanFileEntry[] {
 		throw new PlanFileError("This file is not a floor plan file (not JSON).");
 	}
 	if (isRecord(data) && data.format === FORMAT && Array.isArray(data.plans)) {
-		return data.plans.map(readPlan);
+		const buildings = buildingsOf(data.buildings);
+		return {
+			plans: data.plans.map(readPlan),
+			...(buildings ? { buildings } : {}),
+		};
 	}
-	if (Array.isArray(data)) return data.map(readLegacyPlan);
+	if (Array.isArray(data)) return { plans: data.map(readLegacyPlan) };
 	throw new PlanFileError(
 		"This file is not an IndoorID or OsmInEdit floor plan file.",
 	);
@@ -155,6 +185,15 @@ function imageOf(value: unknown): string {
 	if (typeof value === "string" && value.startsWith("data:image/"))
 		return value;
 	throw new PlanFileError("A floor plan in this file has no image.");
+}
+
+function buildingsOf(value: unknown): PlanFileBuildings | undefined {
+	if (!isRecord(value)) return undefined;
+	const { below } = value;
+	if (typeof below !== "number" || !Number.isInteger(below) || below < 0) {
+		return undefined;
+	}
+	return { below, visible: value.visible !== false };
 }
 
 /** `{ color }` when the value is a `#rrggbb` colour, else nothing: it ends up in the map's style. */

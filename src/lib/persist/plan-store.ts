@@ -22,8 +22,14 @@ export interface StoredPlan {
 	readonly visible: boolean;
 	/** `#rrggbb`; plans saved before colours existed have none. */
 	readonly color?: string;
-	/** Drawing order, lowest first. */
+	/** Place in the layer stack, the building outlines included: lowest first. */
 	readonly order: number;
+}
+
+/** The building outlines' place in the layer stack (same scale as plans' `order`). */
+export interface StoredBuildings {
+	readonly order: number;
+	readonly visible: boolean;
 }
 
 /** Where plans are saved; an interface so that state can run without IndexedDB. */
@@ -33,21 +39,31 @@ export interface PlanStore {
 	saveImage(id: string, image: Blob): Promise<void>;
 	save(plan: StoredPlan): Promise<void>;
 	delete(id: string): Promise<void>;
+	/** Undefined until the outlines were first moved or hidden. */
+	loadBuildings(): Promise<StoredBuildings | undefined>;
+	saveBuildings(buildings: StoredBuildings): Promise<void>;
 }
 
 interface Schema extends DBSchema {
 	plans: { key: string; value: StoredPlan };
 	images: { key: string; value: Blob };
+	settings: { key: string; value: StoredBuildings };
 }
 
 export class IndexedDbPlanStore implements PlanStore {
 	#db: Promise<IDBPDatabase<Schema>> | undefined;
 
 	#open(): Promise<IDBPDatabase<Schema>> {
-		this.#db ??= openDB<Schema>("indoorid-floorplans", 1, {
+		this.#db ??= openDB<Schema>("indoorid-floorplans", 2, {
+			// Each store is made if missing, whatever version the database says it is at.
+			// Version 2 added "settings": the building outlines' place in the layer list.
 			upgrade(db) {
-				db.createObjectStore("plans", { keyPath: "id" });
-				db.createObjectStore("images");
+				const stores = db.objectStoreNames;
+				if (!stores.contains("plans")) {
+					db.createObjectStore("plans", { keyPath: "id" });
+				}
+				if (!stores.contains("images")) db.createObjectStore("images");
+				if (!stores.contains("settings")) db.createObjectStore("settings");
 			},
 		});
 		return this.#db;
@@ -75,6 +91,14 @@ export class IndexedDbPlanStore implements PlanStore {
 
 	async save(plan: StoredPlan): Promise<void> {
 		await (await this.#open()).put("plans", plan);
+	}
+
+	async loadBuildings(): Promise<StoredBuildings | undefined> {
+		return (await this.#open()).get("settings", "buildings");
+	}
+
+	async saveBuildings(buildings: StoredBuildings): Promise<void> {
+		await (await this.#open()).put("settings", buildings, "buildings");
 	}
 
 	async delete(id: string): Promise<void> {

@@ -262,7 +262,7 @@ Moved out of P4, to P5 with the editing tools: snapping control points to buildi
 (edges, not only nodes), numeric offset inputs, and assigning plans to a building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
 with fallback fonts (P6).
 
-### P4.1: Floor plan layers, edit sessions, align fixes — in progress (slices 1–3 done)
+### P4.1: Floor plan layers, edit sessions, align fixes — in progress (slices 1–4 done)
 
 Feedback from placing real plans (Vindhya Bhavan, 4-page A3 PDF). Decisions agreed with the
 user are marked ✔; the rest follow from them.
@@ -282,6 +282,10 @@ user are marked ✔; the rest follow from them.
 - A Buildings entry (the pink outlines) sits in the same list: it can be moved between plans
   and hidden. Its position and visibility are saved in the browser and in exported plan
   files ✔.
+  New plans go above the other plans (under the outlines when those are on top). Stored
+  `order` counts the outlines' place too; the outlines' record lives in IndexedDB's
+  `settings` store (database version 2). Importing a plan file puts the outlines where the
+  file had them among its plans.
 - Each plan has its own colour, picked at random among a palette of distinct colours not yet
   used (never the buildings' pink). In floor plan mode every visible plan has a frame in its
   colour; the plan in Edit also gets its handles in it. The row shows a swatch; in Edit the
@@ -321,7 +325,7 @@ user are marked ✔; the rest follow from them.
    stored before Done; Cancel restores transform, control points and settings; one plan in
    Edit at a time. E2E: a locked plan doesn't move when dragged; Edit → drag → Cancel puts it
    back; Edit → drag → Done survives a reload; Close with unsaved changes asks.
-4. Layer list. Unit: `FloorPlans.move(id, index)` including the buildings entry, saved
+4. ✅ Layer list. Unit: `FloorPlans.move(id, index)` including the buildings entry, saved
    order; `FloorPlanLayers` order as MapLibre layer ids bottom to top (pure helper). E2E:
    two overlapping plans, reordered with the grip and with Alt+↑, show the top one's colour
    where they overlap; buildings moved under a plan are hidden by it; buildings hidden.

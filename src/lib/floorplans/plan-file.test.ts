@@ -4,6 +4,7 @@ import {
 	exportPlans,
 	type PlanFileEntry,
 	PlanFileError,
+	parsePlanFile,
 	parsePlansFile,
 	transformOf,
 } from "./plan-file.ts";
@@ -124,6 +125,38 @@ describe("plan colours in files", () => {
 		expect(read("#12345")?.color).toBeUndefined();
 		expect(read(42)?.color).toBeUndefined();
 		expect(read("#A1b2C3")?.color).toBe("#a1b2c3");
+	});
+});
+
+describe("the buildings' place in files", () => {
+	const file = (buildings: unknown) =>
+		JSON.stringify({
+			format: "indoorid-floorplans",
+			version: 1,
+			plans: [],
+			...(buildings === undefined ? {} : { buildings }),
+		});
+
+	it("is read back as exported: how many plans are under it, and whether it shows", () => {
+		const text = exportPlans([], { below: 2, visible: false });
+		expect(parsePlanFile(text).buildings).toEqual({
+			below: 2,
+			visible: false,
+		});
+	});
+
+	it("is left out of files written before it was in the list, or when damaged", () => {
+		expect(parsePlanFile(file(undefined)).buildings).toBeUndefined();
+		expect(parsePlanFile(file({ below: -1 })).buildings).toBeUndefined();
+		expect(parsePlanFile(file({ below: 1.5 })).buildings).toBeUndefined();
+		expect(parsePlanFile(file("top")).buildings).toBeUndefined();
+	});
+
+	it("shows unless the file says otherwise", () => {
+		expect(parsePlanFile(file({ below: 0 })).buildings).toEqual({
+			below: 0,
+			visible: true,
+		});
 	});
 });
 

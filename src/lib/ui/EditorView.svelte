@@ -132,6 +132,7 @@
 		$effect(() => indoor.setLevel(level));
 		$effect(() => indoor.setSelected(editor.selectedId));
 		$effect(() => indoor.setPlanMode(planMode));
+		$effect(() => indoor.setBuildingsVisible(floorplans.buildings.visible));
 		const stopClicks = indoor.onClick((id) => {
 			// While aligning a floor plan, clicks go to the alignment tool.
 			if (!planMode) editor.select(id as EntityId | null);
@@ -148,7 +149,7 @@
 		if (!instance) return;
 		const layers = new FloorPlanLayers(instance);
 		const marks = new PlanToolLayer(instance);
-		$effect(() => layers.setPlans(floorplans.plans));
+		$effect(() => layers.setLayers(floorplans.layers));
 		$effect(() => layers.setLevel(level));
 		// Frames tell the plans apart in floor plan mode; tool marks show whenever a tool is on.
 		$effect(() => {

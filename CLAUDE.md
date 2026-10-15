@@ -40,12 +40,13 @@ runs the same commands.
   `ui/EditorView.svelte` (the page's map UI). Change how a tag is drawn in `classify.ts`, not
   in the style.
 - Tagging and upload (P3): `presets/` (`PresetIndex`: match, search, fields, `listFor`,
-  `changePreset`; `RecentPresets`; `field-list.ts`: shown and addable fields, remove, revert; `combo.ts`, `choice.ts`: field values),
+  `changePreset`; `RecentPresets`; `field-list.ts`: shown and addable fields, remove, revert; `combo.ts`, `choice.ts`, `text.ts`, `localized.ts`, `address.ts`, `access.ts`: field values),
   `validation/` (`validate()` rules with one-click fixes, tag upgrades), `api/changeset.ts`,
   `api/taginfo.ts` (value suggestions; e2e tests serve it with `serveTaginfo()`),
   `state/session.svelte.ts` (osm-auth login), `ui/Inspector.svelte` (with `ui/PresetList.svelte`,
   `ui/FieldsSection.svelte`, `ui/FieldInput.svelte` choosing `ComboField`, `ChipsField`,
-  `CheckField` or `RadioField`),
+  `CheckField`, `RadioField`, `TextField`, `TextareaField`, `LocalizedField`, `AddressField` or
+  `AccessField`),
   `ui/SaveDialog.svelte`.
   Presets come from `@openstreetmap/id-tagging-schema` plus `presets/overlay.json`, built by
   `scripts/build-presets.ts` on install into the gitignored `presets/generated/`; run

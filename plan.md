@@ -360,8 +360,10 @@ Slices: (1) ✅ preset data: field properties, universal fields, categories
 list (`ui/PresetList.svelte`, `presets/recent.ts`); (4) ✅ Fields
 section (`presets/field-list.ts`, `ui/FieldsSection.svelte`); (5) ✅ combo, chip and choice fields with taginfo (`api/taginfo.ts`,
 `presets/combo.ts`, `presets/choice.ts`, `ui/ComboField.svelte`, `ui/ChipsField.svelte`,
-`ui/CheckField.svelte`, `ui/RadioField.svelte`); (6) text, number, date, colour,
-localized, address and access fields; (7) Wikidata, Wikipedia and wiki references; (8) tag
+`ui/CheckField.svelte`, `ui/RadioField.svelte`); (6) ✅ text, number, date, colour,
+localized, address and access fields (`presets/text.ts`, `localized.ts`, `address.ts`,
+`access.ts`; `ui/TextField.svelte`, `TextareaField`, `LocalizedField`, `AddressField`,
+`AccessField`); (7) Wikidata, Wikipedia and wiki references; (8) tag
 table; (9) relations and members; (10) one undo step per field edit. Hover preview and
 multi-selection come with P5.3.
 
@@ -408,12 +410,19 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
   - check, defaultCheck (tri-state unset/yes/no; unset/yes), radio, structureRadio (with
     its type field and layer; a layer already on the right side of the ground stays) ✔;
     onewayCheck is a plain check (no reversal);
-  - text, tel, email, url and identifier (with link), schedule, date (picker), colour
-    (swatch and picker), number and integer (− / + steppers, min/max), textarea (255
-    characters);
-  - localized (name plus `name:<lang>` rows), address (street, place, city and postcode
-    suggested from nearby loaded data), access, wikidata and wikipedia (searching those
-    sites, each filling the other).
+  - text, tel, email, url and identifier (with link), schedule (YoHours link), date
+    (picker, "today" for survey dates), colour (swatch and picker), number and integer
+    (− / + steppers, min/max, compass points for directions), textarea; values cleaned
+    as iD (trimmed, NFC, 255 characters, with iD's length indicator) ✔. Numbers are shown
+    as stored, without grouping (iD shows "1,500" in English); phone placeholders aren't
+    by country (no country detection);
+  - localized (name plus `name:<lang>` rows, languages named by the browser's
+    `Intl.DisplayNames` instead of iD's language list), address (iD's default rows,
+    house number + street and city + postcode, everywhere; street, place, city and
+    postcode suggested from nearby loaded data, house numbers from the building the
+    feature is in), access (a row per kind of traffic, implied access as placeholder) ✔;
+    brand, network, operator and flag are locked with Wikidata, as iD ✔; wikidata and
+    wikipedia (searching those sites, each filling the other) come with slice 7.
 - **Tags (N)**: a table of key and value inputs with a delete button, an always-present empty
   "Add new tag" row, key/value autocomplete from taginfo, Enter/`=` moving between cells, a
   duplicate key jumping to the existing row, and a List/Text toggle (the current text view)

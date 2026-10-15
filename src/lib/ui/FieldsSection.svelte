@@ -8,6 +8,7 @@
 	import * as Command from "#lib/components/shadcn/command/index.ts";
 	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import * as Popover from "#lib/components/shadcn/popover/index.ts";
+	import { addressSuggestions } from "#lib/presets/address.ts";
 	import {
 		addField,
 		fieldList,
@@ -79,6 +80,10 @@
 		},
 		deprecated: (key) => editor.deprecatedValues.get(key) ?? [],
 		field: (id) => editor.presets?.field(id),
+		nearby: (key, part) =>
+			addressSuggestions(editor.graph, entity.id, part, key).map(
+				(s) => s.value,
+			),
 	};
 
 	function setField(patch: TagPatch) {

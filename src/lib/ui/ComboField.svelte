@@ -28,9 +28,19 @@
 			readonly chosen: readonly string[];
 			readonly onadd: (typed: string) => void;
 		};
+		/** Free text (an address), never shown as a raw tag value. */
+		plain?: boolean;
 	}
 
-	let { field, value, context, locked, onchange, adding }: Props = $props();
+	let {
+		field,
+		value,
+		context,
+		locked,
+		onchange,
+		adding,
+		plain = false,
+	}: Props = $props();
 
 	const id = $derived(fieldInputId(field));
 	const listId = $derived(`${id}-list`);
@@ -227,7 +237,7 @@
 		}
 	}
 
-	const tagText = (v: string) => `${field.key}=${v}`;
+	const tagText = (v: string) => (field.key ? `${field.key}=${v}` : v);
 </script>
 
 <div bind:this={wrap} class="relative">
@@ -255,7 +265,8 @@
 		{readonly}
 		class={cn(
 			"flex h-8 w-full min-w-0 rounded-lg border border-input bg-transparent py-1 pr-8 pl-2.5 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30",
-			value !== undefined &&
+			!plain &&
+				value !== undefined &&
 				!field.options.some((o) => o.value === value) &&
 				"font-mono text-xs",
 		)}
@@ -323,7 +334,7 @@
 					onclick={() => choose(suggestion)}
 					onkeydown={() => {}}
 				>
-					<span class={[suggestion.raw && "font-mono text-xs"]}
+					<span class={[!plain && suggestion.raw && "font-mono text-xs"]}
 						>{suggestion.label}</span
 					>
 					{#if suggestion.description}

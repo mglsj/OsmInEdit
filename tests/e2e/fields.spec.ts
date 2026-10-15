@@ -1,4 +1,13 @@
-import { expect, selectRoom, serveTaginfo, tagsBox, test } from "./fixtures.ts";
+import {
+	expect,
+	LAT,
+	LON,
+	room,
+	selectRoom,
+	serveTaginfo,
+	tagsBox,
+	test,
+} from "./fixtures.ts";
 
 test("a combo suggests the values used elsewhere, and stores what is typed as a tag value", async ({
 	page,
@@ -164,5 +173,144 @@ test("a radio sets its key to the choice", async ({ page }) => {
 	await expect(access.getByRole("radio", { name: "Limited" })).toBeChecked();
 	await expect(await tagsBox(page)).toHaveValue(
 		"amenity=cafe\nindoor=room\nlevel=0\nwheelchair=limited",
+	);
+});
+
+test("a number field keeps to its bounds, and steps with − and +", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page);
+	const height = editor.getByRole("textbox", { name: "Height (Meters)" });
+	await editor
+		.getByRole("button", { name: "Increase Height (Meters)" })
+		.click();
+	await expect(height).toHaveValue("1");
+	await expect(await tagsBox(page)).toHaveValue(
+		"height=1\nindoor=room\nlevel=0",
+	);
+
+	await height.fill("-3");
+	await height.press("Enter");
+	await expect(height).toHaveValue("0");
+	await height.fill("2.50");
+	await height.press("Enter");
+	await editor
+		.getByRole("button", { name: "Increase Height (Meters)" })
+		.click();
+	await expect(await tagsBox(page)).toHaveValue(
+		"height=3.50\nindoor=room\nlevel=0",
+	);
+});
+
+test("a website gets a link, and a survey date a button for today", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page, {
+		amenity: "cafe",
+		website: "https://example.org/menu",
+		check_date: "2020-01-01",
+	});
+	await expect(
+		editor.getByRole("link", { name: "Visit website" }),
+	).toHaveAttribute("href", "https://example.org/menu");
+
+	await editor.getByRole("button", { name: "Set to today" }).click();
+	const today = await page.evaluate(() => {
+		const now = new Date();
+		return new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
+			.toISOString()
+			.slice(0, 10);
+	});
+	await expect(
+		editor.getByRole("textbox", { name: "Last Checked Date" }),
+	).toHaveValue(today);
+	await expect(
+		editor.getByRole("button", { name: "Set to today" }),
+	).toBeHidden();
+});
+
+test("a long value shows how much of OSM's 255 characters it uses", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page, { description: "x" });
+	const description = editor.getByRole("textbox", { name: "Description" });
+	await description.fill("a".repeat(230));
+	await expect(editor).toContainText("230/255");
+	await description.fill("a".repeat(300));
+	await description.blur();
+	// OSM keeps 255 characters.
+	await expect(description).toHaveValue("a".repeat(255));
+});
+
+test("names in other languages are added, moved to another language and removed", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page, { name: "Library" });
+	await editor.getByRole("button", { name: "Add a translation" }).click();
+	const language = editor.getByRole("combobox", { name: "Language" });
+	await language.fill("French");
+	await language.press("Enter");
+	// Once its language is chosen, the row is named after it.
+	const french = editor.getByRole("textbox", { name: "Name in French" });
+	await french.fill("Bibliothèque");
+	await french.press("Enter");
+	await expect(await tagsBox(page)).toHaveValue(
+		"indoor=room\nlevel=0\nname=Library\nname:fr=Bibliothèque",
+	);
+
+	// Typed in the language's own name.
+	await language.fill("Deutsch");
+	await language.press("Enter");
+	await expect(await tagsBox(page)).toHaveValue(
+		"indoor=room\nlevel=0\nname=Library\nname:de=Bibliothèque",
+	);
+	await editor.getByRole("button", { name: "Remove the German name" }).click();
+	await expect(await tagsBox(page)).toHaveValue(
+		"indoor=room\nlevel=0\nname=Library",
+	);
+});
+
+test("an address suggests the streets around", async ({ page }) => {
+	const street = [
+		{ type: "node", id: 1, lon: LON - 0.001, lat: LAT + 0.0005, version: 1 },
+		{ type: "node", id: 2, lon: LON + 0.001, lat: LAT + 0.0005, version: 1 },
+		{
+			type: "way",
+			id: 3,
+			version: 1,
+			nodes: [1, 2],
+			tags: { highway: "residential", name: "Rue de la Gare" },
+		},
+	];
+	const editor = await selectRoom(page, { amenity: "cafe" }, [
+		...street,
+		...room(100, LON, LAT, "0"),
+	]);
+	const streetInput = editor.getByRole("combobox", { name: "Street" });
+	await streetInput.click();
+	await streetInput.press("ArrowDown");
+	await page.getByRole("option", { name: "Rue de la Gare" }).click();
+	await editor.getByRole("combobox", { name: "Address" }).fill("12");
+	await editor.getByRole("combobox", { name: "Address" }).press("Enter");
+	await expect(await tagsBox(page)).toHaveValue(
+		"addr:housenumber=12\naddr:street=Rue de la Gare\namenity=cafe\nindoor=room\nlevel=0",
+	);
+});
+
+test("access has a row per kind of traffic, with the access implied", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page, {
+		indoor: undefined as unknown as string,
+		highway: "pedestrian",
+		area: "yes",
+	});
+	const all = editor.getByRole("combobox", { name: /All$/ });
+	await expect(all).toHaveAttribute("placeholder", "yes");
+	const foot = editor.getByRole("combobox", { name: "Foot" });
+	await foot.fill("private");
+	await foot.press("Enter");
+	await expect(await tagsBox(page)).toHaveValue(
+		"area=yes\nfoot=private\nhighway=pedestrian\nlevel=0",
 	);
 });

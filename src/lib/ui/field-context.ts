@@ -15,6 +15,8 @@ export interface FieldContext {
 	readonly deprecated: (key: string) => readonly string[];
 	/** A field of the schema by id (a structure's type field). */
 	readonly field?: (id: string) => Field | undefined;
+	/** Values for a part of an address (`addr:street`) from the data around the feature. */
+	readonly nearby?: (key: string, part: string) => readonly string[];
 }
 
 export type { TagPatch } from "#lib/presets/combo.ts";

@@ -87,7 +87,11 @@ for (const file of ["plan.png", "plan.jpg", "plan.webp"]) {
 		page,
 	}) => {
 		await importPlan(page, file);
-		await expect(planRows(page)).toContainText(["plan 400 × 300 px"]);
+		// Imported in Edit: the name is in the row's name field.
+		await expect(planRows(page)).toContainText(["400 × 300 px"]);
+		await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(
+			"plan",
+		);
 		await expectPlanDrawn(page, RED, 4 / 3);
 	});
 }
@@ -111,7 +115,10 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 	await dialog.getByRole("button", { name: "Import" }).click();
 
 	// 4 × 3 inches at 150 DPI.
-	await expect(planRows(page)).toContainText(["plan, page 2 600 × 450 px"]);
+	await expect(planRows(page)).toContainText(["600 × 450 px"]);
+	await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(
+		"plan, page 2",
+	);
 	await expectPlanDrawn(page, [0, 0, 255], 4 / 3);
 });
 
@@ -941,4 +948,59 @@ test("shows the map's grab cursor over plans when none is in Edit", async ({
 	await page.getByRole("button", { name: "Close" }).click();
 	await page.mouse.move(plan.cx + 20, plan.cy);
 	await expect(canvas).toHaveCSS("cursor", "grab");
+});
+
+test("switches the map to a plan's level when its row is clicked", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const level = page.getByRole("textbox", { name: "Level", exact: true });
+	await level.fill("2");
+	await level.press("Enter");
+	await page.getByRole("button", { name: "Done" }).click();
+	await expect(page.getByTestId("level")).toHaveText("0");
+
+	await planRows(page).getByRole("button", { name: /^plan/ }).click();
+	await expect(page.getByTestId("level")).toHaveText("2");
+	const { cx, cy } = await initialLayout(page, 300);
+	await expectPixel(page, cx, cy, blend(RED, 0.5, BACKGROUND));
+
+	// On several levels: stays on one of them, else goes to the lowest.
+	await page.getByRole("button", { name: "Edit plan" }).click();
+	await level.fill("1-3");
+	await level.press("Enter");
+	await page.getByRole("button", { name: "Done" }).click();
+	await planRows(page).getByRole("button", { name: /^plan/ }).click();
+	await expect(page.getByTestId("level")).toHaveText("2");
+	await page.getByRole("button", { name: "Level down" }).click();
+	await page.getByRole("button", { name: "Level down" }).click();
+	await expect(page.getByTestId("level")).toHaveText("0");
+	await planRows(page).getByRole("button", { name: /^plan/ }).click();
+	await expect(page.getByTestId("level")).toHaveText("1");
+});
+
+test("renames a plan in its row: Done keeps the name, Cancel drops it", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const name = page.getByRole("textbox", { name: "Name" });
+	await name.fill("Ground floor");
+	await name.press("Enter");
+	await expect(
+		page.getByRole("region", { name: "Editing Ground floor" }),
+	).toBeVisible();
+	await untilSaved(page, () =>
+		page.getByRole("button", { name: "Done" }).click(),
+	);
+	await expect(planRows(page)).toContainText(["Ground floor"]);
+
+	await page.getByRole("button", { name: "Edit Ground floor" }).click();
+	await name.fill("Basement");
+	await name.press("Enter");
+	await page.getByRole("button", { name: "Cancel" }).click();
+	await expect(planRows(page)).toContainText(["Ground floor"]);
+
+	await page.reload();
+	await page.getByRole("button", { name: "Floor plans" }).click();
+	await expect(planRows(page)).toContainText(["Ground floor"]);
 });

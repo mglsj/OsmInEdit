@@ -39,6 +39,7 @@
 		parsePlanFile,
 		transformOf,
 	} from "#lib/floorplans/plan-file.ts";
+	import { levelToShow } from "#lib/levels/levels.ts";
 	import {
 		BUILDINGS,
 		type FloorPlans,
@@ -59,6 +60,8 @@
 		toolMessage?: string | null;
 		/** Leaves floor plan mode. */
 		onclose: () => void;
+		/** Switches the map to a level, to show a plan on it. */
+		onshowlevel: (level: number) => void;
 	}
 
 	let {
@@ -67,6 +70,7 @@
 		level,
 		toolMessage = null,
 		onclose,
+		onshowlevel,
 	}: Props = $props();
 
 	let distance = $state<number>();
@@ -160,6 +164,11 @@
 			event.preventDefault();
 			void moveRow(key, row + 1);
 		}
+	}
+
+	/** Shows the plan's level: its own, or with several, the shown one if it is among them. */
+	function showLevelOf(plan: { readonly level: string | null }) {
+		onshowlevel(levelToShow(plan.level, level));
 	}
 
 	/** The plan whose colour palette is open. */
@@ -508,19 +517,52 @@
 									{@render swatch(plan.color)}
 								</span>
 							{/if}
-							<img
-								{@attach thumbnail(plan.image.blob)}
-								alt=""
-								class="size-10 shrink-0 rounded-sm border object-contain"
-							>
-							<span class="min-w-0 flex-1 text-sm">
-								<span class="block truncate font-medium">{plan.name}</span>
-								{" "}
-								<span class="block text-xs text-muted-foreground"
-									>{plan.image.width}
-									× {plan.image.height} px</span
+							{#if editing}
+								<img
+									{@attach thumbnail(plan.image.blob)}
+									alt=""
+									class="size-10 shrink-0 rounded-sm border object-contain"
 								>
-							</span>
+								<span class="min-w-0 flex-1 text-sm">
+									<Input
+										aria-label="Name"
+										autocomplete="off"
+										class="h-7 px-2 font-medium"
+										value={plan.name}
+										onchange={(event) => {
+											const name = event.currentTarget.value.trim();
+											if (name) floorplans.update(plan.id, { name });
+											else event.currentTarget.value = plan.name;
+										}}
+									/>
+									<span class="mt-0.5 block text-xs text-muted-foreground"
+										>{plan.image.width}
+										× {plan.image.height} px</span
+									>
+								</span>
+							{:else}
+								<!-- The row itself: shows the plan's level. -->
+								<button
+									type="button"
+									class="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+									title="Show this plan's level"
+									onclick={() => showLevelOf(plan)}
+								>
+									<img
+										{@attach thumbnail(plan.image.blob)}
+										alt=""
+										class="size-10 shrink-0 rounded-sm border object-contain"
+									>
+									<span class="min-w-0 flex-1 text-sm">
+										<span class="block truncate font-medium">{plan.name}</span>
+										{" "}
+										<span class="block text-xs text-muted-foreground"
+											>{plan.image.width}
+											× {plan.image.height} px</span
+										>
+									</span>
+								</button>
+							{/if}
 							<Button
 								variant="ghost"
 								size="icon-sm"
@@ -540,7 +582,10 @@
 									size="icon-sm"
 									aria-label={`Edit ${plan.name}`}
 									onclick={() =>
-										floorplans.whenSaved(() => floorplans.edit(plan.id))}
+										floorplans.whenSaved(() => {
+											floorplans.edit(plan.id);
+											showLevelOf(plan);
+										})}
 								>
 									<Pencil />
 								</Button>

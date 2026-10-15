@@ -397,6 +397,7 @@
 				{level}
 				{toolMessage}
 				onclose={closePlanMode}
+				onshowlevel={(shown) => (level = shown)}
 			/>
 		{/if}
 	</div>

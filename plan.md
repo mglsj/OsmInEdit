@@ -262,7 +262,7 @@ Moved out of P4, to P5 with the editing tools: snapping control points to buildi
 (edges, not only nodes), numeric offset inputs, and assigning plans to a building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
 with fallback fonts (P6).
 
-### P4.1: Floor plan layers, edit sessions, align fixes — in progress (slices 1–4 done)
+### P4.1: Floor plan layers, edit sessions, align fixes — in progress (slices 1–5 done)
 
 Feedback from placing real plans (Vindhya Bhavan, 4-page A3 PDF). Decisions agreed with the
 user are marked ✔; the rest follow from them.
@@ -293,7 +293,7 @@ user are marked ✔; the rest follow from them.
   (`floorplans/colors.ts`.)
 - Clicking a row switches the map to the plan's level: a plan on every level leaves the level
   alone; with several levels (`0;1`, `0-2`) the map stays if the shown level is one of them,
-  else goes to the lowest ✔.
+  else goes to the lowest ✔. (`levels.levelToShow`; pressing Edit does the same.)
 - The header button that leaves floor plan mode becomes Close ✔.
 
 **Edit sessions**
@@ -329,7 +329,7 @@ user are marked ✔; the rest follow from them.
    order; `FloorPlanLayers` order as MapLibre layer ids bottom to top (pure helper). E2E:
    two overlapping plans, reordered with the grip and with Alt+↑, show the top one's colour
    where they overlap; buildings moved under a plan are hidden by it; buildings hidden.
-5. Rows. Unit: `levelToShow(planLevel, shown)` with `null`, `0`, `0;1`, `0-2`, `-1`. E2E:
+5. ✅ Rows. Unit: `levelToShow(planLevel, shown)` with `null`, `0`, `0;1`, `0-2`, `-1`. E2E:
    clicking a row switches the level; inline rename saved by Done, dropped by Cancel.
 6. PDF pages. E2E: importing pages 1 and 2 of `plan.pdf` adds two plans on levels 0 and 1.
 

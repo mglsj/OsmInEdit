@@ -13,6 +13,8 @@ export interface FieldContext {
 	) => Promise<readonly SuggestedValue[]>;
 	/** Values the schema deprecates for a key. */
 	readonly deprecated: (key: string) => readonly string[];
+	/** A field of the schema by id (a structure's type field). */
+	readonly field?: (id: string) => Field | undefined;
 }
 
 export type { TagPatch } from "#lib/presets/combo.ts";

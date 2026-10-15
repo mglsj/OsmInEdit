@@ -21,6 +21,15 @@ test("a combo suggests the values used elsewhere, and stores what is typed as a 
 	);
 });
 
+test("↓ opens a combo's list even before taginfo answers", async ({ page }) => {
+	await serveTaginfo(page, { room: ["office", "kitchen"] }, [], 1000);
+	const editor = await selectRoom(page);
+	const type = editor.getByRole("combobox", { name: "Type" });
+	await type.focus();
+	await type.press("ArrowDown");
+	await expect(page.getByRole("option", { name: "kitchen" })).toBeVisible();
+});
+
 test("a combo completes what is typed, as in iD", async ({ page }) => {
 	await serveTaginfo(page, { room: ["office", "kitchen"] });
 	const editor = await selectRoom(page);
@@ -121,5 +130,39 @@ test("a multi-key field switches each key between yes and no", async ({
 	await expect(editor.getByRole("checkbox", { name: "Coins" })).toBeChecked();
 	await expect(await tagsBox(page)).toHaveValue(
 		"amenity=cafe\nindoor=room\nlevel=0\npayment:cash=no\npayment:coins=yes",
+	);
+});
+
+test("a check cycles through unknown, yes and no", async ({ page }) => {
+	const editor = await selectRoom(page, { amenity: "cafe" });
+	const seating = editor.getByRole("checkbox", { name: "Outdoor Seating" });
+	await expect(seating).toHaveAttribute("aria-checked", "mixed");
+	await expect(editor).toContainText("Unknown");
+
+	await seating.click();
+	await expect(seating).toHaveAttribute("aria-checked", "true");
+	await expect(await tagsBox(page)).toHaveValue(
+		"amenity=cafe\nindoor=room\nlevel=0\noutdoor_seating=yes",
+	);
+	await seating.click();
+	await expect(seating).toHaveAttribute("aria-checked", "false");
+	await expect(await tagsBox(page)).toHaveValue(
+		"amenity=cafe\nindoor=room\nlevel=0\noutdoor_seating=no",
+	);
+	await seating.click();
+	await expect(seating).toHaveAttribute("aria-checked", "mixed");
+	await expect(await tagsBox(page)).toHaveValue(
+		"amenity=cafe\nindoor=room\nlevel=0",
+	);
+});
+
+test("a radio sets its key to the choice", async ({ page }) => {
+	const editor = await selectRoom(page, { amenity: "cafe", wheelchair: "yes" });
+	const access = editor.getByRole("radiogroup", { name: "Wheelchair Access" });
+	await expect(access.getByRole("radio", { name: "Yes" })).toBeChecked();
+	await access.getByRole("radio", { name: "Limited" }).click();
+	await expect(access.getByRole("radio", { name: "Limited" })).toBeChecked();
+	await expect(await tagsBox(page)).toHaveValue(
+		"amenity=cafe\nindoor=room\nlevel=0\nwheelchair=limited",
 	);
 });

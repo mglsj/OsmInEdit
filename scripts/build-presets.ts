@@ -114,6 +114,14 @@ for (const [id, field] of Object.entries(fields)) {
 	if (field.universal) usedFields.add(id);
 }
 
+// A structure radio shows the type field of the structure chosen (bridge → `bridge`) and `layer`.
+for (const id of [...usedFields]) {
+	if (fields[id]?.type !== "structureRadio") continue;
+	for (const key of [...((fields[id].keys as string[]) ?? []), "layer"]) {
+		if (fields[key]) usedFields.add(key);
+	}
+}
+
 /**
  * Fields for some countries only (US GNIS ID, French SIRET…) are left out: IndoorID doesn't
  * know which country a feature is in. Fields for the whole world but a few countries stay.

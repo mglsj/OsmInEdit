@@ -358,7 +358,9 @@ Measured on a synthetic area of 10,000 rooms (50,000 entities, 3.2 MB of GeoJSON
 Slices: (1) ✅ preset data: field properties, universal fields, categories
 (`generated/categories.json`); (2) ✅ layout and sections (`ui/InspectorSection.svelte`); (3) ✅ feature type
 list (`ui/PresetList.svelte`, `presets/recent.ts`); (4) ✅ Fields
-section (`presets/field-list.ts`, `ui/FieldsSection.svelte`); (5) combo, chip and choice fields with taginfo; (6) text, number, date, colour,
+section (`presets/field-list.ts`, `ui/FieldsSection.svelte`); (5) ✅ combo, chip and choice fields with taginfo (`api/taginfo.ts`,
+`presets/combo.ts`, `presets/choice.ts`, `ui/ComboField.svelte`, `ui/ChipsField.svelte`,
+`ui/CheckField.svelte`, `ui/RadioField.svelte`); (6) text, number, date, colour,
 localized, address and access fields; (7) Wikidata, Wikipedia and wiki references; (8) tag
 table; (9) relations and members; (10) one undo step per field edit. Hover preview and
 multi-selection come with P5.3.
@@ -396,12 +398,16 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
   `reference`, `default`) and the preset categories.
 - **Field types**: all of iD's except road ones ✔ (no turn-restriction editor, maxspeed or
   height units, oneway reversal or cycleway sides; those keys get plain combo/text fields):
-  - combo, typeCombo, networkCombo: dropdown of preset options (with titles) and taginfo
+  - combo, typeCombo, networkCombo ✔: dropdown of preset options (with titles) and taginfo
     values, snake_case and lowercase unless the field says otherwise, read-only when
-    `customValues` is false;
-  - multiCombo, manyCombo (chips for `key:*=yes`), semiCombo (chips for a `;` list,
-    reorderable);
-  - check, defaultCheck (tri-state unset/yes/no; unset/yes), radio, structureRadio;
+    `customValues` is false (Backspace takes the value off); iD's inline completion and
+    fuzzy filter; a value is only written once the user changed something;
+  - multiCombo, manyCombo (chips for `key:*=yes`, with a yes/no box), semiCombo (chips for
+    a `;` list, reorderable by dragging or Alt+←/→) ✔; typed values are split at `;` and
+    commas before being spelled (iD snake_cases first: "Thai, pizza" gave `_pizza`);
+  - check, defaultCheck (tri-state unset/yes/no; unset/yes), radio, structureRadio (with
+    its type field and layer; a layer already on the right side of the ground stays) ✔;
+    onewayCheck is a plain check (no reversal);
   - text, tel, email, url and identifier (with link), schedule, date (picker), colour
     (swatch and picker), number and integer (− / + steppers, min/max), textarea (255
     characters);

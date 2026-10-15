@@ -171,11 +171,13 @@
 	}
 
 	function move(step: number) {
-		if (!input || suggestions.length === 0) return;
+		if (!input) return;
+		// Opened even before taginfo answers: the list shows once it does (as iD).
 		if (!open) {
 			if (!input.value) query = "";
 			open = true;
 		}
+		if (suggestions.length === 0) return;
 		const current =
 			highlighted >= 0
 				? highlighted

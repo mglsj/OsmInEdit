@@ -3,10 +3,10 @@
 	import type { Snippet } from "svelte";
 	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import { Input } from "#lib/components/shadcn/input/index.ts";
-	import * as NativeSelect from "#lib/components/shadcn/native-select/index.ts";
 	import { Textarea } from "#lib/components/shadcn/textarea/index.ts";
 	import type { Tags } from "#lib/osm/tags.ts";
 	import type { Field as PresetField } from "#lib/presets/presets.ts";
+	import CheckField from "#lib/ui/CheckField.svelte";
 	import ChipsField from "#lib/ui/ChipsField.svelte";
 	import ComboField from "#lib/ui/ComboField.svelte";
 	import {
@@ -14,6 +14,7 @@
 		fieldInputId,
 		type TagPatch,
 	} from "#lib/ui/field-context.ts";
+	import RadioField from "#lib/ui/RadioField.svelte";
 
 	interface Props {
 		field: PresetField;
@@ -43,9 +44,11 @@
 		switch (field.type) {
 			case "check":
 			case "defaultCheck":
+			case "onewayCheck":
 				return "check";
 			case "radio":
-				return "select";
+			case "structureRadio":
+				return "radio";
 			case "combo":
 			case "typeCombo":
 			case "networkCombo":
@@ -55,6 +58,7 @@
 			case "manyCombo":
 				return "chips";
 			case "access":
+				// iD's access grid comes with slice 6; until then, a text with its options.
 				return "combo";
 			case "textarea":
 				return "textarea";
@@ -62,11 +66,7 @@
 				return "text";
 		}
 	});
-	const checkOptions = [
-		{ value: "yes", label: "Yes" },
-		{ value: "no", label: "No" },
-	];
-	const options = $derived(kind === "check" ? checkOptions : field.options);
+	const options = $derived(field.options);
 
 	/** Sets the field's key to what was typed or chosen; nothing removes it. */
 	function set(next: string | undefined) {
@@ -94,24 +94,10 @@
 		<ComboField {field} {value} {context} {locked} onchange={set} />
 	{:else if kind === "chips"}
 		<ChipsField {field} {tags} {context} {locked} {onchange} />
-	{:else if kind === "check" || kind === "select"}
-		<NativeSelect.Root
-			{id}
-			class="w-full"
-			disabled={locked}
-			value={value ?? ""}
-			onchange={commit}
-		>
-			<NativeSelect.Option value=""></NativeSelect.Option>
-			{#each options as option (option.value)}
-				<NativeSelect.Option value={option.value}
-					>{option.label}</NativeSelect.Option
-				>
-			{/each}
-			{#if value && !options.some((o) => o.value === value)}
-				<NativeSelect.Option {value}>{value}</NativeSelect.Option>
-			{/if}
-		</NativeSelect.Root>
+	{:else if kind === "check"}
+		<CheckField {field} {value} {locked} onchange={set} />
+	{:else if kind === "radio"}
+		<RadioField {field} {tags} {context} {locked} {onchange} />
 	{:else if kind === "textarea"}
 		<Textarea
 			{id}

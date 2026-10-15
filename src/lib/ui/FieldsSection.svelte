@@ -78,6 +78,7 @@
 			};
 		},
 		deprecated: (key) => editor.deprecatedValues.get(key) ?? [],
+		field: (id) => editor.presets?.field(id),
 	};
 
 	function setField(patch: TagPatch) {

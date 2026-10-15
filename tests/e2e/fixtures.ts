@@ -181,27 +181,33 @@ export async function serveTaginfo(
 	page: Page,
 	values: Record<string, string[]>,
 	keys: string[] = [],
+	/** Milliseconds before each answer. */
+	delay = 0,
 ) {
 	const requests: URL[] = [];
-	await page.route("https://taginfo.openstreetmap.org/api/4/**", (route) => {
-		const url = new URL(route.request().url());
-		requests.push(url);
-		const query = url.searchParams.get("query") ?? "";
-		if (url.pathname.endsWith("/key/values")) {
-			const key = url.searchParams.get("key") ?? "";
-			const data = (values[key] ?? [])
-				.filter((value) => value.includes(query))
-				.map((value) => ({ value, count: 1000 }));
+	await page.route(
+		"https://taginfo.openstreetmap.org/api/4/**",
+		async (route) => {
+			if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+			const url = new URL(route.request().url());
+			requests.push(url);
+			const query = url.searchParams.get("query") ?? "";
+			if (url.pathname.endsWith("/key/values")) {
+				const key = url.searchParams.get("key") ?? "";
+				const data = (values[key] ?? [])
+					.filter((value) => value.includes(query))
+					.map((value) => ({ value, count: 1000 }));
+				return route.fulfill({ json: { data } });
+			}
+			if (url.searchParams.get("sortname") === "values_all") {
+				return route.fulfill({ json: { data: [] } });
+			}
+			const data = keys
+				.filter((key) => key.startsWith(query))
+				.map((key) => ({ key }));
 			return route.fulfill({ json: { data } });
-		}
-		if (url.searchParams.get("sortname") === "values_all") {
-			return route.fulfill({ json: { data: [] } });
-		}
-		const data = keys
-			.filter((key) => key.startsWith(query))
-			.map((key) => ({ key }));
-		return route.fulfill({ json: { data } });
-	});
+		},
+	);
 	return requests;
 }
 

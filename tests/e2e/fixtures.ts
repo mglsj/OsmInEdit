@@ -173,6 +173,38 @@ export async function serveOsm(page: Page, elements: Element[]) {
 	return requests;
 }
 
+/**
+ * Serves taginfo: the values of each key in `values` (used 1000 times each, so none is rare),
+ * the keys under a prefix from `keys`, and no popular keys. Returns the URLs asked for.
+ */
+export async function serveTaginfo(
+	page: Page,
+	values: Record<string, string[]>,
+	keys: string[] = [],
+) {
+	const requests: URL[] = [];
+	await page.route("https://taginfo.openstreetmap.org/api/4/**", (route) => {
+		const url = new URL(route.request().url());
+		requests.push(url);
+		const query = url.searchParams.get("query") ?? "";
+		if (url.pathname.endsWith("/key/values")) {
+			const key = url.searchParams.get("key") ?? "";
+			const data = (values[key] ?? [])
+				.filter((value) => value.includes(query))
+				.map((value) => ({ value, count: 1000 }));
+			return route.fulfill({ json: { data } });
+		}
+		if (url.searchParams.get("sortname") === "values_all") {
+			return route.fulfill({ json: { data: [] } });
+		}
+		const data = keys
+			.filter((key) => key.startsWith(query))
+			.map((key) => ({ key }));
+		return route.fulfill({ json: { data } });
+	});
+	return requests;
+}
+
 /** Opens the map on a room and selects it. */
 export async function selectRoom(
 	page: Page,

@@ -7,6 +7,7 @@
 	import type { Place } from "#lib/api/nominatim.ts";
 	import type { Bbox } from "#lib/api/osm-api.ts";
 	import { OsmApi } from "#lib/api/osm-api.ts";
+	import { Taginfo } from "#lib/api/taginfo.ts";
 	import { Badge } from "#lib/components/shadcn/badge/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import * as ButtonGroup from "#lib/components/shadcn/button-group/index.ts";
@@ -75,7 +76,11 @@
 			getToken: () => session.token(),
 			createdBy: `IndoorID ${__GIT_HASH__}`,
 		});
-		const editor = new Editor({ api, minZoom: config.data_min_zoom });
+		const editor = new Editor({
+			api,
+			minZoom: config.data_min_zoom,
+			taginfo: new Taginfo({ baseUrl: config.taginfo_url }),
+		});
 		return { session, editor, websiteUrl };
 	});
 	let saving = $state(false);

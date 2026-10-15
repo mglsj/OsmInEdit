@@ -5,22 +5,39 @@
 	import { Input } from "#lib/components/shadcn/input/index.ts";
 	import * as NativeSelect from "#lib/components/shadcn/native-select/index.ts";
 	import { Textarea } from "#lib/components/shadcn/textarea/index.ts";
+	import type { Tags } from "#lib/osm/tags.ts";
 	import type { Field as PresetField } from "#lib/presets/presets.ts";
+	import ComboField from "#lib/ui/ComboField.svelte";
+	import {
+		type FieldContext,
+		fieldInputId,
+		type TagPatch,
+	} from "#lib/ui/field-context.ts";
 
 	interface Props {
 		field: PresetField;
-		value: string | undefined;
-		/** Called with the new value when the user commits it; "" removes the tag. */
-		onchange: (value: string) => void;
+		/** The feature's tags. */
+		tags: Tags;
+		context: FieldContext;
+		/** Called with the tags to change once the user commits a value. */
+		onchange: (patch: TagPatch) => void;
 		/** Shown, not editable (the name of a feature linked to Wikidata). */
 		locked?: boolean;
 		/** Buttons at the end of the label row (remove, revert). */
 		actions?: Snippet;
 	}
 
-	let { field, value, onchange, locked = false, actions }: Props = $props();
+	let {
+		field,
+		tags,
+		context,
+		onchange,
+		locked = false,
+		actions,
+	}: Props = $props();
 
-	const id = $derived(`field-${field.id.replaceAll(/[^\w-]/g, "-")}`);
+	const id = $derived(fieldInputId(field));
+	const value = $derived(field.key ? tags[field.key] : undefined);
 	const kind = $derived.by(() => {
 		switch (field.type) {
 			case "check":
@@ -30,6 +47,8 @@
 				return "select";
 			case "combo":
 			case "typeCombo":
+			case "networkCombo":
+				return "single-combo";
 			case "semiCombo":
 			case "multiCombo":
 			case "manyCombo":
@@ -47,9 +66,13 @@
 	];
 	const options = $derived(kind === "check" ? checkOptions : field.options);
 
+	/** Sets the field's key to what was typed or chosen; nothing removes it. */
+	function set(next: string | undefined) {
+		if (field.key) onchange({ [field.key]: next || undefined });
+	}
+
 	function commit(event: Event) {
-		const target = event.currentTarget as HTMLInputElement;
-		onchange(target.value.trim());
+		set((event.currentTarget as HTMLInputElement).value.trim());
 	}
 </script>
 
@@ -65,7 +88,9 @@
 		{/if}
 		<span class="ml-auto flex items-center">{@render actions?.()}</span>
 	</div>
-	{#if kind === "check" || kind === "select"}
+	{#if kind === "single-combo"}
+		<ComboField {field} {value} {context} {locked} onchange={set} />
+	{:else if kind === "check" || kind === "select"}
 		<NativeSelect.Root
 			{id}
 			class="w-full"

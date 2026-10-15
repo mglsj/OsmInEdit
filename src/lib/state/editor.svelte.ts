@@ -5,6 +5,7 @@
 import { changeTags } from "#lib/actions/change-tags.ts";
 import { MapLoader } from "#lib/api/map-loader.ts";
 import type { Bbox, OsmApi } from "#lib/api/osm-api.ts";
+import type { Taginfo } from "#lib/api/taginfo.ts";
 import { buildFeatures } from "#lib/map/features.ts";
 import { AVAILABLE_ICONS } from "#lib/map/style/icons.ts";
 import { entityGeometry } from "#lib/osm/area.ts";
@@ -34,6 +35,8 @@ export interface EditorOptions {
 	readonly api: Pick<OsmApi, "loadMap" | "upload">;
 	/** Data is only downloaded from this zoom level. */
 	readonly minZoom: number;
+	/** Value suggestions for combo fields; none without it. */
+	readonly taginfo?: Pick<Taginfo, "values" | "multikeys">;
 }
 
 export class Editor {
@@ -58,14 +61,29 @@ export class Editor {
 		this.selectedId ? (this.graph.entity(this.selectedId) ?? null) : null,
 	);
 
+	/** Values the schema deprecates, by key: combo fields never suggest them. */
+	readonly deprecatedValues = $derived.by(() => {
+		const byKey = new Map<string, string[]>();
+		for (const { old } of this.upgrades) {
+			const entries = Object.entries(old);
+			if (entries.length !== 1) continue;
+			const [key, value] = entries[0] as [string, string];
+			if (value === "*") continue;
+			byKey.set(key, [...(byKey.get(key) ?? []), value]);
+		}
+		return byKey;
+	});
+	readonly taginfo: EditorOptions["taginfo"];
+
 	#history = new History(this.graph);
 	readonly #api: EditorOptions["api"];
 	readonly #loader: MapLoader;
 	readonly #minZoom: number;
 	#loads = 0;
 
-	constructor({ api, minZoom }: EditorOptions) {
+	constructor({ api, minZoom, taginfo }: EditorOptions) {
 		this.#minZoom = minZoom;
+		this.taginfo = taginfo;
 		this.#api = api;
 		void loadPresetIndex().then((index) => (this.presets = index));
 		void loadSchemaUpgrades().then(

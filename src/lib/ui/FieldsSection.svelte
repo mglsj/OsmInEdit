@@ -21,6 +21,11 @@
 	import type { Preset, Field as PresetField } from "#lib/presets/presets.ts";
 	import type { Editor } from "#lib/state/editor.svelte.ts";
 	import FieldInput from "#lib/ui/FieldInput.svelte";
+	import {
+		type FieldContext,
+		fieldInputId,
+		type TagPatch,
+	} from "#lib/ui/field-context.ts";
 
 	interface Props {
 		editor: Editor;
@@ -61,11 +66,26 @@
 			.join(", ") + (list.addable.length > 3 ? "…" : ""),
 	);
 
-	function setField(field: PresetField, value: string) {
-		if (!field.key) return;
+	const context: FieldContext = {
+		get suggest() {
+			const taginfo = editor.taginfo;
+			if (!taginfo) return undefined;
+			return (field: PresetField, query: string) => {
+				const geometry = editor.geometryOf(entity);
+				return field.type === "multiCombo"
+					? taginfo.multikeys({ query: `${field.key}${query}`, geometry })
+					: taginfo.values({ key: field.key ?? "", query, geometry });
+			};
+		},
+		deprecated: (key) => editor.deprecatedValues.get(key) ?? [],
+	};
+
+	function setField(patch: TagPatch) {
 		const tags: Record<string, string> = { ...entity.tags };
-		if (value) tags[field.key] = value;
-		else delete tags[field.key];
+		for (const [key, value] of Object.entries(patch)) {
+			if (value === undefined) delete tags[key];
+			else tags[key] = value;
+		}
 		editor.setTags(entity.id, tags);
 	}
 
@@ -81,12 +101,8 @@
 		const tags = addField(field, entity.tags);
 		if (tags !== entity.tags) editor.setTags(entity.id, tags);
 		await tick();
-		document.getElementById(inputId(field))?.focus();
+		document.getElementById(fieldInputId(field))?.focus();
 	}
-
-	/** The id FieldInput gives its input. */
-	const inputId = (field: PresetField) =>
-		`field-${field.id.replaceAll(/[^\w-]/g, "-")}`;
 </script>
 
 <Field.Group class="gap-4">
@@ -95,8 +111,9 @@
 		<FieldInput
 			{field}
 			{locked}
-			value={field.key ? entity.tags[field.key] : undefined}
-			onchange={(value) => setField(field, value)}
+			tags={entity.tags}
+			{context}
+			onchange={setField}
 		>
 			{#snippet actions()}
 				{#if !locked && isModified(field, downloaded, entity.tags)}

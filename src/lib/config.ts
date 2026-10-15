@@ -16,6 +16,8 @@ export interface EditorConfig {
 	imagery_index_url?: string;
 	/** Nominatim instance for place search; the OSMF one by default. */
 	nominatim_url?: string;
+	/** Taginfo API for value suggestions; the OSMF one by default. */
+	taginfo_url?: string;
 	/** URL of a MapLibre style used as the default basemap. */
 	basemap_style: string;
 	/** Minimal zoom at which OSM data is downloaded. */

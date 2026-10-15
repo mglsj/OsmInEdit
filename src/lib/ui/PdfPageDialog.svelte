@@ -83,7 +83,7 @@
 		<form class="flex flex-col gap-6" onsubmit={submit}>
 			<Field.Set>
 				<Field.Legend class="sr-only">Page</Field.Legend>
-				<ScrollArea class="max-h-72">
+				<ScrollArea class="*:data-[slot=scroll-area-viewport]:max-h-72">
 					<RadioGroup.Root bind:value={page} class="grid grid-cols-3 gap-3">
 						{#each pages as n (n)}
 							{@const id = `pdf-page-${n}`}

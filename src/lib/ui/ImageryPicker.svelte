@@ -64,7 +64,7 @@
 		</Popover.Trigger>
 	</div>
 	<Popover.Content align="start" class="p-0">
-		<ScrollArea class="max-h-72">
+		<ScrollArea class="*:data-[slot=scroll-area-viewport]:max-h-72">
 			<Field.Set class="p-3">
 				<Field.Legend class="sr-only">Background imagery</Field.Legend>
 				<RadioGroup.Root value={selected ?? MAP} onValueChange={choose}>

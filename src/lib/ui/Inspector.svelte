@@ -90,7 +90,7 @@
 
 <aside
 	aria-label="Feature editor"
-	class="flex h-full w-88 max-w-[calc(100vw-2rem)] flex-col border-l bg-background shadow-lg"
+	class="flex h-full w-88 max-w-[calc(100vw-2rem)] flex-col border-r bg-background shadow-lg"
 >
 	<header class="flex items-center gap-2 px-4 py-3">
 		{@render presetIcon(preset, 24)}

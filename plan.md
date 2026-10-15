@@ -197,7 +197,8 @@ incline/conveying arrows → P5.
   and terms.
 - Inspector: click to select (feature-state highlight), preset name and icon, "Change type"
   picker (defaults per geometry, search), fields (text, combo with suggestions, check, select,
-  textarea), raw tag text, undo/redo buttons and shortcuts, Escape to deselect.
+  textarea), raw tag text, undo/redo buttons and shortcuts, Escape to deselect. It opens in
+  the side panel on the left, which the floor plan editor uses in floor plan mode.
 - Validation (`validation/validate.ts`) on the selected feature and on every edited one before
   upload, with one-click fixes: outdated tags (`room=stairs|elevator`, `buildingpart=*`, and the
   schema's `deprecated.json`, e.g. `diaper` → `changing_table`); vertical features using
@@ -249,7 +250,8 @@ test instead of a shared `mock-osm.ts`.
   reload. Each plan has a level and shows only on it.
 - Floor plan mode (as in 1.x): the map shows only building outlines (any area with a
   `building` tag, malls included); OSM selection, the feature editor and the edit toolbar are
-  off. As in photo editors, the selected plan is dragged to move it, by a corner handle to
+  off, and the floor plans are edited in the left side panel. New plans go in the middle of
+  the map beside that panel. As in photo editors, the selected plan is dragged to move it, by a corner handle to
   resize it around the opposite corner (`georef.dragCorner`: Shift stretches, Ctrl/⌘ resizes
   from the centre, Alt moves that corner alone, giving a perspective), and by the handle above
   it to turn it around its centre (`georef.dragRotation`, Shift for 15° steps). Drags are

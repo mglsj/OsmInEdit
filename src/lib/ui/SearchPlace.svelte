@@ -95,7 +95,7 @@
 		<div
 			class="overflow-hidden rounded-md bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10"
 		>
-			<ScrollArea class="max-h-80">
+			<ScrollArea class="*:data-[slot=scroll-area-viewport]:max-h-80">
 				<ul aria-label="Search results" class="flex flex-col p-1">
 					{#each results as place (place.description)}
 						<li>

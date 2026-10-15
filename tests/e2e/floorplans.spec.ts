@@ -29,19 +29,35 @@ async function importPlan(page: Page, file: string) {
 }
 
 /**
- * Checks that a plan of the given aspect ratio is drawn centred on the map, 60% of its height
- * tall, in `color` at opacity 0.5: pixels just inside its edges are blended, just outside not.
+ * Where new plans go: the middle of the map beside the floor plan side panel. `mx` is the map's
+ * own centre, (LON, LAT); `scale`, the screen pixels a plan pixel `planHeight` tall takes.
+ */
+async function initialLayout(page: Page, planHeight: number) {
+	const box = await mapLocator(page).boundingBox();
+	const panel = await page
+		.getByRole("complementary", { name: "Floor plan editor" })
+		.boundingBox();
+	if (!box || !panel) throw new Error("No map or floor plan panel");
+	const left = panel.x + panel.width;
+	return {
+		cx: (left + box.x + box.width) / 2,
+		cy: box.y + box.height / 2,
+		mx: box.x + box.width / 2,
+		scale: (box.height * 0.6) / planHeight,
+	};
+}
+
+/**
+ * Checks that a plan of the given aspect ratio is drawn where new plans go, 60% of the map tall,
+ * in `color` at opacity 0.5: pixels just inside its edges are blended, just outside not.
  */
 async function expectPlanDrawn(
 	page: Page,
 	color: [number, number, number],
 	aspect: number,
 ) {
-	const box = await mapLocator(page).boundingBox();
-	if (!box) throw new Error("No map");
-	const cx = box.x + box.width / 2;
-	const cy = box.y + box.height / 2;
-	const height = box.height * 0.6;
+	const { cx, cy, scale } = await initialLayout(page, 1);
+	const height = scale;
 	const width = height * aspect;
 	const plan = blend(color, 0.5, BACKGROUND);
 
@@ -114,8 +130,16 @@ test("floor plan mode shows only building outlines, without selection", async ({
 	}).toPass({ timeout: 10_000 });
 	const editing = await pixelAt(page, centre.x, centre.y);
 
+	// The feature editor and the floor plan editor take turns in the side panel, on the left.
+	const editorBox = await editor.boundingBox();
+	expect(editorBox?.x).toBe(box.x);
 	await page.getByRole("button", { name: "Floor plans" }).click();
 	await expect(editor).toBeHidden();
+	const planEditor = page.getByRole("complementary", {
+		name: "Floor plan editor",
+	});
+	await expect(planEditor).toBeVisible();
+	expect((await planEditor.boundingBox())?.x).toBe(box.x);
 	await expect(page.getByRole("group", { name: "Edit history" })).toBeHidden();
 	// Rooms and fills are hidden; the building's outline is drawn ~298 px right of the centre.
 	await expectPixel(page, centre.x, centre.y, BACKGROUND);
@@ -125,6 +149,7 @@ test("floor plan mode shows only building outlines, without selection", async ({
 	await expect(editor).toBeHidden();
 
 	await page.getByRole("button", { name: "Done" }).click();
+	await expect(planEditor).toBeHidden();
 	await expect(page.getByRole("group", { name: "Edit history" })).toBeVisible();
 	await expectPixel(page, centre.x, centre.y, editing);
 });
@@ -132,17 +157,12 @@ test("floor plan mode shows only building outlines, without selection", async ({
 test("draws a plan over the rooms already mapped", async ({ page }) => {
 	await serveOsm(page, room(100, LON, LAT, "0"));
 	await importPlan(page, "plan.png");
+	// The plan, ~540 px wide, covers the room in the map's centre.
+	const { mx, cy } = await initialLayout(page, 300);
 	await page.getByRole("button", { name: "Done" }).click();
-	const box = await mapLocator(page).boundingBox();
-	if (!box) throw new Error("No map");
 	// Back to editing: the room's fill (80% opaque), then the plan at half opacity on top.
 	const roomFill = blend([0xd6, 0xd1, 0xc7], 0.8, BACKGROUND);
-	await expectPixel(
-		page,
-		box.x + box.width / 2,
-		box.y + box.height / 2,
-		blend(RED, 0.5, roomFill),
-	);
+	await expectPixel(page, mx, cy, blend(RED, 0.5, roomFill));
 });
 
 test("keeps the fine lines of a large plan when it is shown small", async ({
@@ -151,12 +171,10 @@ test("keeps the fine lines of a large plan when it is shown small", async ({
 	// 4000 × 3000 px of alternating 1 px black and white columns, shown ~400 px tall: each
 	// screen pixel covers several columns and should average them to mid-grey everywhere.
 	await importPlan(page, "stripes.png");
-	const box = await mapLocator(page).boundingBox();
-	if (!box) throw new Error("No map");
+	const { cx, cy } = await initialLayout(page, 3000);
 	const grey = blend([128, 128, 128], 0.5, BACKGROUND);
-	const cy = box.y + box.height / 2;
 	for (const dx of [-150, -97, -41, 0, 23, 71, 133]) {
-		await expectPixel(page, box.x + box.width / 2 + dx, cy, grey, 12);
+		await expectPixel(page, cx + dx, cy, grey, 12);
 	}
 });
 
@@ -172,17 +190,6 @@ function lngLatAt(dx: number, dy: number): [number, number] {
 		dy;
 	const lat = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / WORLD)));
 	return [(x / WORLD) * 360 - 180, (lat * 180) / Math.PI];
-}
-
-/** Map centre on screen, and how many screen pixels a plan pixel takes once imported. */
-async function initialLayout(page: Page, planHeight: number) {
-	const box = await mapLocator(page).boundingBox();
-	if (!box) throw new Error("No map");
-	return {
-		cx: box.x + box.width / 2,
-		cy: box.y + box.height / 2,
-		scale: (box.height * 0.6) / planHeight,
-	};
 }
 
 /** Checks a rectangle of plan colour, 3 px inside and outside each edge (screen pixels). */
@@ -225,25 +232,25 @@ test("aligns a plan with control points snapped to OSM nodes", async ({
 	await serveOsm(page, nodesAt(A, B));
 	await importPlan(page, "plan.png");
 	await expect(page.getByTestId("load-status")).toBeHidden();
-	const { cx, cy, scale } = await initialLayout(page, 300);
+	const { cx, cy, mx, scale } = await initialLayout(page, 300);
 
 	await page.getByRole("radio", { name: "Control points" }).click();
 	// Plan pixel (20, 20), where the plan was imported; then 7 px (5, −5) off node A. Both clicks
 	// miss their node the same way, so without snapping the whole plan would shift.
 	await page.mouse.click(cx + (20 - 200) * scale, cy + (20 - 150) * scale);
-	await page.mouse.click(cx + A[0] + 5, cy + A[1] - 5);
+	await page.mouse.click(mx + A[0] + 5, cy + A[1] - 5);
 	// One point moves the plan: pixel (380, 280) is now 360 × 260 plan pixels from A.
-	await page.mouse.click(cx + A[0] + 360 * scale, cy + A[1] + 260 * scale);
-	await page.mouse.click(cx + B[0] + 5, cy + B[1] - 5);
+	await page.mouse.click(mx + A[0] + 360 * scale, cy + A[1] + 260 * scale);
+	await page.mouse.click(mx + B[0] + 5, cy + B[1] - 5);
 
 	await expect(
 		page.getByRole("list", { name: "Control points" }).getByRole("listitem"),
 	).toHaveCount(2);
 	// Snapped exactly: one screen pixel per plan pixel, pixel (20, 20) on A.
 	await expectPlanAt(page, {
-		left: cx + A[0] - 20,
+		left: mx + A[0] - 20,
 		top: cy + A[1] - 20,
-		right: cx + A[0] + 380,
+		right: mx + A[0] + 380,
 		bottom: cy + A[1] + 280,
 	});
 });
@@ -256,16 +263,16 @@ test("shows how far each control point is from where the plan puts it", async ({
 	await serveOsm(page, nodesAt(A, B));
 	await importPlan(page, "plan.png");
 	await expect(page.getByTestId("load-status")).toBeHidden();
-	const { cx, cy, scale } = await initialLayout(page, 300);
+	const { cx, cy, mx, scale } = await initialLayout(page, 300);
 
 	await page.getByRole("radio", { name: "Control points" }).click();
 	await page.mouse.click(cx + (20 - 200) * scale, cy + (20 - 150) * scale);
-	await page.mouse.click(cx + A[0], cy + A[1]);
-	await page.mouse.click(cx + A[0] + 360 * scale, cy + A[1] + 260 * scale);
-	await page.mouse.click(cx + B[0], cy + B[1]);
+	await page.mouse.click(mx + A[0], cy + A[1]);
+	await page.mouse.click(mx + A[0] + 360 * scale, cy + A[1] + 260 * scale);
+	await page.mouse.click(mx + B[0], cy + B[1]);
 	// Plan pixel (380, 20), now on screen at A + (360, 0), measured 20 px (~2 m) too far south.
-	await page.mouse.click(cx + A[0] + 360, cy + A[1]);
-	await page.mouse.click(cx + A[0] + 360, cy + A[1] + 20);
+	await page.mouse.click(mx + A[0] + 360, cy + A[1]);
+	await page.mouse.click(mx + A[0] + 360, cy + A[1] + 20);
 
 	const points = page
 		.getByRole("list", { name: "Control points" })
@@ -336,9 +343,8 @@ test("keeps plans, where they were placed, after a reload", async ({
 
 test("shows a plan only on its level", async ({ page }) => {
 	await importPlan(page, "plan.png");
-	const box = await mapLocator(page).boundingBox();
-	if (!box) throw new Error("No map");
-	const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	const { cx, cy } = await initialLayout(page, 300);
+	const centre = { x: cx, y: cy };
 	const plan = blend(RED, 0.5, BACKGROUND);
 	// Imported on the level shown, 0.
 	await expect(

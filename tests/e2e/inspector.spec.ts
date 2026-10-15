@@ -67,7 +67,8 @@ test("Escape and clicking elsewhere close the editor", async ({ page }) => {
 	await selectRoom(page);
 	const box = await page.getByTestId("map").boundingBox();
 	if (!box) throw new Error("No map");
-	await page.mouse.click(box.x + 20, box.y + box.height - 60);
+	// An empty spot, clear of the editor on the left.
+	await page.mouse.click(box.x + box.width - 80, box.y + box.height - 60);
 	await expect(editor).toBeHidden();
 });
 

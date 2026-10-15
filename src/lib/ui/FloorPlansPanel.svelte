@@ -3,7 +3,6 @@
 	import Download from "@lucide/svelte/icons/download";
 	import Eye from "@lucide/svelte/icons/eye";
 	import EyeOff from "@lucide/svelte/icons/eye-off";
-	import FileImage from "@lucide/svelte/icons/file-image";
 	import Info from "@lucide/svelte/icons/info";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import Upload from "@lucide/svelte/icons/upload";
@@ -11,9 +10,10 @@
 	import type { Attachment } from "svelte/attachments";
 	import * as Alert from "#lib/components/shadcn/alert/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
-	import * as Card from "#lib/components/shadcn/card/index.ts";
 	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import { Input } from "#lib/components/shadcn/input/index.ts";
+	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
+	import { Separator } from "#lib/components/shadcn/separator/index.ts";
 	import { Slider } from "#lib/components/shadcn/slider/index.ts";
 	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
 	import * as ToggleGroup from "#lib/components/shadcn/toggle-group/index.ts";
@@ -48,9 +48,8 @@
 		level: number;
 		/** Why the alignment tool ignored the last map click, if it did. */
 		toolMessage?: string | null;
-		/** Whether floor plan mode is on: the panel shows, and the map only has buildings. */
-		open: boolean;
-		onopenchange: (open: boolean) => void;
+		/** Leaves floor plan mode. */
+		onclose: () => void;
 	}
 
 	let {
@@ -58,8 +57,7 @@
 		getView,
 		level,
 		toolMessage = null,
-		open,
-		onopenchange,
+		onclose,
 	}: Props = $props();
 
 	let distance = $state<number>();
@@ -234,33 +232,23 @@
 	}
 </script>
 
-<div class="rounded-md bg-background shadow-md">
-	<Button
-		variant="outline"
-		aria-pressed={open}
-		onclick={() => onopenchange(!open)}
-	>
-		<FileImage data-icon="inline-start" />
-		Floor plans
-	</Button>
-</div>
-
-{#if open}
-	<Card.Root
-		size="sm"
-		class="max-h-[calc(100dvh-16rem)] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto shadow-md"
-	>
-		<Card.Header>
-			<Card.Title>Floor plans</Card.Title>
-			<Card.Description>
+<aside
+	aria-label="Floor plan editor"
+	class="flex h-full w-88 max-w-[calc(100vw-2rem)] flex-col border-r bg-background shadow-lg"
+>
+	<header class="flex items-start gap-2 px-4 py-3">
+		<div class="min-w-0 flex-1">
+			<h2 class="text-base font-semibold">Floor plans</h2>
+			<p class="text-sm text-muted-foreground">
 				Place plans against the building outlines. Import PNG, JPEG, WebP, SVG
 				or PDF.
-			</Card.Description>
-			<Card.Action>
-				<Button size="sm" onclick={() => onopenchange(false)}>Done</Button>
-			</Card.Action>
-		</Card.Header>
-		<Card.Content class="flex flex-col gap-4">
+			</p>
+		</div>
+		<Button size="sm" onclick={onclose}>Done</Button>
+	</header>
+	<Separator />
+	<ScrollArea class="min-h-0 flex-1">
+		<div class="flex flex-col gap-4 p-4">
 			<div class="flex gap-2">
 				<Button size="sm" disabled={busy} onclick={() => input?.click()}>
 					{#if busy}
@@ -508,9 +496,9 @@
 					</form>
 				{/if}
 			{/if}
-		</Card.Content>
-	</Card.Root>
-{/if}
+		</div>
+	</ScrollArea>
+</aside>
 
 {#if pdf}
 	<PdfPageDialog

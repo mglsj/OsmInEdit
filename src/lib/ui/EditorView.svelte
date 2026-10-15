@@ -1,4 +1,5 @@
 <script lang="ts">
+	import FileImage from "@lucide/svelte/icons/file-image";
 	import Redo2 from "@lucide/svelte/icons/redo-2";
 	import Undo2 from "@lucide/svelte/icons/undo-2";
 	import Upload from "@lucide/svelte/icons/upload";
@@ -94,6 +95,8 @@
 		decode: importRaster,
 	});
 	void floorplans.restore();
+	/** Where map controls start when the side panel (22rem wide) is open. */
+	const SIDE_PANEL_OFFSET = "23rem";
 	/** Snapping distance for alignment clicks, in screen pixels. */
 	const SNAP_DISTANCE = 8;
 
@@ -195,10 +198,18 @@
 		return best;
 	}
 
-	/** The visible map, for placing new floor plans. */
+	/** The side panel, which covers the left of the map while it is open. */
+	let sidePanel = $state<HTMLElement>();
+
+	/** The part of the map the side panel leaves visible, for placing new floor plans. */
 	function planView(): PlanView | undefined {
 		if (!map) return undefined;
-		const { lng, lat } = map.getCenter();
+		const { clientWidth, clientHeight } = map.getContainer();
+		const left = sidePanel?.offsetWidth ?? 0;
+		const { lng, lat } = map.unproject([
+			(left + clientWidth) / 2,
+			clientHeight / 2,
+		]);
 		const bounds = map.getBounds();
 		return {
 			center: [lng, lat],
@@ -336,7 +347,27 @@
 	onmove={onMove}
 />
 
-<div class="absolute top-4 left-4 z-20 flex flex-col items-start gap-2">
+<!-- The side panel edits the selected feature, or the floor plans in floor plan mode. -->
+{#if editor.selected || planMode}
+	<div bind:this={sidePanel} class="absolute inset-y-0 left-0 z-30">
+		{#if editor.selected}
+			<Inspector {editor} entity={editor.selected} />
+		{:else}
+			<FloorPlansPanel
+				{floorplans}
+				getView={planView}
+				{level}
+				{toolMessage}
+				onclose={() => setPlanMode(false)}
+			/>
+		{/if}
+	</div>
+{/if}
+
+<div
+	class="absolute top-4 z-20 flex flex-col items-start gap-2"
+	style:left={editor.selected || planMode ? SIDE_PANEL_OFFSET : "1rem"}
+>
 	<SearchPlace
 		getView={visibleArea}
 		onselect={showPlace}
@@ -381,28 +412,21 @@
 		onselect={showBackground}
 		indexUrl={config.imagery_index_url}
 	/>
-	<FloorPlansPanel
-		{floorplans}
-		getView={planView}
-		{level}
-		{toolMessage}
-		open={planMode}
-		onopenchange={setPlanMode}
-	/>
+	<div class="rounded-md bg-background shadow-md">
+		<Button
+			variant={planMode ? "secondary" : "outline"}
+			aria-pressed={planMode}
+			onclick={() => setPlanMode(!planMode)}
+		>
+			<FileImage data-icon="inline-start" />
+			Floor plans
+		</Button>
+	</div>
 </div>
 
-<div
-	class="absolute top-4 z-10"
-	style:right={editor.selected ? "23rem" : "1rem"}
->
+<div class="absolute top-4 right-4 z-10">
 	<LevelControl bind:level levels={editor.features.levels} />
 </div>
-
-{#if editor.selected}
-	<div class="absolute inset-y-0 right-0 z-30">
-		<Inspector {editor} entity={editor.selected} />
-	</div>
-{/if}
 
 {#if statusMessage}
 	<p

@@ -14,6 +14,8 @@
 	import { tick } from "svelte";
 	import type { Attachment } from "svelte/attachments";
 	import * as Alert from "#lib/components/shadcn/alert/index.ts";
+	import * as AlertDialog from "#lib/components/shadcn/alert-dialog/index.ts";
+	import { Badge } from "#lib/components/shadcn/badge/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import { Input } from "#lib/components/shadcn/input/index.ts";
@@ -42,6 +44,7 @@
 	import { levelToShow } from "#lib/levels/levels.ts";
 	import {
 		BUILDINGS,
+		type FloorPlan,
 		type FloorPlans,
 		type LayerEntry,
 		MIN_POINTS,
@@ -170,6 +173,9 @@
 	function showLevelOf(plan: { readonly level: string | null }) {
 		onshowlevel(levelToShow(plan.level, level));
 	}
+
+	/** The plan whose removal is being confirmed. */
+	let removing = $state.raw<FloorPlan | null>(null);
 
 	/** The plan whose colour palette is open. */
 	let choosingColor = $state<string | null>(null);
@@ -454,6 +460,20 @@
 							<GripVertical class="size-4" />
 						</button>
 						{#if row.kind === "buildings"}
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Show buildings"
+								aria-pressed={floorplans.buildings.visible}
+								onclick={() =>
+									floorplans.setBuildingsVisible(!floorplans.buildings.visible)}
+							>
+								{#if floorplans.buildings.visible}
+									<Eye />
+								{:else}
+									<EyeOff />
+								{/if}
+							</Button>
 							<span class="flex size-6 shrink-0 items-center justify-center">
 								{@render swatch(BUILDING_COLOR)}
 							</span>
@@ -469,22 +489,21 @@
 									>Outlines from OpenStreetMap</span
 								>
 							</span>
+						{:else}
+							{@const plan = row.plan}
 							<Button
 								variant="ghost"
 								size="icon-sm"
-								aria-label="Show buildings"
-								aria-pressed={floorplans.buildings.visible}
-								onclick={() =>
-									floorplans.setBuildingsVisible(!floorplans.buildings.visible)}
+								aria-label={`Show ${plan.name}`}
+								aria-pressed={plan.visible}
+								onclick={() => floorplans.setVisible(plan.id, !plan.visible)}
 							>
-								{#if floorplans.buildings.visible}
+								{#if plan.visible}
 									<Eye />
 								{:else}
 									<EyeOff />
 								{/if}
 							</Button>
-						{:else}
-							{@const plan = row.plan}
 							{#if editing}
 								<Popover.Root
 									open={choosingColor === plan.id}
@@ -544,7 +563,8 @@
 											else event.currentTarget.value = plan.name;
 										}}
 									/>
-									<span class="mt-0.5 block text-xs text-muted-foreground"
+									<span
+										class="mt-0.5 block truncate text-xs text-muted-foreground"
 										>{plan.image.width}
 										× {plan.image.height} px</span
 									>
@@ -565,26 +585,21 @@
 									<span class="min-w-0 flex-1 text-sm">
 										<span class="block truncate font-medium">{plan.name}</span>
 										{" "}
-										<span class="block text-xs text-muted-foreground"
+										<span class="block truncate text-xs text-muted-foreground"
 											>{plan.image.width}
 											× {plan.image.height} px</span
 										>
 									</span>
 								</button>
 							{/if}
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								aria-label={`Show ${plan.name}`}
-								aria-pressed={plan.visible}
-								onclick={() => floorplans.setVisible(plan.id, !plan.visible)}
+							<Badge
+								variant="outline"
+								class="shrink-0 tabular-nums"
+								title="Level the plan shows on"
 							>
-								{#if plan.visible}
-									<Eye />
-								{:else}
-									<EyeOff />
-								{/if}
-							</Button>
+								<span class="sr-only">Level</span>
+								{plan.level ?? "All"}
+							</Badge>
 							{#if !editing}
 								<Button
 									variant="ghost"
@@ -602,8 +617,9 @@
 							<Button
 								variant="ghost"
 								size="icon-sm"
+								class="text-destructive hover:text-destructive"
 								aria-label={`Remove ${plan.name}`}
-								onclick={() => floorplans.remove(plan.id)}
+								onclick={() => (removing = plan)}
 							>
 								<Trash2 />
 							</Button>
@@ -804,6 +820,35 @@
 		</div>
 	</ScrollArea>
 </aside>
+
+<AlertDialog.Root
+	open={removing !== null}
+	onOpenChange={(open) => {
+		if (!open) removing = null;
+	}}
+>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Remove {removing?.name}?</AlertDialog.Title>
+			<AlertDialog.Description>
+				The plan and its image are deleted from this browser. Export the plans
+				first to keep a copy.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action
+				variant="destructive"
+				onclick={() => {
+					if (removing) floorplans.remove(removing.id);
+					removing = null;
+				}}
+			>
+				Remove
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
 
 {#if pdf}
 	<PdfPageDialog

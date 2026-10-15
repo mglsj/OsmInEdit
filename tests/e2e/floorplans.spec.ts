@@ -1031,3 +1031,33 @@ test("renames a plan in its row: Done keeps the name, Cancel drops it", async ({
 	await page.getByRole("button", { name: "Floor plans" }).click();
 	await expect(planRows(page)).toContainText(["Ground floor"]);
 });
+
+test("shows each plan's level in its row", async ({ page }) => {
+	await importPlan(page, "plan.png");
+	await page.getByRole("button", { name: "Done" }).click();
+	await expect(planRows(page).first()).toContainText("Level 0");
+
+	await page.getByRole("button", { name: "Edit plan" }).click();
+	const level = page.getByRole("textbox", { name: "Level", exact: true });
+	await level.fill("");
+	await level.press("Enter");
+	await expect(planRows(page).first()).toContainText("Level All");
+});
+
+test("asks before removing a plan", async ({ page }) => {
+	await importPlan(page, "plan.png");
+	await page.getByRole("button", { name: "Done" }).click();
+	const { cx, cy } = await initialLayout(page, 300);
+	const question = page.getByRole("alertdialog", { name: "Remove plan?" });
+
+	await page.getByRole("button", { name: "Remove plan" }).click();
+	await question.getByRole("button", { name: "Cancel" }).click();
+	await expect(question).toBeHidden();
+	await expect(planRows(page)).toHaveCount(1);
+	await expectPixel(page, cx, cy, blend(RED, 0.5, BACKGROUND));
+
+	await page.getByRole("button", { name: "Remove plan" }).click();
+	await question.getByRole("button", { name: "Remove" }).click();
+	await expect(planRows(page)).toHaveCount(0);
+	await expectPixel(page, cx, cy, BACKGROUND);
+});

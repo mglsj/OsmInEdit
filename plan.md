@@ -24,6 +24,7 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P2    | Fast read-only viewer                      | Done        |
 | P3    | Presets, validation, upload                | Done        |
 | P4    | Floor plans                                | Done        |
+| P4.1  | Floor plan layers, edit sessions, align UX | Planned     |
 | P5    | Geometry editing                           | Next        |
 | P6    | Parity and polish                          | Not started |
 
@@ -260,6 +261,69 @@ test instead of a shared `mock-osm.ts`.
 Moved out of P4, to P5 with the editing tools: snapping control points to building outlines
 (edges, not only nodes), numeric offset inputs, and assigning plans to a building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
 with fallback fonts (P6).
+
+### P4.1: Floor plan layers, edit sessions, align fixes — planned
+
+Feedback from placing real plans (Vindhya Bhavan, 4-page A3 PDF). Decisions agreed with the
+user are marked ✔; the rest follow from them.
+
+**Align tool fixes**
+- Crosshair cursor whenever an align tool is on. Today the class on the canvas container loses
+  to MapLibre's `.maplibregl-canvas-container.maplibregl-interactive { cursor: grab }`, so the
+  cursor is set on the canvas element itself, like plan dragging does.
+- Measure: a dashed line follows the pointer from the first spot; after the second click it
+  stays, solid, between the two spots until Scale or a new measure ✔.
+- A Clear button removes every control point of the plan in Edit and any half-done measure or
+  rotate pick; the plan stays where the points put it ✔.
+
+**Layer list** (the sidebar list becomes the floor plan mode's layer stack)
+- Top of the list is drawn on top. Rows reorder by a drag grip, or Alt+↑/↓ with the grip
+  focused ✔; the map's layer order follows.
+- A Buildings entry (the pink outlines) sits in the same list: it can be moved between plans
+  and hidden. Its position and visibility are saved in the browser and in exported plan
+  files ✔.
+- Each plan has its own colour, picked at random among a palette of distinct colours not yet
+  used (never the buildings' pink). In floor plan mode every visible plan has a frame in its
+  colour; the plan in Edit also gets its handles in it. The row shows a swatch; in Edit the
+  swatch opens the palette to change it ✔. Plans saved before P4.1 get a colour on restore.
+- Clicking a row switches the map to the plan's level: a plan on every level leaves the level
+  alone; with several levels (`0;1`, `0-2`) the map stays if the shown level is one of them,
+  else goes to the lowest ✔.
+- The header button that leaves floor plan mode becomes Close ✔.
+
+**Edit sessions**
+- Plans are locked by default: they can't be dragged, aligned or changed. A row's Edit
+  unlocks that plan (one at a time); name, level, opacity, colour, placement and the align
+  tools all need Edit ✔. A locked row only has show/hide, Edit and delete.
+- In Edit, changes are previewed but not saved; Done saves them, Cancel restores the plan as
+  it was when Edit was pressed ✔. Leaving floor plan mode, or pressing another plan's Edit,
+  with unsaved changes asks to save or discard. Reordering and show/hide are not part of a
+  session: they save at once.
+- The name is edited inline: in Edit, the row's name becomes a text field ✔.
+
+**PDF import**
+- The page picker takes several pages. Each becomes its own plan, `file, page N`, all in the
+  same spot; the first chosen page goes on the level shown, each next one a level up ✔.
+
+**Slices and test seams** (to agree before writing tests)
+1. Align fixes. Unit: `toolFeatures` with a pointer position (dashed segment, then solid
+   pair); `FloorPlans.clearPoints()`. E2E: canvas cursor is `crosshair` for each tool; the
+   measure line's colour is drawn under the pointer; Clear empties the control point list and
+   leaves the plan in place.
+2. Colours. Unit: `floorplans/colors.ts` `pickColor(used, random)` (unused first, never pink);
+   plan file round trip with `color`, and files without one. E2E: a plan's frame is drawn in
+   its colour, a second plan in another.
+3. Edit sessions. Unit (`FloorPlans` with a fake store): `edit`, `done`, `cancel`; nothing is
+   stored before Done; Cancel restores transform, control points and settings; one plan in
+   Edit at a time. E2E: a locked plan doesn't move when dragged; Edit → drag → Cancel puts it
+   back; Edit → drag → Done survives a reload; Close with unsaved changes asks.
+4. Layer list. Unit: `FloorPlans.move(id, index)` including the buildings entry, saved
+   order; `FloorPlanLayers` order as MapLibre layer ids bottom to top (pure helper). E2E:
+   two overlapping plans, reordered with the grip and with Alt+↑, show the top one's colour
+   where they overlap; buildings moved under a plan are hidden by it; buildings hidden.
+5. Rows. Unit: `levelToShow(planLevel, shown)` with `null`, `0`, `0;1`, `0-2`, `-1`. E2E:
+   clicking a row switches the level; inline rename saved by Done, dropped by Cancel.
+6. PDF pages. E2E: importing pages 1 and 2 of `plan.pdf` adds two plans on levels 0 and 1.
 
 ### P5: Geometry editing
 

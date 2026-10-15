@@ -114,11 +114,30 @@ for (const [id, field] of Object.entries(fields)) {
 	if (field.universal) usedFields.add(id);
 }
 
+/**
+ * Fields for some countries only (US GNIS ID, French SIRET…) are left out: IndoorID doesn't
+ * know which country a feature is in. Fields for the whole world but a few countries stay.
+ */
+function isForSomeCountries(field: Json | undefined): boolean {
+	const include = (field?.locationSet as { include?: unknown[] } | undefined)
+		?.include;
+	return (
+		include !== undefined &&
+		!include.includes("Planet") &&
+		!include.includes("001")
+	);
+}
+
 const outFields: Json[] = [];
+let countryFields = 0;
 for (const id of usedFields) {
 	const field = fields[id];
 	const local = (overlay.fields as Record<string, Json>)[id];
 	if (!field && !local) continue;
+	if (isForSomeCountries(field)) {
+		countryFields++;
+		continue;
+	}
 	const text = strings.fields[id] ?? {};
 	const labels = (text.options ?? {}) as Record<
 		string,
@@ -217,5 +236,5 @@ for (const icon of new Set(
 }
 
 console.log(
-	`Presets: ${outPresets.length} presets, ${outFields.length} fields, ${outCategories.length} categories, ${icons} icons → src/lib/presets/generated/`,
+	`Presets: ${outPresets.length} presets, ${outFields.length} fields (${countryFields} for some countries left out), ${outCategories.length} categories, ${icons} icons → src/lib/presets/generated/`,
 );

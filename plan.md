@@ -357,8 +357,8 @@ Measured on a synthetic area of 10,000 rooms (50,000 entities, 3.2 MB of GeoJSON
 
 Slices: (1) ✅ preset data: field properties, universal fields, categories
 (`generated/categories.json`); (2) ✅ layout and sections (`ui/InspectorSection.svelte`); (3) ✅ feature type
-list (`ui/PresetList.svelte`, `presets/recent.ts`); (4) Fields
-section; (5) combo, chip and choice fields with taginfo; (6) text, number, date, colour,
+list (`ui/PresetList.svelte`, `presets/recent.ts`); (4) ✅ Fields
+section (`presets/field-list.ts`, `ui/FieldsSection.svelte`); (5) combo, chip and choice fields with taginfo; (6) text, number, date, colour,
 localized, address and access fields; (7) Wikidata, Wikipedia and wiki references; (8) tag
 table; (9) relations and members; (10) one undo step per field edit. Hover preview and
 multi-selection come with P5.3.
@@ -383,11 +383,14 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
   indoor rules on top ✔: `level`, `level:ref` and `repeat_on` always stay, and a feature
   with a level or `indoor=*` gets no `building` default (iD's `building_area_yes` would make
   a room turned cafe a building).
-- **Fields**: the preset's fields, then its `moreFields` and the universal fields once they
-  have a value; an "Add field" combobox for the others (matching labels, terms and keys).
+- **Fields** ✔: the preset's fields, then its `moreFields` and the universal fields (by
+  label) once they have a value or were added; an "Add field" combobox for the others,
+  universal ones last (matching labels, terms and keys; adding sets the field's default).
   Each label row: remove (clears all the field's keys), revert (back to the downloaded
-  values), ⓘ, and a lock for locked fields. `prerequisiteTag` hides a field until its
-  condition is met. The preset build keeps the field properties this needs (option titles
+  values), ⓘ (with slice 7), and a lock for locked fields (iD's rule: `name` when the
+  feature has `wikidata` or `name:etymology:wikidata`). `prerequisiteTag` hides a field
+  until its condition is met, unless it has a value. Fields for some countries only (US
+  GNIS, French SIRET…) are left out of the build: IndoorID doesn't know the country. The preset build keeps the field properties this needs (option titles
   and descriptions, `universal`, `prerequisiteTag`, `snakeCase`, `caseSensitive`,
   `customValues`, `increment`, `minValue`/`maxValue`, `urlFormat`/`pattern`, `terms`,
   `reference`, `default`) and the preset categories.

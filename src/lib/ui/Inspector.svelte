@@ -13,9 +13,9 @@
 	import { Textarea } from "#lib/components/shadcn/textarea/index.ts";
 	import { isNewId, osmId } from "#lib/osm/entity.ts";
 	import { formatTagText, parseTagText } from "#lib/osm/tag-text.ts";
-	import type { Preset, Field as PresetField } from "#lib/presets/presets.ts";
+	import type { Preset } from "#lib/presets/presets.ts";
 	import type { Editor } from "#lib/state/editor.svelte.ts";
-	import FieldInput from "#lib/ui/FieldInput.svelte";
+	import FieldsSection from "#lib/ui/FieldsSection.svelte";
 	import InspectorSection from "#lib/ui/InspectorSection.svelte";
 	import PresetIcon from "#lib/ui/PresetIcon.svelte";
 	import PresetList from "#lib/ui/PresetList.svelte";
@@ -42,18 +42,6 @@
 
 	const geometry = $derived(editor.geometryOf(entity));
 	const preset = $derived(editor.presetOf(entity));
-	const fields = $derived(
-		preset && editor.presets
-			? editor.presets.fieldsOf(preset)
-			: { fields: [], moreFields: [] },
-	);
-	/** Optional fields are shown once they have a value. */
-	const shownFields = $derived([
-		...fields.fields,
-		...fields.moreFields.filter(
-			(f) => f.key !== undefined && entity.tags[f.key] !== undefined,
-		),
-	]);
 	const issues = $derived(editor.issuesOf(entity.id));
 	/** Features without a matching type show their tags, the only way to edit them. */
 	const isFallback = $derived(
@@ -66,14 +54,6 @@
 	const lastEdited = $derived(
 		entity.timestamp ? timeAgo(entity.timestamp) : null,
 	);
-	function setField(field: PresetField, value: string) {
-		if (!field.key) return;
-		const tags: Record<string, string> = { ...entity.tags };
-		if (value) tags[field.key] = value;
-		else delete tags[field.key];
-		editor.setTags(entity.id, tags);
-	}
-
 	function choose(next: Preset) {
 		editor.setPreset(entity, next);
 		choosing = false;
@@ -169,15 +149,11 @@
 			{/if}
 
 			<InspectorSection id="fields" title="Fields">
-				<Field.Group class="gap-4">
-					{#each shownFields as field (field.id)}
-						<FieldInput
-							{field}
-							value={field.key ? entity.tags[field.key] : undefined}
-							onchange={(value) => setField(field, value)}
-						/>
-					{/each}
-				</Field.Group>
+				{#if preset}
+					{#key preset.id}
+						<FieldsSection {editor} {entity} {preset} />
+					{/key}
+				{/if}
 			</InspectorSection>
 
 			<InspectorSection

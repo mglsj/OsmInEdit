@@ -40,9 +40,10 @@ runs the same commands.
   `ui/EditorView.svelte` (the page's map UI). Change how a tag is drawn in `classify.ts`, not
   in the style.
 - Tagging and upload (P3): `presets/` (`PresetIndex`: match, search, fields, `listFor`,
-  `changePreset`; `RecentPresets`),
+  `changePreset`; `RecentPresets`; `field-list.ts`: shown and addable fields, remove, revert),
   `validation/` (`validate()` rules with one-click fixes, tag upgrades), `api/changeset.ts`,
-  `state/session.svelte.ts` (osm-auth login), `ui/Inspector.svelte` (with `ui/PresetList.svelte`),
+  `state/session.svelte.ts` (osm-auth login), `ui/Inspector.svelte` (with `ui/PresetList.svelte`,
+  `ui/FieldsSection.svelte`),
   `ui/SaveDialog.svelte`.
   Presets come from `@openstreetmap/id-tagging-schema` plus `presets/overlay.json`, built by
   `scripts/build-presets.ts` on install into the gitignored `presets/generated/`; run

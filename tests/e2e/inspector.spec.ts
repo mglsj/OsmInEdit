@@ -268,3 +268,82 @@ test("shows a ✓ to close the editor once the feature was changed", async ({
 	await editor.getByRole("textbox", { name: "Name" }).press("Enter");
 	await expect(editor.getByRole("button", { name: "Done" })).toBeVisible();
 });
+
+test("Add field adds a field, ready to type in", async ({ page }) => {
+	const editor = await selectRoom(page);
+	await editor.getByRole("button", { name: "Add field" }).click();
+	await page.getByRole("combobox", { name: "Search fields" }).fill("descr");
+	await page.getByRole("option", { name: "Description" }).click();
+	const description = editor.getByRole("textbox", { name: "Description" });
+	await expect(description).toBeFocused();
+	await description.fill("Reading room");
+	await description.press("Enter");
+	await expect(await tagsBox(page)).toHaveValue(
+		"description=Reading room\nindoor=room\nlevel=0",
+	);
+});
+
+test("Remove clears all the field's keys, in one undo step", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page, { name: "Lab", "name:fr": "Labo" });
+	await editor.getByRole("button", { name: "Remove Name" }).click();
+	await expect(await tagsBox(page)).toHaveValue("indoor=room\nlevel=0");
+	await expect(editor.getByRole("textbox", { name: "Name" })).toHaveValue("");
+
+	await page.getByRole("button", { name: "Undo" }).click();
+	await expect(await tagsBox(page)).toHaveValue(
+		"indoor=room\nlevel=0\nname=Lab\nname:fr=Labo",
+	);
+});
+
+test("Revert brings back the downloaded value", async ({ page }) => {
+	const editor = await selectRoom(page, { name: "Lab" });
+	const revert = editor.getByRole("button", { name: "Revert Name" });
+	await expect(revert).toBeHidden();
+	const name = editor.getByRole("textbox", { name: "Name" });
+	await name.fill("Library");
+	await name.press("Enter");
+
+	await revert.click();
+	await expect(name).toHaveValue("Lab");
+	await expect(revert).toBeHidden();
+});
+
+test("a field waits for the tag it needs: Alternative Name for a name", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page);
+	const addField = editor.getByRole("button", { name: "Add field" });
+	const search = page.getByRole("combobox", { name: "Search fields" });
+	const alternative = page.getByRole("option", { name: "Alternative Name" });
+	await addField.click();
+	await search.fill("alternative");
+	await expect(alternative).toBeHidden();
+	await search.press("Escape");
+	await expect(search).toBeHidden();
+
+	const name = editor.getByRole("textbox", { name: "Name" });
+	await name.fill("Lab");
+	await name.press("Enter");
+	await addField.click();
+	await search.fill("alternative");
+	await expect(alternative).toBeVisible();
+});
+
+test("the name of a feature linked to Wikidata is locked, as in iD", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page, { name: "Louvre", wikidata: "Q19675" });
+	await expect(editor.getByRole("textbox", { name: "Name" })).toHaveAttribute(
+		"readonly",
+	);
+	await expect(editor.getByRole("img", { name: /Name.*locked/ })).toBeVisible();
+	await expect(
+		editor.getByRole("button", { name: "Remove Name" }),
+	).toBeHidden();
+	// Other fields stay editable.
+	await expect(
+		editor.getByRole("button", { name: "Remove Level" }),
+	).toBeVisible();
+});

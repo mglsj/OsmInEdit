@@ -169,6 +169,11 @@ export class Editor {
 		return this.presets?.match(entity.tags, this.geometryOf(entity));
 	}
 
+	/** An entity's tags as downloaded, or undefined for a new feature (for a field's revert). */
+	downloadedTags(id: EntityId): Tags | undefined {
+		return this.#history.base.entity(id)?.tags;
+	}
+
 	setTags(id: EntityId, tags: Tags): void {
 		this.perform(changeTags(id, tags), "Change tags");
 	}

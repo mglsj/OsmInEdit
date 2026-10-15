@@ -88,8 +88,7 @@
 			<Dialog.Title>Import PDF pages</Dialog.Title>
 			<Dialog.Description>
 				Choose the pages with floor plans, and how finely to render them. Each
-				page becomes a plan, the first on the level shown and each next one a
-				level up.
+				page becomes a plan on the level shown.
 			</Dialog.Description>
 		</Dialog.Header>
 		<form class="flex flex-col gap-6" onsubmit={submit}>

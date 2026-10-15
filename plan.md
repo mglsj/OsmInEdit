@@ -311,7 +311,7 @@ user are marked ✔; the rest follow from them.
 
 **PDF import**
 - The page picker takes several pages. Each becomes its own plan, `file, page N`, all in the
-  same spot; the first chosen page goes on the level shown, each next one a level up ✔.
+  same spot on the level shown ✔ (changed by the user from one level apart).
 
 **Slices and test seams** (to agree before writing tests)
 1. ✅ Align fixes. Unit: `toolFeatures` with a pointer position (dashed segment, then solid
@@ -331,7 +331,7 @@ user are marked ✔; the rest follow from them.
    where they overlap; buildings moved under a plan are hidden by it; buildings hidden.
 5. ✅ Rows. Unit: `levelToShow(planLevel, shown)` with `null`, `0`, `0;1`, `0-2`, `-1`. E2E:
    clicking a row switches the level; inline rename saved by Done, dropped by Cancel.
-6. ✅ PDF pages. E2E: importing pages 1 and 2 of `plan.pdf` adds two plans on levels 0 and 1.
+6. ✅ PDF pages. E2E: importing pages 1 and 2 of `plan.pdf` adds two plans, both on level 0.
 
 ### P5: Geometry editing
 

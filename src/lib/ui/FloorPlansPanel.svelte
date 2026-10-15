@@ -221,27 +221,22 @@
 		}
 	}
 
-	/** Adds a plan in the middle of the view, on `onLevel` (the level shown by default). */
-	function add(
-		image: Parameters<FloorPlans["add"]>[0],
-		name: string,
-		onLevel = level,
-	) {
+	/** Adds a plan in the middle of the view, on the level shown. */
+	function add(image: Parameters<FloorPlans["add"]>[0], name: string) {
 		const view = getView();
 		if (!view) throw new Error("The map is not ready yet.");
-		floorplans.add(image, name, view, String(onLevel));
+		floorplans.add(image, name, view, String(level));
 	}
 
-	/** Each page becomes a plan in the same spot: the first on the level shown, the next a level up. */
+	/** Each page becomes a plan, all in the same spot on the level shown. */
 	async function importPdfPages(pages: number[], dpi: number) {
 		if (!pdf) return;
 		const { document, name } = pdf;
 		try {
-			for (const [i, page] of pages.entries()) {
+			for (const page of pages) {
 				add(
 					await document.render(page, dpi),
 					document.pageCount > 1 ? `${name}, page ${page}` : name,
-					level + i,
 				);
 			}
 		} catch (e) {

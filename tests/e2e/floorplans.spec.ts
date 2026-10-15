@@ -125,7 +125,7 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 	await expectPlanDrawn(page, [0, 0, 255], 4 / 3);
 });
 
-test("imports several PDF pages as plans, each a level above the one before", async ({
+test("imports several PDF pages as plans, all on the level shown", async ({
 	page,
 }) => {
 	await importPlan(page, "plan.pdf");
@@ -135,18 +135,23 @@ test("imports several PDF pages as plans, each a level above the one before", as
 	// Rendering two pages in software takes a while when the machine is busy.
 	await expect(dialog).toBeHidden({ timeout: 20_000 });
 
-	// Top first: page 2, imported last and in Edit, then page 1.
+	// Top first: page 2, imported last and in Edit, then page 1; both on level 0.
 	await expect(planRows(page)).toHaveCount(2);
 	await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(
 		"plan, page 2",
 	);
 	const level = page.getByRole("textbox", { name: "Level", exact: true });
-	await expect(level).toHaveValue("1");
-	await expect(planRows(page).nth(1)).toContainText("plan, page 1");
-	await page.getByRole("button", { name: "Edit plan, page 1" }).click();
 	await expect(level).toHaveValue("0");
-	// Both in the same spot: page 1 on level 0, the level shown.
-	await expectPlanDrawn(page, [255, 0, 0], 4 / 3);
+	await expect(planRows(page).nth(1)).toContainText("plan, page 1");
+	await expect(planRows(page).nth(1)).toContainText("Level 0");
+	// Both shown, in the same spot: page 2 (blue) drawn over page 1 (red).
+	const { cx, cy } = await initialLayout(page, 300);
+	await expectPixel(
+		page,
+		cx,
+		cy,
+		blend([0, 0, 255], 0.5, blend([255, 0, 0], 0.5, BACKGROUND)),
+	);
 });
 
 /** A mall 0.0008° (~600 px at zoom 19) wide around (LON, LAT), tagged as the one in Rennes. */

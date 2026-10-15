@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type ControlPoint,
 	corners,
+	dragCorner,
 	fitPlan,
 	GeorefError,
 	type LngLat,
@@ -9,6 +10,7 @@ import {
 	project,
 	rotateAbout,
 	scaleToDistance,
+	type Transform,
 	translateTo,
 	unproject,
 } from "./georef.ts";
@@ -277,5 +279,67 @@ describe("translateTo", () => {
 				offset(project(start, [300, 250]), 30, -12),
 			),
 		).toBeLessThan(0.001);
+	});
+});
+
+describe("dragCorner", () => {
+	// A 400 × 300 px plan at 5 cm per pixel, north up: 20 × 15 m around RENNES.
+	const start = place(
+		{ center: RENNES, metresPerPixel: 0.05, bearing: 0 },
+		400,
+		300,
+	);
+	const TL = offset(RENNES, -10, 7.5);
+	const TR = offset(RENNES, 10, 7.5);
+	const BR = offset(RENNES, 10, -7.5);
+	const BL = offset(RENNES, -10, -7.5);
+	const TOP_RIGHT = 1;
+
+	/** Checks the plan's corners, clockwise from the top left, within 1 cm. */
+	function expectCorners(transform: Transform, expected: LngLat[]) {
+		corners(transform, 400, 300).forEach((corner, i) => {
+			expect(distance(corner, expected[i] as LngLat)).toBeLessThan(0.01);
+		});
+	}
+
+	it("turns and resizes the plan around the opposite corner", () => {
+		// The 25 m diagonal BL → TR (20 east, 15 north) is dragged to point due north, still
+		// 25 m long: a turn by (0 + 25i) / (20 + 15i) = 0.6 + 0.8i (a 3-4-5 triangle). The
+		// left edge, 15 m north, becomes (−12, 9); the bottom edge, 20 m east, (12, 16).
+		const moved = dragCorner(start, 400, 300, TOP_RIGHT, offset(BL, 0, 25));
+		expectCorners(moved, [
+			offset(BL, -12, 9),
+			offset(BL, 0, 25),
+			offset(BL, 12, 16),
+			BL,
+		]);
+	});
+
+	it("resizes from the centre with fromCenter", () => {
+		// Half the diagonal again: 1.5 times larger, around RENNES.
+		const moved = dragCorner(start, 400, 300, TOP_RIGHT, offset(TR, 5, 3.75), {
+			fromCenter: true,
+		});
+		expectCorners(moved, [
+			offset(RENNES, -15, 11.25),
+			offset(RENNES, 15, 11.25),
+			offset(RENNES, 15, -11.25),
+			offset(RENNES, -15, -11.25),
+		]);
+	});
+
+	it("changes the proportions with freeAspect, keeping the edges' directions", () => {
+		const moved = dragCorner(start, 400, 300, TOP_RIGHT, offset(TR, 6, 0), {
+			freeAspect: true,
+		});
+		expectCorners(moved, [TL, offset(TR, 6, 0), offset(BR, 6, 0), BL]);
+	});
+
+	it("moves only the dragged corner with distort", () => {
+		const moved = dragCorner(start, 400, 300, TOP_RIGHT, offset(TR, 3, 2), {
+			distort: true,
+		});
+		expect(moved.kind).toBe("projective");
+		expectCorners(moved, [TL, offset(TR, 3, 2), BR, BL]);
 	});
 });

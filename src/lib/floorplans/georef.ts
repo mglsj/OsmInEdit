@@ -176,6 +176,94 @@ export function translateTo(
 	return { kind: transform.kind, matrix: multiply(shift, transform.matrix) };
 }
 
+export interface CornerDragOptions {
+	/** Change the proportions: the plan stretches along its own edges, without turning. */
+	readonly freeAspect?: boolean;
+	/** Keep the plan's centre in place instead of the opposite corner. */
+	readonly fromCenter?: boolean;
+	/** Move only the dragged corner, the three others staying put (a perspective). */
+	readonly distort?: boolean;
+}
+
+/**
+ * The plan after dragging one of its corners (0 top left, then clockwise) to `target`, as in
+ * photo editors: by default it turns and resizes around the opposite corner, keeping its shape.
+ */
+export function dragCorner(
+	transform: Transform,
+	width: number,
+	height: number,
+	corner: number,
+	target: LngLat,
+	{
+		freeAspect = false,
+		fromCenter = false,
+		distort = false,
+	}: CornerDragOptions = {},
+): Transform {
+	const pixels: Pixel[] = [
+		[0, 0],
+		[width, 0],
+		[width, height],
+		[0, height],
+	];
+	const dragged = pixels[corner];
+	if (!dragged) throw new GeorefError(`No corner ${corner}.`);
+	if (distort) {
+		return fitPlan(
+			pixels.map((image, i) => ({
+				image,
+				map: i === corner ? target : project(transform, image),
+			})),
+			"projective",
+		).transform;
+	}
+	const pivot: Pixel = fromCenter
+		? [width / 2, height / 2]
+		: (pixels[(corner + 2) % 4] as Pixel);
+	const [px, py] = toMercator(project(transform, pivot));
+	const [dx, dy] = toMercator(project(transform, dragged));
+	const [tx, ty] = toMercator(target);
+	// From the pivot: where the corner is (d) and where it should go (t).
+	const d: [number, number] = [dx - px, dy - py];
+	const t: [number, number] = [tx - px, ty - py];
+	if (!freeAspect) {
+		// Turn and scale by the complex ratio t / d.
+		const norm = d[0] * d[0] + d[1] * d[1];
+		if (norm === 0) return transform;
+		const a = (t[0] * d[0] + t[1] * d[1]) / norm;
+		const b = (t[1] * d[0] - t[0] * d[1]) / norm;
+		return aboutPoint(transform, pivot, [a, -b, b, a]);
+	}
+	// Stretch along the plan's own axes at the pivot (e for its u axis, f for v), so that its
+	// edges keep their directions: d = α·e + β·f becomes t = α'·e + β'·f.
+	const [ex, ey] = toMercator(project(transform, [pivot[0] + 1, pivot[1]]));
+	const [fx, fy] = toMercator(project(transform, [pivot[0], pivot[1] + 1]));
+	const e: [number, number] = [ex - px, ey - py];
+	const f: [number, number] = [fx - px, fy - py];
+	const det = e[0] * f[1] - f[0] * e[1];
+	const inBasis = ([x, y]: [number, number]): [number, number] => [
+		(x * f[1] - f[0] * y) / det,
+		(e[0] * y - x * e[1]) / det,
+	];
+	const [alpha, beta] = inBasis(d);
+	const [alpha2, beta2] = inBasis(t);
+	if (alpha === 0 || beta === 0) return transform;
+	const su = alpha2 / alpha;
+	const sv = beta2 / beta;
+	// B · diag(su, sv) · B⁻¹, with B = [e f] as columns.
+	const m: [number, number, number, number] = [
+		(e[0] * su * f[1] - f[0] * sv * e[1]) / det,
+		(f[0] * sv * e[0] - e[0] * su * f[0]) / det,
+		(e[1] * su * f[1] - f[1] * sv * e[1]) / det,
+		(f[1] * sv * e[0] - e[1] * su * f[0]) / det,
+	];
+	const stretched = aboutPoint(transform, pivot, m);
+	return transform.kind === "similarity"
+		? { ...stretched, kind: "affine" }
+		: stretched;
+}
+
 /** Applies a 2×2 linear map on the map side, centred on where `pixel` currently is. */
 function aboutPoint(
 	transform: Transform,

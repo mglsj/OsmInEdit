@@ -24,7 +24,7 @@ runs the same commands.
 
 - Svelte 5 (runes only), SvelteKit 3 with `adapter-static`; every route is `ssr = false`,
   `prerender = true` (empty shell, rendered in the browser).
-- MapLibre GL JS 6, Tailwind CSS 4, bits-ui (headless components), `@lucide/svelte` icons.
+- MapLibre GL JS 6, Tailwind CSS 4, shadcn-svelte components (on bits-ui), `@lucide/svelte` icons.
 - `src/lib/` holds the code, imported as `#lib/...` with explicit extensions
   (`import { parseHash } from "#lib/map/hash.ts"`). `$lib` does not exist in SvelteKit 3.
 - `src/lib/ui/` components, `src/lib/map/` map helpers, `src/routes/` pages, `static/` copied
@@ -45,8 +45,15 @@ runs the same commands.
   Presets come from `@openstreetmap/id-tagging-schema` plus `presets/overlay.json`, built by
   `scripts/build-presets.ts` on install into the gitignored `presets/generated/`; run
   `bun run presets` after changing the overlay or the schema version.
-- Planned modules (see plan.md): `edit`, `floorplans`, `persist`. Pure modules (`osm`, `levels`,
-  `actions`, `presets`, `validation`, `floorplans/georef`) must not touch the DOM or Svelte.
+- Floor plans (P4): `floorplans/` (`georef.ts` transforms fitted in Web Mercator, `plan-file.ts`
+  JSON and 1.x files, `tiling.ts`, `import.ts` raster/SVG/PDF), `map/floorplan-layers.ts`,
+  `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),
+  `persist/plan-store.ts` (IndexedDB), `ui/FloorPlansPanel.svelte`. Import pdf.js only from its
+  legacy build, lazily. E2E tests that reload after saving a plan wait for IndexedDB first
+  (`untilSaved` in `floorplans.spec.ts`): a reload can cut a write short.
+- Planned modules (see plan.md): `edit`, `persist/autosave`. Pure modules (`osm`, `levels`,
+  `actions`, `presets`, `validation`, `floorplans/georef`, `floorplans/plan-file`,
+  `floorplans/tiling`) must not touch the DOM or Svelte.
 
 ## Rules that are easy to get wrong
 
@@ -65,6 +72,12 @@ runs the same commands.
 - **OSM data**: never rewrite a tag the user didn't edit (the legacy editor silently rewrote
   `level`). Level values are strings like `0;1`, `-1`, `0.5`, `1-3`; level `0` is a real level,
   never treat it as falsy. Uploads are one atomic osmChange, built from the graph difference.
+- **UI**: build with the shadcn-svelte components in `src/lib/components/shadcn/` (added with
+  `bunx shadcn-svelte@latest add <name>`, then `bun run format`; don't hand-edit them) and the
+  theme's semantic colours (`bg-background`, `text-muted-foreground`…), never raw palette colours
+  or `dark:` overrides. Dark mode follows the system via `mode-watcher` (`.dark` class). Controls
+  floating over the map sit on a `bg-background` wrapper: shadcn's dark outline and input styles
+  are translucent. A `Command`'s input is named by the Command's `label`, not `aria-label`.
 - **Formatting**: Biome (tabs, double quotes) formats `.ts`, `.svelte`, `.css` and `.json`. Don't
   hand-format; run `bun run format`.
 
@@ -81,7 +94,9 @@ runs the same commands.
   runs in SwiftShader). It serves an empty OSM area by default; `serveOsm()` in
   `indoor.spec.ts` shows how to serve real elements. Don't wait for network requests to
   bundled assets other than map icons: Vite inlines small files as `data:` URLs (icons are
-  imported with `?no-inline`, so a test can wait for `maki-toilet.*.svg`).
+  imported with `?no-inline`, so a test can wait for `maki-toilet.*.svg`). Floor plan fixtures
+  live in `tests/e2e/files/` (excluded from Biome); `pixelAt()` takes page coordinates, so add
+  the map's offset from `mapLocator(page).boundingBox()`.
 - `@playwright/test` is pinned to 1.56.1 because that version matches the Chromium preinstalled in
   cloud sessions (`/opt/pw-browsers`). Upgrade both together.
 
@@ -96,7 +111,7 @@ Installed with a skills manager (`skills-lock.json`); don't edit them by hand.
 | Map styling: indoor layers, labels, icons, ordering    | `maplibre-cartography`, `maplibre-fonts-glyphs`          |
 | Sources not rendering, `promoteId`, feature state      | `maplibre-source-wiring`, `maplibre-tile-sources`        |
 | Hosting tiles statically (if ever needed)              | `maplibre-pmtiles-patterns`                              |
-| UI tokens and components with Tailwind 4               | `tailwind-design-system`                                 |
+| UI components (add, compose, style)                    | `shadcn-svelte`, then `tailwind-design-system` for tokens |
 | UI / accessibility review                              | `web-design-guidelines`                                  |
 | Test-first work                                        | `tdd`                                                    |
 | Typed graph / tag / preset models                      | `typescript-advanced-types`, `modern-javascript-patterns` |

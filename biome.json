@@ -15,7 +15,8 @@
 			"!test-results",
 			"!playwright-report",
 			"!skills-lock.json",
-			"!src/lib/map/style/icons"
+			"!src/lib/map/style/icons",
+			"!tests/e2e/files"
 		]
 	},
 	"formatter": {
@@ -60,6 +61,21 @@
 				"rules": {
 					"style": {
 						"noNonNullAssertion": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["src/lib/components/shadcn/**", "src/lib/utils.ts"],
+			"linter": {
+				"rules": {
+					"a11y": {
+						"useSemanticElements": "off",
+						"useKeyWithClickEvents": "off"
+					},
+					"suspicious": {
+						"noShadowRestrictedNames": "off",
+						"noExplicitAny": "off"
 					}
 				}
 			}

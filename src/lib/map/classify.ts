@@ -72,6 +72,15 @@ export function classify(tags: Tags, geometry: GeometryType): FeatureKind {
 	return tags.highway !== undefined ? "path" : "line";
 }
 
+/**
+ * Whether an area is a building's outline, whatever else it is drawn as: a mall
+ * (`building=retail` + `shop=mall`) is drawn as an open space, yet outlines a building.
+ */
+export function isBuildingOutline(tags: Tags, geometry: GeometryType): boolean {
+	const surface = geometry === "Polygon" || geometry === "MultiPolygon";
+	return surface && tags.building !== undefined && tags.building !== "no";
+}
+
 function isVertical(tags: Tags): boolean {
 	return (
 		tags.stairs === "yes" ||

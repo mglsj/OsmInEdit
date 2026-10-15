@@ -1,6 +1,8 @@
 <script lang="ts">
+	import CircleAlert from "@lucide/svelte/icons/circle-alert";
 	import { untrack } from "svelte";
 	import type { Attachment } from "svelte/attachments";
+	import * as Alert from "#lib/components/shadcn/alert/index.ts";
 	import { MAX_ZOOM, type MapView } from "#lib/map/hash.ts";
 	import {
 		GPUInitializationError,
@@ -86,10 +88,10 @@
 ></div>
 
 {#if error}
-	<div
-		role="alert"
-		class="absolute inset-x-4 top-4 z-10 mx-auto max-w-lg rounded-md bg-red-50 px-4 py-3 text-sm text-red-800 shadow dark:bg-red-950 dark:text-red-100"
-	>
-		{error}
+	<div class="absolute inset-x-4 top-4 z-10 mx-auto max-w-lg shadow-md">
+		<Alert.Root variant="destructive">
+			<CircleAlert />
+			<Alert.Description>{error}</Alert.Description>
+		</Alert.Root>
 	</div>
 {/if}

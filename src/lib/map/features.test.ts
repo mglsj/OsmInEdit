@@ -215,6 +215,23 @@ describe("buildFeatures", () => {
 		expect(icon("n7")).toBe("temaki-elevator");
 	});
 
+	it("marks every building outline, whatever it is drawn as", () => {
+		const graph = Graph.fromEntities([
+			...square(1, 0, 0),
+			way("w1", ring(1), { building: "retail", shop: "mall" }),
+			...square(2, 5, 5),
+			way("w2", ring(2), { indoor: "room" }),
+		]);
+		const props = (id: string) =>
+			buildFeatures(graph).collection.features.find(
+				(f) => f.properties["@id"] === id,
+			)?.properties;
+
+		// A mall is drawn as an open space, but it is a building too.
+		expect(props("w1")).toMatchObject({ "@kind": "space", "@building": "yes" });
+		expect(props("w2")).not.toHaveProperty("@building");
+	});
+
 	it("skips ways whose nodes were not downloaded", () => {
 		const entities = [
 			node("n1"),

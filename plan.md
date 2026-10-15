@@ -23,8 +23,9 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P1    | Core data model (no UI)                    | Done        |
 | P2    | Fast read-only viewer                      | Done        |
 | P3    | Presets, validation, upload                | Done        |
-| P4    | Floor plans                                | Next        |
-| P5    | Geometry editing                           | Not started |
+| P4    | Floor plans                                | Done        |
+| P4.1  | Floor plan layers, edit sessions, align UX | Done        |
+| P5    | Geometry editing                           | Next        |
 | P6    | Parity and polish                          | Not started |
 
 ## Why a rewrite (findings from the 1.x code)
@@ -64,7 +65,7 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | Tooling     | Bun 1.4 (package manager, scripts), Node 24+, Biome 2.5 (format + lint), GitHub Actions          |
 | App         | SvelteKit 3 + `adapter-static`, every route `ssr = false` / `prerender = true`; Svelte 5 runes; TypeScript 6 strict |
 | Map         | MapLibre GL JS 6 (WebGL), imported only via `#lib/map/maplibre.ts`                              |
-| UI          | Tailwind CSS 4, bits-ui 2 (headless, accessible primitives), `@lucide/svelte`                   |
+| UI          | Tailwind CSS 4, shadcn-svelte components (vega style, on bits-ui 2), `@lucide/svelte`           |
 | Editing     | Custom engine modelled on iD's modes and behaviours, `rbush` spatial index, `@turf/*` v7        |
 | OSM         | `osm-auth` 3 (OAuth 2 PKCE, no secret, no backend); small `fetch` client for the API v0.6      |
 | Presets     | `@openstreetmap/id-tagging-schema` filtered at build time, plus a local indoor overlay; `fuse.js` |
@@ -197,7 +198,8 @@ incline/conveying arrows → P5.
   and terms.
 - Inspector: click to select (feature-state highlight), preset name and icon, "Change type"
   picker (defaults per geometry, search), fields (text, combo with suggestions, check, select,
-  textarea), raw tag text, undo/redo buttons and shortcuts, Escape to deselect.
+  textarea), raw tag text, undo/redo buttons and shortcuts, Escape to deselect. It opens in
+  the side panel on the left, which the floor plan editor uses in floor plan mode.
 - Validation (`validation/validate.ts`) on the selected feature and on every edited one before
   upload, with one-click fixes: outdated tags (`room=stairs|elevator`, `buildingpart=*`, and the
   schema's `deprecated.json`, e.g. `diaper` → `changing_table`); vertical features using
@@ -218,18 +220,118 @@ and recent presets → P6 (i18n); number fields and semiCombo lists edited as pl
 (values are kept as typed, never rewritten). Upload tests mock the API with `page.route` in each
 test instead of a shared `mock-osm.ts`.
 
-### P4: Floor plans
+### P4: Floor plans — done
 
-- Import: raster via `createImageBitmap` (downscaled to the GPU texture limit); PDF page picker
-  with thumbnails and DPI (default 150); SVG rasterised from an `<img>` blob URL (no scripts).
-- Georeferencing in EPSG:3857, residuals in true metres (× cos lat): 2 points → similarity;
-  3+ → least-squares similarity or affine; 4+ → projective, rendered with MapLibre 6's
-  `setWarp("perspective")`.
-- Tools: measure a known distance to set the scale; rotate about a pinned point; numeric scale,
-  rotation, offset and opacity (default 0.5); control points snap to OSM nodes and the building
-  outline; each plan assigned to a building and level.
-- Plans over 2048 px split into tiles. Stored in IndexedDB; JSON export/import, including the
-  1.x format (old corners → affine transform).
+324 unit tests and 39 browser tests in total.
+
+- Georeferencing (`floorplans/georef.ts`, pure): least-squares fits in Web Mercator from control
+  points (similarity from 2, affine from 3, perspective from 4), residuals and RMS in ground
+  metres, image corners for MapLibre, the pixel under a map position, a starting placement,
+  scaling to a measured distance, rotation about a pinned pixel, moving onto one point. Tested
+  against spherical geometry at several latitudes.
+- Plan files (`floorplans/plan-file.ts`, pure): IndoorID JSON export/import (images as data
+  URLs), and OsmInEdit 1.x `osminedit_floor_imagery.json`. 1.x corners become an exact
+  perspective transform (as 1.x drew them with CSS `matrix3d`) instead of the affine first
+  planned, which would have reshaped plans that are not parallelograms.
+- Import (`floorplans/import.ts`): PNG/JPEG/WebP through `createImageBitmap` (scaled down past
+  8192 px); SVG rendered through an `<img>`, so its scripts never run; PDF page picker with
+  thumbnails and DPI (default 150). pdf.js is lazy-loaded from its legacy build: pdf.js 6 uses
+  JavaScript (`Map.getOrInsertComputed`) that current browsers lack.
+- Drawing (`map/floorplan-layers.ts`): plans cut into tiles of at most 2048 px, each a MapLibre
+  image source warped in perspective, above the indoor fills and below their outlines and
+  labels, half-transparent by default, updated by identity (moving only sets coordinates).
+  MapLibre doesn't mipmap image sources, so each plan is imported as a pyramid of halved
+  images and the map draws the level matching the zoom: large plans keep their thin lines
+  when shown small.
+- Alignment (`state/floorplans.svelte.ts`, `ui/FloorPlansPanel.svelte`): control points (click
+  the plan, then the map; snaps to OSM nodes within 8 px) with per-point residuals and the fit
+  kind; measuring a known distance; rotating about a picked spot; opacity. Map clicks go to the
+  active tool instead of selecting OSM features.
+- Storage (`persist/plan-store.ts`, `idb`): images and settings in IndexedDB, restored on
+  reload. Each plan has a level and shows only on it.
+- Floor plan mode (as in 1.x): the map shows only building outlines (any area with a
+  `building` tag, malls included); OSM selection, the feature editor and the edit toolbar are
+  off, and the floor plans are edited in the left side panel. New plans go in the middle of
+  the map beside that panel. As in photo editors, the selected plan is dragged to move it, by a corner handle to
+  resize it around the opposite corner (`georef.dragCorner`: Shift stretches, Ctrl/⌘ resizes
+  from the centre, Alt moves that corner alone, giving a perspective), and by the handle above
+  it to turn it around its centre (`georef.dragRotation`, Shift for 15° steps). Drags are
+  previewed live and saved on release (`map/plan-dragging.ts`).
+
+Moved out of P4, to P5 with the editing tools: snapping control points to building outlines
+(edges, not only nodes), numeric offset inputs, and assigning plans to a building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
+with fallback fonts (P6).
+
+### P4.1: Floor plan layers, edit sessions, align fixes — done
+
+Feedback from placing real plans (Vindhya Bhavan, 4-page A3 PDF). Decisions agreed with the
+user are marked ✔; the rest follow from them.
+
+**Align tool fixes**
+- Crosshair cursor whenever an align tool is on. Today the class on the canvas container loses
+  to MapLibre's `.maplibregl-canvas-container.maplibregl-interactive { cursor: grab }`, so the
+  cursor is set on the canvas element itself, like plan dragging does.
+- Measure: a dashed line follows the pointer from the first spot; after the second click it
+  stays, solid, between the two spots until Scale or a new measure ✔.
+- A Clear button removes every control point of the plan in Edit and any half-done measure or
+  rotate pick; the plan stays where the points put it ✔.
+
+**Layer list** (the sidebar list becomes the floor plan mode's layer stack)
+- Top of the list is drawn on top. Rows reorder by a drag grip, or Alt+↑/↓ with the grip
+  focused ✔; the map's layer order follows.
+- A Buildings entry (the pink outlines) sits in the same list: it can be moved between plans
+  and hidden. Its position and visibility are saved in the browser and in exported plan
+  files ✔.
+  New plans go above the other plans (under the outlines when those are on top). Stored
+  `order` counts the outlines' place too; the outlines' record lives in IndexedDB's
+  `settings` store (database version 2). Importing a plan file puts the outlines where the
+  file had them among its plans.
+- Each plan has its own colour, picked at random among a palette of distinct colours not yet
+  used (never the buildings' pink). In floor plan mode every visible plan has a frame in its
+  colour; the plan in Edit also gets its handles in it. The row shows a swatch; in Edit the
+  swatch opens the palette to change it ✔. Plans saved before P4.1 get a colour on restore.
+  (`floorplans/colors.ts`.)
+- Clicking a row switches the map to the plan's level: a plan on every level leaves the level
+  alone; with several levels (`0;1`, `0-2`) the map stays if the shown level is one of them,
+  else goes to the lowest ✔. (`levels.levelToShow`; pressing Edit does the same.)
+- The header button that leaves floor plan mode becomes Close ✔.
+
+**Edit sessions**
+- Plans are locked by default: they can't be dragged, aligned or changed. A row's Edit
+  unlocks that plan (one at a time); name, level, opacity, colour, placement and the align
+  tools all need Edit ✔. A locked row only has show/hide, Edit and delete.
+- In Edit, changes are previewed but not saved; Done saves them, Cancel restores the plan as
+  it was when Edit was pressed ✔. Leaving floor plan mode, or pressing another plan's Edit,
+  with unsaved changes asks to save or discard. Reordering and show/hide are not part of a
+  session: they save at once.
+- The name is edited inline: in Edit, the row's name becomes a text field ✔ (slice 5).
+- Imported plans open in Edit, saved as imported. `FloorPlans.whenSaved` asks before anything
+  that would end a session with unsaved changes (Close, Escape, another plan's Edit, Import),
+  through `ui/UnsavedPlanDialog.svelte`: Save, Discard or Keep editing.
+
+**PDF import**
+- The page picker takes several pages. Each becomes its own plan, `file, page N`, all in the
+  same spot on the level shown ✔ (changed by the user from one level apart).
+
+**Slices and test seams** (to agree before writing tests)
+1. ✅ Align fixes. Unit: `toolFeatures` with a pointer position (dashed segment, then solid
+   pair); `FloorPlans.clearPoints()`. E2E: canvas cursor is `crosshair` for each tool; the
+   measure line's colour is drawn under the pointer; Clear empties the control point list and
+   leaves the plan in place.
+2. ✅ Colours. Unit: `floorplans/colors.ts` `pickColor(used, random)` (unused first, never pink);
+   plan file round trip with `color`, and files without one. E2E: a plan's frame is drawn in
+   its colour, a second plan in another.
+3. ✅ Edit sessions. Unit (`FloorPlans` with a fake store): `edit`, `done`, `cancel`; nothing is
+   stored before Done; Cancel restores transform, control points and settings; one plan in
+   Edit at a time. E2E: a locked plan doesn't move when dragged; Edit → drag → Cancel puts it
+   back; Edit → drag → Done survives a reload; Close with unsaved changes asks.
+4. ✅ Layer list. Unit: `FloorPlans.move(id, index)` including the buildings entry, saved
+   order; `FloorPlanLayers` order as MapLibre layer ids bottom to top (pure helper). E2E:
+   two overlapping plans, reordered with the grip and with Alt+↑, show the top one's colour
+   where they overlap; buildings moved under a plan are hidden by it; buildings hidden.
+5. ✅ Rows. Unit: `levelToShow(planLevel, shown)` with `null`, `0`, `0;1`, `0-2`, `-1`. E2E:
+   clicking a row switches the level; inline rename saved by Done, dropped by Cancel.
+6. ✅ PDF pages. E2E: importing pages 1 and 2 of `plan.pdf` adds two plans, both on level 0.
 
 ### P5: Geometry editing
 
@@ -240,6 +342,8 @@ test instead of a shared `mock-osm.ts`.
   tags; copy level.
 - Building, Levels and Features workflows; simple multipolygons (outer + inner).
 - Door widths and incline/conveying arrows on the map; incremental source updates on edit.
+- Floor plans (from P4): snap control points to building outlines, numeric offset, assign
+  plans to a building.
 - Spatial validation (from P3): level outside the building's levels, missing `indoor=level`
   outline; empty keys or values.
 - History autosaved to IndexedDB with a restore prompt and a `beforeunload` guard.

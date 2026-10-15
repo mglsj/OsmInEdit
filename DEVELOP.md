@@ -1,6 +1,6 @@
 # Develop
 
-IndoorID is a client-side web application written in TypeScript with [Svelte 5](https://svelte.dev) and [SvelteKit](https://svelte.dev/docs/kit), rendered with [MapLibre GL JS](https://maplibre.org) and styled with [Tailwind CSS](https://tailwindcss.com). It has no backend of its own: OpenStreetMap is the backend.
+IndoorID is a client-side web application written in TypeScript with [Svelte 5](https://svelte.dev) and [SvelteKit](https://svelte.dev/docs/kit), rendered with [MapLibre GL JS](https://maplibre.org) and styled with [Tailwind CSS](https://tailwindcss.com) and [shadcn-svelte](https://shadcn-svelte.com) components. It has no backend of its own: OpenStreetMap is the backend.
 
 > IndoorID is a rewrite of the OsmInEdit 1.x editor (React + Leaflet). Its last version is kept under the git tag `legacy-v1.0.16`.
 
@@ -30,12 +30,13 @@ The first time you run browser tests, install Chromium with `bunx playwright ins
 
 ```
 src/
-  app.html, app.css     Page shell and Tailwind theme
+  app.html, app.css     Page shell, Tailwind and shadcn-svelte theme
   routes/               SvelteKit pages (the editor is the root page)
   lib/                  Application code, imported as `#lib/...`
     config.ts           Runtime configuration loader
     map/                Map helpers: MapLibre entry point, URL hash, ...
-    ui/                 Svelte components
+    components/shadcn/  shadcn-svelte components (added with `bunx shadcn-svelte@latest add`)
+    ui/                 The editor's Svelte components
 static/                 Files copied as-is: config.json, images
 tests/e2e/              Playwright tests; external requests are mocked
 ```

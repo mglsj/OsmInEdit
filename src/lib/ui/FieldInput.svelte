@@ -1,8 +1,12 @@
 <script lang="ts">
-	import type { Field } from "#lib/presets/presets.ts";
+	import * as Field from "#lib/components/shadcn/field/index.ts";
+	import { Input } from "#lib/components/shadcn/input/index.ts";
+	import * as NativeSelect from "#lib/components/shadcn/native-select/index.ts";
+	import { Textarea } from "#lib/components/shadcn/textarea/index.ts";
+	import type { Field as PresetField } from "#lib/presets/presets.ts";
 
 	interface Props {
-		field: Field;
+		field: PresetField;
 		value: string | undefined;
 		/** Called with the new value when the user commits it; "" removes the tag. */
 		onchange: (value: string) => void;
@@ -41,40 +45,32 @@
 		const target = event.currentTarget as HTMLInputElement;
 		onchange(target.value.trim());
 	}
-
-	const inputClass =
-		"w-full rounded border border-black/15 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-900";
 </script>
 
-<div class="flex flex-col gap-1">
-	<label
-		for={id}
-		class="text-xs font-medium text-slate-600 dark:text-slate-300"
-	>
-		{field.label}
-	</label>
+<Field.Field>
+	<Field.Label for={id}>{field.label}</Field.Label>
 	{#if kind === "check" || kind === "select"}
-		<select {id} class={inputClass} value={value ?? ""} onchange={commit}>
-			<option value=""></option>
-			{#each options as option (option.value)}
-				<option value={option.value}>{option.label}</option>
-			{/each}
-			{#if value && !options.some((o) => o.value === value)}
-				<option {value}>{value}</option>
-			{/if}
-		</select>
-	{:else if kind === "textarea"}
-		<textarea
+		<NativeSelect.Root
 			{id}
-			class={inputClass}
-			rows="3"
+			class="w-full"
 			value={value ?? ""}
 			onchange={commit}
-		></textarea>
+		>
+			<NativeSelect.Option value=""></NativeSelect.Option>
+			{#each options as option (option.value)}
+				<NativeSelect.Option value={option.value}
+					>{option.label}</NativeSelect.Option
+				>
+			{/each}
+			{#if value && !options.some((o) => o.value === value)}
+				<NativeSelect.Option {value}>{value}</NativeSelect.Option>
+			{/if}
+		</NativeSelect.Root>
+	{:else if kind === "textarea"}
+		<Textarea {id} rows={3} value={value ?? ""} onchange={commit} />
 	{:else}
-		<input
+		<Input
 			{id}
-			class={inputClass}
 			type="text"
 			value={value ?? ""}
 			placeholder={field.placeholder}
@@ -83,7 +79,7 @@
 				: undefined}
 			autocomplete="off"
 			onchange={commit}
-		>
+		/>
 		{#if kind === "combo" && options.length > 0}
 			<datalist id={`${id}-options`}>
 				{#each options as option (option.value)}
@@ -92,4 +88,4 @@
 			</datalist>
 		{/if}
 	{/if}
-</div>
+</Field.Field>

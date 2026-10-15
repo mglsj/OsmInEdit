@@ -1,7 +1,13 @@
 <script lang="ts">
+	import CircleAlert from "@lucide/svelte/icons/circle-alert";
 	import Search from "@lucide/svelte/icons/search";
 	import { type Place, searchPlaces } from "#lib/api/nominatim.ts";
 	import type { Bbox } from "#lib/api/osm-api.ts";
+	import * as Alert from "#lib/components/shadcn/alert/index.ts";
+	import { Button } from "#lib/components/shadcn/button/index.ts";
+	import * as InputGroup from "#lib/components/shadcn/input-group/index.ts";
+	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
+	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
 
 	interface Props {
 		/** Area to search near, usually the visible map. */
@@ -52,66 +58,76 @@
 	}
 </script>
 
-<div class="w-80 max-w-[calc(100vw-6rem)]" {onkeydown} role="presentation">
+<div
+	class="flex w-80 max-w-[calc(100vw-6rem)] flex-col gap-1"
+	{onkeydown}
+	role="presentation"
+>
 	<search>
-		<form
-			onsubmit={search}
-			class="flex overflow-hidden rounded-md bg-white shadow-md ring-1 ring-black/10 focus-within:ring-2 focus-within:ring-brand-500 dark:bg-slate-900 dark:ring-white/15"
-		>
-			<label class="sr-only" for="place-search">Search a place</label>
-			<input
-				id="place-search"
-				type="search"
-				bind:value={query}
-				placeholder="Search a place"
-				autocomplete="off"
-				class="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-slate-400"
-			>
-			<button
-				type="submit"
-				aria-label="Search"
-				disabled={searching}
-				class="flex w-10 items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
-			>
-				<Search size={16} aria-hidden="true" />
-			</button>
+		<form onsubmit={search} class="rounded-md bg-background shadow-md">
+			<InputGroup.Root>
+				<InputGroup.Input
+					type="search"
+					aria-label="Search a place"
+					placeholder="Search a place"
+					autocomplete="off"
+					bind:value={query}
+				/>
+				<InputGroup.Addon align="inline-end">
+					<InputGroup.Button
+						type="submit"
+						size="icon-xs"
+						aria-label="Search"
+						disabled={searching}
+					>
+						{#if searching}
+							<Spinner aria-label="Searching" />
+						{:else}
+							<Search />
+						{/if}
+					</InputGroup.Button>
+				</InputGroup.Addon>
+			</InputGroup.Root>
 		</form>
 	</search>
 
 	{#if results}
-		<ul
-			aria-label="Search results"
-			class="mt-1 max-h-80 overflow-y-auto rounded-md bg-white py-1 shadow-md ring-1 ring-black/10 dark:bg-slate-900 dark:ring-white/15"
+		<div
+			class="overflow-hidden rounded-md bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10"
 		>
-			{#each results as place (place.description)}
-				<li>
-					<button
-						type="button"
-						onclick={() => select(place)}
-						class="block w-full px-3 py-2 text-left hover:bg-slate-100 focus-visible:bg-slate-100 focus-visible:outline-none dark:hover:bg-slate-800 dark:focus-visible:bg-slate-800"
-					>
-						<span class="block text-sm font-medium">{place.name}</span>
-						{#if place.description !== place.name}
-							<span
-								class="block truncate text-xs text-slate-500 dark:text-slate-400"
+			<ScrollArea class="*:data-[slot=scroll-area-viewport]:max-h-80">
+				<ul aria-label="Search results" class="flex flex-col p-1">
+					{#each results as place (place.description)}
+						<li>
+							<Button
+								variant="ghost"
+								class="h-auto w-full flex-col items-start gap-0 py-2 text-left whitespace-normal"
+								onclick={() => select(place)}
 							>
-								{place.description}
-							</span>
-						{/if}
-					</button>
-				</li>
-			{:else}
-				<li class="px-3 py-2 text-sm text-slate-500">No place found</li>
-			{/each}
-		</ul>
+								<span>{place.name}</span>
+								{#if place.description !== place.name}
+									<span
+										class="w-full truncate text-xs font-normal text-muted-foreground"
+									>
+										{place.description}
+									</span>
+								{/if}
+							</Button>
+						</li>
+					{:else}
+						<li class="px-2 py-2 text-sm text-muted-foreground">
+							No place found
+						</li>
+					{/each}
+				</ul>
+			</ScrollArea>
+		</div>
 	{/if}
 
 	{#if error}
-		<p
-			role="alert"
-			class="mt-1 rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-900 shadow"
-		>
-			{error}
-		</p>
+		<Alert.Root variant="destructive" class="shadow-md">
+			<CircleAlert />
+			<Alert.Description>{error}</Alert.Description>
+		</Alert.Root>
 	{/if}
 </div>

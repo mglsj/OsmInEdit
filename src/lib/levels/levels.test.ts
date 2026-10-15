@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatLevels, isOnLevel, parseLevels } from "./levels.ts";
+import { formatLevels, isOnLevel, levelToShow, parseLevels } from "./levels.ts";
 
 const single = (level: number) => ({ min: level, max: level });
 
@@ -102,5 +102,26 @@ describe("isOnLevel", () => {
 		expect(isOnLevel(levels, -0.5)).toBe(false);
 		expect(isOnLevel(levels, 3)).toBe(false);
 		expect(isOnLevel(levels, -2)).toBe(false);
+	});
+});
+
+describe("levelToShow", () => {
+	it("goes to the level of a plan on one level", () => {
+		expect(levelToShow("0", 2)).toBe(0);
+		expect(levelToShow("-1", 0)).toBe(-1);
+		expect(levelToShow("0.5", 3)).toBe(0.5);
+	});
+
+	it("stays when the plan is on every level, or on one that can't be read", () => {
+		expect(levelToShow(null, 2)).toBe(2);
+		expect(levelToShow("G", 2)).toBe(2);
+	});
+
+	it("stays when the level shown is one of the plan's, else goes to the lowest", () => {
+		expect(levelToShow("0;1", 1)).toBe(1);
+		expect(levelToShow("0;1", 3)).toBe(0);
+		expect(levelToShow("0-2", 1)).toBe(1);
+		expect(levelToShow("0-2", 5)).toBe(0);
+		expect(levelToShow("1;-1", 3)).toBe(-1);
 	});
 });

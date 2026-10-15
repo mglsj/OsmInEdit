@@ -84,3 +84,39 @@ test("reports an imagery list that can't be loaded", async ({ page }) => {
 	await page.getByRole("button", { name: "Background" }).click();
 	await expect(page.getByRole("alert")).toContainText("imagery list");
 });
+
+test("scrolls a long imagery list inside the window", async ({ page }) => {
+	await page.route(INDEX, (route) =>
+		route.fulfill({
+			json: {
+				type: "FeatureCollection",
+				features: Array.from({ length: 60 }, (_, i) => ({
+					type: "Feature",
+					geometry: null,
+					properties: {
+						id: `photo-${i}`,
+						name: `Photo ${i}`,
+						type: "tms",
+						url: `https://tiles${i}.example.test/{zoom}/{x}/{y}.png`,
+					},
+				})),
+			},
+		}),
+	);
+	await page.goto("/#19/48.13/-1.69/0");
+	await camera(page);
+
+	await page.getByRole("button", { name: "Background" }).click();
+	const list = page.getByRole("group", { name: "Background imagery" });
+	await expect(list.getByRole("radio")).toHaveCount(61);
+	// About 9 entries fit in the list: the 13th, which would still be inside the window if
+	// the list spilled out of its popover, is hidden until scrolled to.
+	await expect(
+		list.getByRole("radio", { name: "Photo 12" }),
+	).not.toBeInViewport();
+	const last = list.getByRole("radio", { name: "Photo 59" });
+	await last.scrollIntoViewIfNeeded();
+	await expect(last).toBeInViewport();
+	await last.check();
+	await expect(last).toBeChecked();
+});

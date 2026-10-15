@@ -1,4 +1,5 @@
 /** The raster imagery shown under the indoor data, on top of the vector basemap. */
+import { FLOORPLAN_PREFIX } from "./floorplan-layers.ts";
 import type { ImageryEntry } from "./imagery.ts";
 import type { Map as MapLibreMap } from "./maplibre.ts";
 
@@ -15,9 +16,11 @@ export function setBackground(
 	if (!entry) return;
 
 	map.addSource(SOURCE, entry.source);
-	// Below the indoor layers, or else below the basemap labels.
+	// Below the indoor layers and floor plans, or else below the basemap labels.
+	const layers = map.getStyle().layers;
 	const before = map.getLayer("indoor-fill")
 		? "indoor-fill"
-		: map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+		: (layers.find((l) => l.id.startsWith(FLOORPLAN_PREFIX))?.id ??
+			layers.find((l) => l.type === "symbol")?.id);
 	map.addLayer({ id: LAYER, type: "raster", source: SOURCE }, before);
 }

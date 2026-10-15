@@ -1,5 +1,13 @@
 <script lang="ts">
+	import CircleAlert from "@lucide/svelte/icons/circle-alert";
 	import Layers from "@lucide/svelte/icons/layers";
+	import * as Alert from "#lib/components/shadcn/alert/index.ts";
+	import { Button } from "#lib/components/shadcn/button/index.ts";
+	import * as Field from "#lib/components/shadcn/field/index.ts";
+	import * as Popover from "#lib/components/shadcn/popover/index.ts";
+	import * as RadioGroup from "#lib/components/shadcn/radio-group/index.ts";
+	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
+	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
 	import {
 		availableImagery,
 		type ImageryEntry,
@@ -17,7 +25,9 @@
 
 	let { center, selected, onselect, indexUrl }: Props = $props();
 
-	let open = $state(false);
+	/** Radio value of the basemap alone (imagery ids never start with a colon). */
+	const MAP = ":map";
+
 	let entries = $state.raw<ImageryEntry[] | null>(null);
 	let error = $state<string | null>(null);
 
@@ -25,70 +35,68 @@
 		entries && center ? availableImagery(entries, center) : [],
 	);
 
-	async function toggle() {
-		open = !open;
-		if (open && !entries) {
-			try {
-				entries = await loadImageryIndex(indexUrl);
-			} catch (e) {
-				error = (e as Error).message;
-			}
+	/** The imagery index is large: it is only downloaded when first needed. */
+	async function onOpenChange(open: boolean) {
+		if (!open || entries) return;
+		try {
+			entries = await loadImageryIndex(indexUrl);
+		} catch (e) {
+			error = (e as Error).message;
 		}
 	}
 
-	function choose(id: string | null) {
-		onselect(id === null ? null : (available.find((e) => e.id === id) ?? null));
+	function choose(id: string) {
+		onselect(id === MAP ? null : (available.find((e) => e.id === id) ?? null));
 	}
 </script>
 
-<div class="flex flex-col items-start gap-1">
-	<button
-		type="button"
-		onclick={toggle}
-		aria-expanded={open}
-		aria-controls="imagery-list"
-		class="flex h-9 items-center gap-2 rounded-md bg-white px-3 text-sm shadow-md ring-1 ring-black/10 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500 dark:bg-slate-900 dark:ring-white/15 dark:hover:bg-slate-800"
-	>
-		<Layers size={16} aria-hidden="true" />
-		Background
-	</button>
+<Popover.Root {onOpenChange}>
+	<div class="rounded-md bg-background shadow-md">
+		<Popover.Trigger>
+			{#snippet child({
+				props,
+			})}
+				<Button {...props} variant="outline">
+					<Layers data-icon="inline-start" />
+					Background
+				</Button>
+			{/snippet}
+		</Popover.Trigger>
+	</div>
+	<Popover.Content align="start" class="p-0">
+		<ScrollArea class="*:data-[slot=scroll-area-viewport]:max-h-72">
+			<Field.Set class="p-3">
+				<Field.Legend class="sr-only">Background imagery</Field.Legend>
+				<RadioGroup.Root value={selected ?? MAP} onValueChange={choose}>
+					{@render option(MAP, "Map")}
+					{#if error}
+						<Alert.Root variant="destructive">
+							<CircleAlert />
+							<Alert.Description>{error}</Alert.Description>
+						</Alert.Root>
+					{:else if !entries}
+						<p class="flex items-center gap-2 text-muted-foreground">
+							<Spinner />
+							Loading imagery list…
+						</p>
+					{:else}
+						{#each available as entry (entry.id)}
+							{@render option(entry.id, entry.name)}
+						{/each}
+					{/if}
+				</RadioGroup.Root>
+			</Field.Set>
+		</ScrollArea>
+	</Popover.Content>
+</Popover.Root>
 
-	{#if open}
-		<fieldset
-			id="imagery-list"
-			class="max-h-72 w-72 overflow-y-auto rounded-md bg-white p-2 text-sm shadow-md ring-1 ring-black/10 dark:bg-slate-900 dark:ring-white/15"
-		>
-			<legend class="sr-only">Background imagery</legend>
-			<label
-				class="flex items-center gap-2 rounded px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
-			>
-				<input
-					type="radio"
-					name="imagery"
-					checked={selected === null}
-					onchange={() => choose(null)}
-				>
-				Map
-			</label>
-			{#if error}
-				<p role="alert" class="px-2 py-1 text-amber-800">{error}</p>
-			{:else if !entries}
-				<p class="px-2 py-1 text-slate-500">Loading imagery list…</p>
-			{:else}
-				{#each available as entry (entry.id)}
-					<label
-						class="flex items-center gap-2 rounded px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
-					>
-						<input
-							type="radio"
-							name="imagery"
-							checked={selected === entry.id}
-							onchange={() => choose(entry.id)}
-						>
-						<span class="truncate">{entry.name}</span>
-					</label>
-				{/each}
-			{/if}
-		</fieldset>
-	{/if}
-</div>
+{#snippet option(
+	value: string,
+	name: string,
+)}
+	{@const id = `imagery-${value}`}
+	<Field.Field orientation="horizontal">
+		<RadioGroup.Item {value} {id} />
+		<Field.Label for={id} class="truncate font-normal">{name}</Field.Label>
+	</Field.Field>
+{/snippet}

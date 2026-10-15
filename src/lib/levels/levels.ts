@@ -66,3 +66,14 @@ export function formatLevels(levels: Levels): string {
 export function isOnLevel(levels: Levels, level: number): boolean {
 	return levels.some(({ min, max }) => level >= min && level <= max);
 }
+
+/**
+ * The level to show for something on `value` (a `level` tag), the map showing `shown`: its
+ * level, or with several, `shown` if it is one of them, else the lowest. Without a level, or
+ * with one that can't be read, the map stays where it is.
+ */
+export function levelToShow(value: string | null, shown: number): number {
+	const levels = value === null ? null : parseLevels(value);
+	if (!levels || levels.length === 0 || isOnLevel(levels, shown)) return shown;
+	return Math.min(...levels.map((l) => l.min));
+}

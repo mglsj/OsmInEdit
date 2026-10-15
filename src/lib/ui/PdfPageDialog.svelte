@@ -27,13 +27,15 @@
 	let thumbnails = $state<Record<number, string>>({});
 	let size = $state<{ width: number; height: number } | null>(null);
 
-	// Thumbnails render one after the other, in the background.
+	// Thumbnails render one after the other, in the background, and stop once a page is being
+	// imported (which waits for pdf.js) or the dialog closes (which ends the document).
 	$effect(() => {
 		let cancelled = false;
 		void (async () => {
 			for (const n of pages) {
-				const url = await pdf.thumbnail(n);
-				if (cancelled) return;
+				if (cancelled || busy) return;
+				const url = await pdf.thumbnail(n).catch(() => null);
+				if (cancelled || url === null) return;
 				thumbnails = { ...thumbnails, [n]: url };
 			}
 		})();

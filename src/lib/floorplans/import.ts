@@ -208,7 +208,7 @@ export async function fromBitmap(
 						resizeQuality: "high",
 					})
 				: null;
-		levels.push({ scale, tiles: await cut(current, width, height) });
+		levels.push({ scale, tiles: cut(current, width, height) });
 	}
 	return { width, height, blob, levels };
 }
@@ -217,11 +217,11 @@ export async function fromBitmap(
  * Cuts one level into tiles, placed in the pixels of the full image (`width` × `height`). The
  * level's bitmap is used as is when it fits in one tile, else closed once cut.
  */
-async function cut(
+function cut(
 	bitmap: ImageBitmap,
 	width: number,
 	height: number,
-): Promise<{ tile: Tile; bitmap: ImageBitmap }[]> {
+): { tile: Tile; bitmap: ImageBitmap }[] {
 	const fx = width / bitmap.width;
 	const fy = height / bitmap.height;
 	const parts = tiles(bitmap.width, bitmap.height);
@@ -232,18 +232,25 @@ async function cut(
 		height: tile.height * fy,
 	});
 	if (parts.length === 1) return [{ tile: full(parts[0] as Tile), bitmap }];
-	const result = await Promise.all(
-		parts.map(async (tile) => ({
-			tile: full(tile),
-			bitmap: await createImageBitmap(
-				bitmap,
-				tile.x,
-				tile.y,
-				tile.width,
-				tile.height,
-			),
-		})),
-	);
+	// Each tile is copied through its own canvas: a cropped createImageBitmap may share the
+	// source's pixels on GPU-accelerated browsers, and the source is closed right after.
+	const result = parts.map((tile) => {
+		const canvas = new OffscreenCanvas(tile.width, tile.height);
+		const context = canvas.getContext("2d");
+		if (!context) throw new Error("No 2D canvas");
+		context.drawImage(
+			bitmap,
+			tile.x,
+			tile.y,
+			tile.width,
+			tile.height,
+			0,
+			0,
+			tile.width,
+			tile.height,
+		);
+		return { tile: full(tile), bitmap: canvas.transferToImageBitmap() };
+	});
 	bitmap.close();
 	return result;
 }

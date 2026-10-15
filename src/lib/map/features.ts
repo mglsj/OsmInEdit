@@ -63,11 +63,12 @@ export function buildFeatures(
 	for (const entity of graph.entities()) {
 		const geometry = geometryOf(graph, entity);
 		if (!geometry) continue;
-		const parentTags = graph.parentRelations(entity.id).map((r) => r.tags);
 		drafts.push({
 			entity,
 			geometry,
-			levels: featureLevels(entity.tags, parentTags),
+			levels: featureLevels(entity.tags, () =>
+				graph.parentRelations(entity.id).map((r) => r.tags),
+			),
 		});
 	}
 

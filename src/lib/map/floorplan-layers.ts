@@ -11,7 +11,7 @@ import {
 	type Pixel,
 	project,
 } from "#lib/floorplans/georef.ts";
-import { tileCorners } from "#lib/floorplans/tiling.ts";
+import { pyramidLevel, tileCorners } from "#lib/floorplans/tiling.ts";
 import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
 import type {
 	FloorPlan,
@@ -116,7 +116,8 @@ export class FloorPlanLayers {
 
 	/**
 	 * The pyramid level to draw: the smallest one still having at least one pixel per screen
-	 * pixel, so the GPU never shrinks a level by more than half.
+	 * pixel, so the GPU never shrinks a level by much more than half (`pyramidLevel` keeps the
+	 * one drawn a little past its range while zooming).
 	 */
 	#pyramidLevel(plan: FloorPlan): number {
 		const { width, height, levels } = plan.image;
@@ -133,12 +134,10 @@ export class FloorPlanLayers {
 			(2 * Math.PI * EARTH_RADIUS * Math.cos((at[1] * Math.PI) / 180)) /
 			(512 * 2 ** this.#map.getZoom()) /
 			(window.devicePixelRatio || 1);
-		const imagePixelsPerDevicePixel =
-			metresPerDevicePixel / metresPerImagePixel;
-		const level = Math.floor(Math.log2(imagePixelsPerDevicePixel));
-		return Math.max(
-			0,
-			Math.min(levels.length - 1, Number.isFinite(level) ? level : 0),
+		return pyramidLevel(
+			metresPerDevicePixel / metresPerImagePixel,
+			levels.length,
+			this.#shown.get(plan.id)?.level,
 		);
 	}
 

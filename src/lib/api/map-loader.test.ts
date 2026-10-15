@@ -122,4 +122,49 @@ describe("MapLoader", () => {
 		});
 		expect(calls).toEqual([]);
 	});
+
+	it("hands over tiles arriving in the same frame as one batch", async () => {
+		const { download, calls } = controlledDownload();
+		const batches: string[][] = [];
+		const frames: (() => void)[] = [];
+		const loader = new MapLoader({
+			download,
+			onData: (e) => batches.push(e.map((x) => x.id)),
+			schedule: (run) => frames.push(run),
+		});
+
+		const loading = loader.load(area(100, 200, 102, 200));
+		await flush();
+		calls[0]?.resolve([node("n1")]);
+		calls[1]?.resolve([node("n2")]);
+		await flush();
+		// Nothing until the frame: one frame is asked for, however many tiles arrived.
+		expect(batches).toEqual([]);
+		expect(frames).toHaveLength(1);
+		frames.shift()?.();
+		expect(batches).toEqual([["n1", "n2"]]);
+
+		// A tile arriving later goes in the next batch.
+		calls[2]?.resolve([node("n3")]);
+		await loading;
+		expect(batches).toEqual([["n1", "n2"], ["n3"]]);
+	});
+
+	it("hands everything over before the load resolves, even if no frame came", async () => {
+		const { download, calls } = controlledDownload();
+		const batches: string[][] = [];
+		const loader = new MapLoader({
+			download,
+			onData: (e) => batches.push(e.map((x) => x.id)),
+			schedule: () => {},
+		});
+
+		const loading = loader.load(area(100, 200, 101, 200));
+		await flush();
+		calls[0]?.resolve([node("n1")]);
+		calls[1]?.resolve([node("n2")]);
+		await loading;
+
+		expect(batches).toEqual([["n1", "n2"]]);
+	});
 });

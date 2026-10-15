@@ -339,7 +339,7 @@ Order agreed with the user: quick performance fixes, then the iD-style feature e
 the fast core (needed before anything is dragged), then geometry editing. Decisions agreed
 with the user are marked ✔. Each slice agrees its test seams before tests are written.
 
-#### P5.0 Quick performance fixes
+#### P5.0 Quick performance fixes — done
 
 Measured on a synthetic area of 10,000 rooms (50,000 entities, 3.2 MB of GeoJSON).
 - Downloaded tiles are merged one by one, each followed by a full feature rebuild (71–116 ms,

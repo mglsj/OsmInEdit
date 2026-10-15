@@ -132,6 +132,7 @@ describe("plan colours", () => {
 				delete: async () => {},
 				loadBuildings: async () => undefined,
 				saveBuildings: async () => {},
+				saveStack: async () => {},
 			},
 			decode: async () => image,
 		});
@@ -161,6 +162,7 @@ function memoryStore() {
 		delete: async () => {},
 		loadBuildings: async () => undefined,
 		saveBuildings: async () => {},
+		saveStack: async () => {},
 	};
 	return { store, saved };
 }
@@ -356,6 +358,10 @@ function lastingStore() {
 		},
 		loadBuildings: async () => buildings,
 		saveBuildings: async (b) => {
+			buildings = b;
+		},
+		saveStack: async (stack, b) => {
+			for (const plan of stack) plans.set(plan.id, plan);
 			buildings = b;
 		},
 	};

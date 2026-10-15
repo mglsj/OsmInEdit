@@ -42,6 +42,11 @@ export interface PlanStore {
 	/** Undefined until the outlines were first moved or hidden. */
 	loadBuildings(): Promise<StoredBuildings | undefined>;
 	saveBuildings(buildings: StoredBuildings): Promise<void>;
+	/** Saves several plans and the outlines' place at once (a reorder), in one write. */
+	saveStack(
+		plans: readonly StoredPlan[],
+		buildings: StoredBuildings,
+	): Promise<void>;
 }
 
 interface Schema extends DBSchema {
@@ -99,6 +104,19 @@ export class IndexedDbPlanStore implements PlanStore {
 
 	async saveBuildings(buildings: StoredBuildings): Promise<void> {
 		await (await this.#open()).put("settings", buildings, "buildings");
+	}
+
+	async saveStack(
+		plans: readonly StoredPlan[],
+		buildings: StoredBuildings,
+	): Promise<void> {
+		const db = await this.#open();
+		const tx = db.transaction(["plans", "settings"], "readwrite");
+		await Promise.all([
+			...plans.map((plan) => tx.objectStore("plans").put(plan)),
+			tx.objectStore("settings").put(buildings, "buildings"),
+			tx.done,
+		]);
 	}
 
 	async delete(id: string): Promise<void> {

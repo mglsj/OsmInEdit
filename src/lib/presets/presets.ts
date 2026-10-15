@@ -71,6 +71,7 @@ const FALLBACKS: Record<PresetGeometry, string> = {
 
 export class PresetIndex {
 	readonly #presets: readonly Preset[];
+	readonly #searchText: ReadonlyMap<Preset, SearchText>;
 	readonly #byId: ReadonlyMap<string, Preset>;
 	readonly #fields: ReadonlyMap<string, Field>;
 	/** Positions of the presets with tags, by their first key: only those can match. */
@@ -79,6 +80,12 @@ export class PresetIndex {
 
 	constructor(presets: readonly Preset[], fields: readonly Field[]) {
 		this.#presets = presets;
+		this.#searchText = new Map(
+			presets.map((p) => [
+				p,
+				{ name: normalize(p.name), terms: p.terms.map(normalize) },
+			]),
+		);
 		this.#byId = new Map(presets.map((p) => [p.id, p]));
 		this.#fields = new Map(fields.map((f) => [f.id, f]));
 		presets.forEach((preset, i) => {
@@ -160,7 +167,10 @@ export class PresetIndex {
 		if (!q) return [];
 		return this.#presets
 			.filter((p) => p.searchable !== false && p.geometry.includes(geometry))
-			.map((preset) => ({ preset, score: searchScore(preset, q) }))
+			.map((preset) => ({
+				preset,
+				score: searchScore(this.#searchText.get(preset), q),
+			}))
 			.filter(({ score }) => score > 0)
 			.sort(
 				(a, b) =>
@@ -201,12 +211,18 @@ function matchScore(preset: Preset, tags: Tags): number {
 	return score;
 }
 
-function searchScore(preset: Preset, query: string): number {
-	const name = normalize(preset.name);
+/** A preset's name and terms, normalised once for search. */
+interface SearchText {
+	readonly name: string;
+	readonly terms: readonly string[];
+}
+
+function searchScore(text: SearchText | undefined, query: string): number {
+	if (!text) return 0;
+	const { name, terms } = text;
 	if (name === query) return 100;
 	if (name.startsWith(query)) return 80;
 	if (name.split(/[\s/-]+/).some((word) => word.startsWith(query))) return 60;
-	const terms = preset.terms.map(normalize);
 	if (terms.some((t) => t === query)) return 50;
 	if (terms.some((t) => t.startsWith(query))) return 40;
 	if (name.includes(query)) return 20;

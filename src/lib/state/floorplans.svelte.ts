@@ -488,12 +488,18 @@ export class FloorPlans {
 		const byId = new Map(this.plans.map((p) => [p.id, p]));
 		this.plans = keys.flatMap((k) => byId.get(k) ?? []);
 		this.buildings = { ...this.buildings, below: keys.indexOf(BUILDINGS) };
-		// Every place may have changed; the plan in Edit is saved as it was when Edit was pressed.
-		for (const plan of this.plans) {
-			const before = this.#before;
-			this.#save(plan.id === this.editingId && before ? before : plan);
-		}
-		this.#saveBuildings();
+		// Every place may have changed, saved in one write; the plan in Edit is saved as it was
+		// when Edit was pressed.
+		const before = this.#before;
+		const { below, visible } = this.buildings;
+		this.#persist(
+			this.#store?.saveStack(
+				this.plans.map((plan) =>
+					this.#stored(plan.id === this.editingId && before ? before : plan),
+				),
+				{ order: below, visible },
+			),
+		);
 	}
 
 	/** Shows or hides the building outlines in floor plan mode, saved at once. */
@@ -508,14 +514,18 @@ export class FloorPlans {
 	}
 
 	#save(plan: FloorPlan): void {
+		this.#persist(this.#store?.save(this.#stored(plan)));
+	}
+
+	/** A plan's settings as stored: everything but its image, and its place in the stack. */
+	#stored(plan: FloorPlan): StoredPlan {
 		const { image: _, ...settings } = plan;
 		const index = this.plans.findIndex((p) => p.id === plan.id);
-		const stored: StoredPlan = {
+		// The outlines take a place in the stack too.
+		return {
 			...settings,
-			// Its place in the stack: the outlines take one too.
 			order: index + (index >= this.buildings.below ? 1 : 0),
 		};
-		this.#persist(this.#store?.save(stored));
 	}
 
 	/** Reports a failed write: plans stay usable, but won't survive a reload. */

@@ -103,10 +103,10 @@ export class Editor {
 	}
 
 	/** Number of entities created, modified or deleted since the last upload. */
-	get editCount(): number {
+	readonly editCount = $derived.by(() => {
 		const { created, modified, deleted } = this.graph.changes();
 		return created.length + modified.length + deleted.length;
-	}
+	});
 
 	perform(action: Action, annotation: string): void {
 		this.graph = this.#history.perform(action, annotation);

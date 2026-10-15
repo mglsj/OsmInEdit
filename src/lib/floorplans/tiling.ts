@@ -48,3 +48,32 @@ export function tileCorners(
 		project(transform, [x, y + height]),
 	];
 }
+
+/** How far past its range, in halvings, a drawn pyramid level is kept while zooming. */
+const LEVEL_MARGIN = 0.25;
+
+/**
+ * The pyramid level to draw (0: the full image, n: halved n times) for `imagePixels` image
+ * pixels per screen pixel, among `levels`: the smallest one still having at least one pixel
+ * per screen pixel. The level drawn now, `current`, is kept until the zoom is a quarter
+ * halving past its range, so zooming across a boundary doesn't re-upload the plan back and
+ * forth.
+ */
+export function pyramidLevel(
+	imagePixels: number,
+	levels: number,
+	current?: number,
+): number {
+	const exact = Math.log2(imagePixels);
+	if (!Number.isFinite(exact)) return 0;
+	const last = Math.max(0, levels - 1);
+	const clamp = (level: number) => Math.max(0, Math.min(last, level));
+	if (
+		current !== undefined &&
+		exact >= current - LEVEL_MARGIN &&
+		exact < current + 1 + LEVEL_MARGIN
+	) {
+		return clamp(current);
+	}
+	return clamp(Math.floor(exact));
+}

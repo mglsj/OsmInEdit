@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type LngLat, place } from "./georef.ts";
 import { distance, offset, RENNES } from "./test-geometry.ts";
-import { tileCorners, tiles } from "./tiling.ts";
+import { pyramidLevel, tileCorners, tiles } from "./tiling.ts";
 
 describe("tiles", () => {
 	it("keeps a plan that fits in one texture whole", () => {
@@ -53,5 +53,32 @@ describe("tileCorners", () => {
 		);
 		expect(second?.[0]).toEqual(first?.[1]);
 		expect(second?.[3]).toEqual(first?.[2]);
+	});
+});
+
+describe("pyramidLevel", () => {
+	// Level n is the image halved n times: it suits 2^n to 2^(n+1) image pixels per screen pixel.
+	it("draws the smallest level with at least one pixel per screen pixel", () => {
+		expect(pyramidLevel(1, 4)).toBe(0);
+		expect(pyramidLevel(1.9, 4)).toBe(0);
+		expect(pyramidLevel(2, 4)).toBe(1);
+		expect(pyramidLevel(3.9, 4)).toBe(1);
+		expect(pyramidLevel(4, 4)).toBe(2);
+	});
+
+	it("keeps to the levels there are", () => {
+		expect(pyramidLevel(0.3, 4)).toBe(0);
+		expect(pyramidLevel(1000, 4)).toBe(3);
+		expect(pyramidLevel(Number.NaN, 4)).toBe(0);
+	});
+
+	it("keeps the level drawn until the zoom is a quarter step past its range", () => {
+		// Level 1 suits 2^1 to 2^2; it stays from 2^0.75 to 2^2.25.
+		expect(pyramidLevel(2 ** 2.2, 4, 1)).toBe(1);
+		expect(pyramidLevel(2 ** 2.3, 4, 1)).toBe(2);
+		expect(pyramidLevel(2 ** 0.8, 4, 1)).toBe(1);
+		expect(pyramidLevel(2 ** 0.7, 4, 1)).toBe(0);
+		// Far off: straight to the right level.
+		expect(pyramidLevel(2 ** 3.5, 4, 1)).toBe(3);
 	});
 });

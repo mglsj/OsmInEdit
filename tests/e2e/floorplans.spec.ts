@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { Page } from "@playwright/test";
+import { PLAN_COLORS } from "../../src/lib/floorplans/colors.ts";
 import {
 	BACKGROUND,
 	blend,
@@ -192,7 +193,10 @@ function lngLatAt(dx: number, dy: number): [number, number] {
 	return [(x / WORLD) * 360 - 180, (lat * 180) / Math.PI];
 }
 
-/** Checks a rectangle of plan colour, 3 px inside and outside each edge (screen pixels). */
+/**
+ * Checks a rectangle of plan colour, 5 px inside and outside each edge (screen pixels): clear of
+ * the 2 px frame drawn around plans in floor plan mode.
+ */
 async function expectPlanAt(
 	page: Page,
 	{
@@ -205,14 +209,14 @@ async function expectPlanAt(
 	const plan = blend(RED, 0.5, BACKGROUND);
 	const midX = (left + right) / 2;
 	const midY = (top + bottom) / 2;
-	await expectPixel(page, left + 3, midY, plan);
-	await expectPixel(page, right - 3, midY, plan);
-	await expectPixel(page, midX, top + 3, plan);
-	await expectPixel(page, midX, bottom - 3, plan);
-	await expectPixel(page, left - 3, midY, BACKGROUND);
-	await expectPixel(page, right + 3, midY, BACKGROUND);
-	await expectPixel(page, midX, top - 3, BACKGROUND);
-	await expectPixel(page, midX, bottom + 3, BACKGROUND);
+	await expectPixel(page, left + 5, midY, plan);
+	await expectPixel(page, right - 5, midY, plan);
+	await expectPixel(page, midX, top + 5, plan);
+	await expectPixel(page, midX, bottom - 5, plan);
+	await expectPixel(page, left - 5, midY, BACKGROUND);
+	await expectPixel(page, right + 5, midY, BACKGROUND);
+	await expectPixel(page, midX, top - 5, BACKGROUND);
+	await expectPixel(page, midX, bottom + 5, BACKGROUND);
 }
 
 /** Two untagged OSM nodes (not drawn), to snap control points to. */
@@ -515,14 +519,32 @@ test("keeps a dragged plan where it was left after a reload", async ({
 	await expectPlanAt(page, moved);
 });
 
-/** Colour of the alignment marks. */
-const TOOL: [number, number, number] = [0xd6, 0x24, 0x9f];
+/** The colour of a plan, as its row's swatch shows it (the `nth` plan of that name). */
+async function planColor(
+	page: Page,
+	name = "plan",
+	nth = 0,
+): Promise<[number, number, number]> {
+	const css = await page
+		.getByRole("button", { name: `Colour of ${name}` })
+		.nth(nth)
+		.locator("[data-slot=swatch]")
+		.evaluate((el) => getComputedStyle(el).backgroundColor);
+	const [r, g, b] = (css.match(/\d+/g) ?? []).map(Number);
+	return [r ?? 0, g ?? 0, b ?? 0];
+}
 
 /**
- * How many pixels of the 2 px tall, `width` px long strip starting at (x, y) are in the marks'
- * colour: enough to tell a dashed line (some) from a solid one (all) and from none.
+ * How many pixels of the 2 px tall, `width` px long strip starting at (x, y) are in `color`:
+ * enough to tell a dashed line (some) from a solid one (all) and from none.
  */
-async function toolPixels(page: Page, x: number, y: number, width: number) {
+async function colorPixels(
+	page: Page,
+	x: number,
+	y: number,
+	width: number,
+	color: [number, number, number],
+) {
 	const clip = { x: Math.round(x), y: Math.round(y) - 1, width, height: 2 };
 	const png = await page.screenshot({ clip });
 	const pixels = await page.evaluate(
@@ -541,7 +563,7 @@ async function toolPixels(page: Page, x: number, y: number, width: number) {
 	let count = 0;
 	for (let i = 0; i < pixels.length; i += 4) {
 		const rgb = pixels.slice(i, i + 3);
-		if (rgb.every((c, j) => Math.abs(c - (TOOL[j] ?? 0)) <= 40)) count++;
+		if (rgb.every((c, j) => Math.abs(c - (color[j] ?? 0)) <= 40)) count++;
 	}
 	return count;
 }
@@ -573,6 +595,9 @@ test("draws the measure line to the pointer, then between the two spots", async 
 }) => {
 	await importPlan(page, "plan.png");
 	const plan = await importedPlanBox(page);
+	const color = await planColor(page);
+	const toolPixels = (x: number, y: number, width: number) =>
+		colorPixels(page, x, y, width, color);
 	await page.getByRole("radio", { name: "Measure" }).click();
 	const x1 = Math.round(plan.left + 20);
 	const y = Math.round(plan.cy);
@@ -580,16 +605,16 @@ test("draws the measure line to the pointer, then between the two spots", async 
 
 	// A dashed line follows the pointer: some of the strip along it is in the marks' colour.
 	await page.mouse.move(x1 + 200, y, { steps: 4 });
-	await expect.poll(() => toolPixels(page, x1 + 60, y, 24)).toBeGreaterThan(4);
-	await expect.poll(() => toolPixels(page, x1 + 60, y, 24)).toBeLessThan(40);
+	await expect.poll(() => toolPixels(x1 + 60, y, 24)).toBeGreaterThan(4);
+	await expect.poll(() => toolPixels(x1 + 60, y, 24)).toBeLessThan(40);
 	// Pointer moved down: the line turns away from the strip.
 	await page.mouse.move(x1 + 200, y + 120, { steps: 4 });
-	await expect.poll(() => toolPixels(page, x1 + 120, y, 24)).toBe(0);
+	await expect.poll(() => toolPixels(x1 + 120, y, 24)).toBe(0);
 
 	// The second spot: a solid line joins the two, and stays when the pointer leaves.
 	await page.mouse.click(x1 + 200, y);
 	await page.mouse.move(plan.cx, plan.bottom - 10, { steps: 4 });
-	await expect.poll(() => toolPixels(page, x1 + 60, y, 24)).toBe(48);
+	await expect.poll(() => toolPixels(x1 + 60, y, 24)).toBe(48);
 });
 
 test("clears the control points, leaving the plan where they put it", async ({
@@ -623,4 +648,59 @@ test("clears the control points, leaving the plan where they put it", async ({
 	await expectPlanAt(page, moved);
 	await page.reload();
 	await expectPlanAt(page, moved);
+});
+
+test("draws each plan's frame in its own colour, which can be changed", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	await page
+		.getByLabel("Import a floor plan")
+		.setInputFiles(path.join(FILES, "plan.png"));
+	const rows = page
+		.getByRole("list", { name: "Floor plans" })
+		.getByRole("listitem");
+	await expect(rows).toHaveCount(2);
+	// The second plan, imported on the first, is moved 120 px right.
+	await drag(
+		page,
+		{ x: plan.cx, y: plan.cy },
+		{ x: plan.cx + 120, y: plan.cy },
+	);
+	const first = await planColor(page, "plan", 0);
+	const second = await planColor(page, "plan", 1);
+	expect(first).not.toEqual(second);
+
+	// Each left edge is drawn in its plan's colour, and not the other's.
+	const y = plan.cy + 40;
+	await expect
+		.poll(() => colorPixels(page, plan.left - 4, y, 8, first))
+		.toBeGreaterThan(0);
+	await expect
+		.poll(() => colorPixels(page, plan.left + 116, y, 8, second))
+		.toBeGreaterThan(0);
+	expect(await colorPixels(page, plan.left - 4, y, 8, second)).toBe(0);
+
+	// A colour neither plan has, picked for the first plan from its palette.
+	const hex = (c: [number, number, number]) =>
+		`#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+	const other = PLAN_COLORS.find(
+		(c) => c.value !== hex(first) && c.value !== hex(second),
+	);
+	if (!other) throw new Error("No free colour");
+	await page.getByRole("button", { name: "Colour of plan" }).first().click();
+	await page.getByRole("button", { name: other.name, exact: true }).click();
+	const picked = await planColor(page, "plan", 0);
+	expect(hex(picked)).toBe(other.value);
+	await expect
+		.poll(() => colorPixels(page, plan.left - 4, y, 8, picked))
+		.toBeGreaterThan(0);
+
+	await page.reload();
+	await page.getByRole("button", { name: "Floor plans" }).click();
+	expect(hex(await planColor(page, "plan", 0))).toBe(other.value);
+	await expect
+		.poll(() => colorPixels(page, plan.left - 4, y, 8, picked))
+		.toBeGreaterThan(0);
 });

@@ -9,7 +9,7 @@ import {
 	RENNES,
 } from "#lib/floorplans/test-geometry.ts";
 import type { FloorPlan, Tool } from "#lib/state/floorplans.svelte.ts";
-import { toolFeatures } from "./floorplan-layers.ts";
+import { planFrames, toolFeatures } from "./floorplan-layers.ts";
 
 /** A 400 × 300 px plan, north up at 5 cm per pixel, its top-left pixel at RENNES. */
 const truth = northUpPlan(RENNES);
@@ -33,6 +33,7 @@ const plan: FloorPlan = {
 	opacity: 0.5,
 	level: "0",
 	visible: true,
+	color: "#2563eb",
 };
 
 function linesOf(tool: Tool, pointer?: [number, number]) {
@@ -84,5 +85,71 @@ describe("toolFeatures, measuring", () => {
 		expect(distance(from, offset(RENNES, 1, -2))).toBeLessThan(0.001);
 		// 360 px further east: 18 m.
 		expect(distance(to, offset(RENNES, 19, -2))).toBeLessThan(0.001);
+	});
+});
+
+describe("planFrames", () => {
+	const other: FloorPlan = { ...plan, id: "q", level: "1", color: "#ea580c" };
+	const everywhere: FloorPlan = {
+		...plan,
+		id: "r",
+		level: null,
+		color: "#16a34a",
+	};
+	const hidden: FloorPlan = { ...plan, id: "s", visible: false };
+
+	function framesOn(level: number) {
+		return planFrames([plan, other, everywhere, hidden], level).features.map(
+			(f) => ({
+				role: f.properties?.role,
+				color: f.properties?.color,
+				ring: (f.geometry as LineString).coordinates.length,
+			}),
+		);
+	}
+
+	it("frames every visible plan of the level shown, each in its colour", () => {
+		expect(framesOn(0)).toEqual([
+			{ role: "frame", color: "#2563eb", ring: 5 },
+			{ role: "frame", color: "#16a34a", ring: 5 },
+		]);
+		expect(framesOn(1)).toEqual([
+			{ role: "frame", color: "#ea580c", ring: 5 },
+			{ role: "frame", color: "#16a34a", ring: 5 },
+		]);
+	});
+
+	it("draws a frame around the plan's four corners", () => {
+		const [frame] = planFrames([plan], 0).features;
+		if (!frame) throw new Error("No frame");
+		const ring = (frame.geometry as LineString).coordinates as [
+			number,
+			number,
+		][];
+		// 400 × 300 px at 5 cm: 20 m east, 15 m south of the top-left corner.
+		const expected = [
+			RENNES,
+			offset(RENNES, 20, 0),
+			offset(RENNES, 20, -15),
+			offset(RENNES, 0, -15),
+			RENNES,
+		];
+		ring.forEach((p, i) => {
+			expect(distance(p, expected[i] ?? [0, 0])).toBeLessThan(0.001);
+		});
+	});
+});
+
+describe("toolFeatures, colours", () => {
+	it("draws the plan's handles and marks in its colour", () => {
+		const withPoint: FloorPlan = {
+			...plan,
+			controlPoints: [{ image: [20, 40], map: offset(RENNES, 2, -2) }],
+		};
+		const features = toolFeatures(withPoint, null, true).features;
+		expect(features.length).toBeGreaterThan(0);
+		for (const f of features) expect(f.properties?.color).toBe("#2563eb");
+		// Frames come from planFrames, for every plan alike.
+		expect(features.some((f) => f.properties?.role === "frame")).toBe(false);
 	});
 });

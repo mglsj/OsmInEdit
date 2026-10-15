@@ -20,6 +20,8 @@ export interface StoredPlan {
 	readonly opacity: number;
 	readonly level: string | null;
 	readonly visible: boolean;
+	/** `#rrggbb`; plans saved before colours existed have none. */
+	readonly color?: string;
 	/** Drawing order, lowest first. */
 	readonly order: number;
 }

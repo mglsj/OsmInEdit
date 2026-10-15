@@ -15,6 +15,7 @@ import { tileCorners } from "#lib/floorplans/tiling.ts";
 import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
 import type { FloorPlan, Tool } from "#lib/state/floorplans.svelte.ts";
 import type {
+	ExpressionSpecification,
 	GeoJSONSource,
 	ImageSource,
 	Map as MapLibreMap,
@@ -202,8 +203,35 @@ export const ROTATE_HANDLE_OFFSET = 0.08;
 export const HANDLES_LAYER = `${TOOL_SOURCE}-points`;
 
 /**
- * Marks of the alignment tools: control points, measured spots, the rotation pin, and with
- * `handles` the plan's frame and the corner handles to drag. While measuring, a line follows
+ * Frames of the plans shown on `level` (`role: "frame"`), each in the plan's colour, so that
+ * plans are told apart in floor plan mode.
+ */
+export function planFrames(
+	plans: readonly FloorPlan[],
+	level: number,
+): FeatureCollection<LineString> {
+	return {
+		type: "FeatureCollection",
+		features: plans
+			.filter((p) => p.visible && isPlanOnLevel(p, level))
+			.map((plan) => {
+				const frame = corners(
+					plan.transform,
+					plan.image.width,
+					plan.image.height,
+				);
+				return {
+					type: "Feature",
+					geometry: { type: "LineString", coordinates: [...frame, frame[0]] },
+					properties: { role: "frame", color: plan.color },
+				};
+			}),
+	};
+}
+
+/**
+ * Marks of the alignment tools, in the plan's colour: control points, measured spots, the
+ * rotation pin, and with `handles` the corner handles and the rotation handle to drag. While measuring, a line follows
  * the `pointer` from the first spot (`role: "rubber"`), then joins the two spots
  * (`role: "measured"`).
  */
@@ -214,66 +242,53 @@ export function toolFeatures(
 	pointer?: LngLat | null,
 ): FeatureCollection<Point | LineString> {
 	const features: Feature<Point | LineString>[] = [];
-	const point = (position: LngLat, role: string, label = "") =>
+	if (!plan) return { type: "FeatureCollection", features };
+	const { color } = plan;
+	const point = (
+		position: LngLat,
+		role: string,
+		extra: Record<string, unknown> = {},
+	) =>
 		features.push({
 			type: "Feature",
 			geometry: { type: "Point", coordinates: position },
-			properties: { role, label },
+			properties: { role, color, ...extra },
 		});
 	const line = (from: LngLat, to: LngLat, role = "link") =>
 		features.push({
 			type: "Feature",
 			geometry: { type: "LineString", coordinates: [from, to] },
-			properties: { role },
+			properties: { role, color },
 		});
-	if (plan) {
-		const at = (pixel: Pixel) => project(plan.transform, pixel);
-		if (handles) {
-			const frame = corners(
-				plan.transform,
-				plan.image.width,
-				plan.image.height,
-			);
-			features.push({
-				type: "Feature",
-				geometry: { type: "LineString", coordinates: [...frame, frame[0]] },
-				properties: { role: "frame" },
-			});
-			for (const [i, corner] of frame.entries()) {
-				features.push({
-					type: "Feature",
-					geometry: { type: "Point", coordinates: corner },
-					properties: { role: "handle", corner: i },
-				});
-			}
-			const { width, height } = plan.image;
-			features.push({
-				type: "Feature",
-				geometry: {
-					type: "Point",
-					coordinates: at([width / 2, -ROTATE_HANDLE_OFFSET * height]),
-				},
-				properties: { role: "rotate" },
-			});
+	const at = (pixel: Pixel) => project(plan.transform, pixel);
+	if (handles) {
+		const { width, height } = plan.image;
+		for (const [i, corner] of corners(
+			plan.transform,
+			width,
+			height,
+		).entries()) {
+			point(corner, "handle", { corner: i });
 		}
-		plan.controlPoints.forEach(({ image, map }, i) => {
-			const onPlan = at(image);
-			line(onPlan, map);
-			point(onPlan, "plan", String(i + 1));
-			point(map, "target", String(i + 1));
-		});
-		if (tool?.kind === "points" && tool.pending) {
-			point(at(tool.pending), "plan", "?");
-		}
-		if (tool?.kind === "measure") {
-			const [a, b] = tool.points.map(at);
-			if (a && b) line(a, b, "measured");
-			else if (a && pointer) line(a, pointer, "rubber");
-			for (const p of [a, b]) if (p) point(p, "plan");
-		}
-		if (tool?.kind === "rotate" && tool.pin) {
-			point(at(tool.pin), "target");
-		}
+		point(at([width / 2, -ROTATE_HANDLE_OFFSET * height]), "rotate");
+	}
+	plan.controlPoints.forEach(({ image, map }, i) => {
+		const onPlan = at(image);
+		line(onPlan, map);
+		point(onPlan, "plan", { label: String(i + 1) });
+		point(map, "target", { label: String(i + 1) });
+	});
+	if (tool?.kind === "points" && tool.pending) {
+		point(at(tool.pending), "plan", { label: "?" });
+	}
+	if (tool?.kind === "measure") {
+		const [a, b] = tool.points.map(at);
+		if (a && b) line(a, b, "measured");
+		else if (a && pointer) line(a, pointer, "rubber");
+		for (const p of [a, b]) if (p) point(p, "plan");
+	}
+	if (tool?.kind === "rotate" && tool.pin) {
+		point(at(tool.pin), "target");
 	}
 	return { type: "FeatureCollection", features };
 }
@@ -293,14 +308,14 @@ export class PlanToolLayer {
 				type: "line",
 				source: TOOL_SOURCE,
 				filter: ["==", ["get", "role"], "frame"],
-				paint: { "line-color": TOOL_COLOR, "line-width": 1 },
+				paint: { "line-color": PLAN_COLOR, "line-width": 2 },
 			});
 			map.addLayer({
 				id: `${TOOL_SOURCE}-measured`,
 				type: "line",
 				source: TOOL_SOURCE,
 				filter: ["==", ["get", "role"], "measured"],
-				paint: { "line-color": TOOL_COLOR, "line-width": 2 },
+				paint: { "line-color": PLAN_COLOR, "line-width": 2 },
 			});
 			map.addLayer({
 				id: `${TOOL_SOURCE}-links`,
@@ -308,7 +323,7 @@ export class PlanToolLayer {
 				source: TOOL_SOURCE,
 				filter: ["in", ["get", "role"], ["literal", ["link", "rubber"]]],
 				paint: {
-					"line-color": TOOL_COLOR,
+					"line-color": PLAN_COLOR,
 					"line-width": 2,
 					"line-dasharray": [2, 2],
 				},
@@ -330,10 +345,10 @@ export class PlanToolLayer {
 						"match",
 						["get", "role"],
 						["target", "rotate"],
-						TOOL_COLOR,
+						PLAN_COLOR,
 						"#ffffff",
 					],
-					"circle-stroke-color": TOOL_COLOR,
+					"circle-stroke-color": PLAN_COLOR,
 					"circle-stroke-width": 2,
 				},
 			});
@@ -364,8 +379,8 @@ export class PlanToolLayer {
 	}
 }
 
-/** Colour of the alignment marks: magenta stands out on plans, imagery and the indoor style. */
-const TOOL_COLOR = "#d6249f";
+/** Each mark is drawn in the colour of its plan. */
+const PLAN_COLOR: ExpressionSpecification = ["get", "color"];
 
 /**
  * Whether a plan shows on a level: plans without a level, or with one that can't be read, show

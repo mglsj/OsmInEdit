@@ -13,11 +13,13 @@
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import { Input } from "#lib/components/shadcn/input/index.ts";
+	import * as Popover from "#lib/components/shadcn/popover/index.ts";
 	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
 	import { Separator } from "#lib/components/shadcn/separator/index.ts";
 	import { Slider } from "#lib/components/shadcn/slider/index.ts";
 	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
 	import * as ToggleGroup from "#lib/components/shadcn/toggle-group/index.ts";
+	import { PLAN_COLORS } from "#lib/floorplans/colors.ts";
 	import type { TransformKind } from "#lib/floorplans/georef.ts";
 	import {
 		ACCEPTED_FILES,
@@ -114,6 +116,8 @@
 		if (Number.isFinite(angle)) floorplans.rotate(angle);
 	}
 
+	/** The plan whose colour palette is open. */
+	let choosingColor = $state<string | null>(null);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let pdf = $state.raw<{ document: PdfDocument; name: string } | null>(null);
@@ -194,6 +198,7 @@
 				opacity: entry.opacity,
 				level: entry.level,
 				visible: entry.visible,
+				...(entry.color ? { color: entry.color } : {}),
 			});
 		}
 	}
@@ -209,6 +214,7 @@
 				level: plan.level,
 				opacity: plan.opacity,
 				visible: plan.visible,
+				color: plan.color,
 				placement: { transform: plan.transform },
 				controlPoints: plan.controlPoints,
 			})),
@@ -312,6 +318,44 @@
 				<ul aria-label="Floor plans" class="flex flex-col gap-1">
 					{#each floorplans.plans as plan (plan.id)}
 						<li class="flex items-center gap-2">
+							<Popover.Root
+								open={choosingColor === plan.id}
+								onOpenChange={(open) => (choosingColor = open ? plan.id : null)}
+							>
+								<Popover.Trigger
+									class="flex size-6 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+									aria-label={`Colour of ${plan.name}`}
+								>
+									<span
+										data-slot="swatch"
+										class="size-4 rounded-full ring-1 ring-foreground/20"
+										style:background-color={plan.color}
+									></span>
+								</Popover.Trigger>
+								<Popover.Content align="start" class="w-auto p-2">
+									<fieldset class="grid grid-cols-4 gap-1">
+										<legend class="sr-only">Colours for {plan.name}</legend>
+										{#each PLAN_COLORS as color (color.value)}
+											<button
+												type="button"
+												aria-label={color.name}
+												title={color.name}
+												aria-pressed={plan.color === color.value}
+												class="flex size-8 items-center justify-center rounded-md outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:bg-muted"
+												onclick={() => {
+													floorplans.update(plan.id, { color: color.value });
+													choosingColor = null;
+												}}
+											>
+												<span
+													class="size-5 rounded-full ring-1 ring-foreground/20"
+													style:background-color={color.value}
+												></span>
+											</button>
+										{/each}
+									</fieldset>
+								</Popover.Content>
+							</Popover.Root>
 							<button
 								type="button"
 								class={[

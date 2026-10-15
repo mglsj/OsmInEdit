@@ -2,6 +2,8 @@
  * Floor plans shown under the indoor data: their images, where they sit on the map, and how
  * they are shown. Plans are replaced, never mutated, so the map layers can tell what changed.
  */
+
+import { pickColor } from "#lib/floorplans/colors.ts";
 import {
 	type ControlPoint,
 	type Fit,
@@ -33,6 +35,8 @@ export interface FloorPlan {
 	/** OSM level the plan belongs to, like `0`; null when not assigned. */
 	readonly level: string | null;
 	readonly visible: boolean;
+	/** Colour of its frame, handles and marks: one of `PLAN_COLORS`, `#rrggbb`. */
+	readonly color: string;
 }
 
 export const DEFAULT_OPACITY = 0.5;
@@ -102,14 +106,28 @@ export class FloorPlans {
 		if (!this.#store || !decode) return;
 		try {
 			const saved = await this.#store.load();
-			const restored = await Promise.all(
+			const decoded = await Promise.all(
 				saved.map(async ({ plan, image }) => ({
 					...plan,
 					image: await decode(image),
 				})),
 			);
+			// Plans saved before they had colours get one, kept from then on.
+			const used = [...this.plans, ...decoded].flatMap((p) =>
+				p.color ? [p.color] : [],
+			);
+			const recolored: FloorPlan[] = [];
+			const restored = decoded.map((plan): FloorPlan => {
+				if (plan.color) return { ...plan, color: plan.color };
+				const color = pickColor(used);
+				used.push(color);
+				const withColor = { ...plan, color };
+				recolored.push(withColor);
+				return withColor;
+			});
 			// Plans added while restoring stay on top.
 			this.plans = [...restored, ...this.plans];
+			for (const plan of recolored) this.#save(plan);
 		} catch (e) {
 			this.storageError = `Saved floor plans could not be restored: ${(e as Error).message}`;
 		}
@@ -138,9 +156,18 @@ export class FloorPlans {
 		});
 	}
 
-	/** Adds an already placed plan (from a file) on top of the others, and selects it. */
-	insert(fields: Omit<FloorPlan, "id">): void {
-		const plan: FloorPlan = { id: crypto.randomUUID(), ...fields };
+	/**
+	 * Adds an already placed plan (from a file) on top of the others, and selects it. Without a
+	 * colour, it gets one no other plan has.
+	 */
+	insert(
+		fields: Omit<FloorPlan, "id" | "color"> & { readonly color?: string },
+	): void {
+		const plan: FloorPlan = {
+			id: crypto.randomUUID(),
+			...fields,
+			color: fields.color ?? pickColor(this.plans.map((p) => p.color)),
+		};
 		this.plans = [...this.plans, plan];
 		this.select(plan.id);
 		this.#persist(this.#store?.saveImage(plan.id, plan.image.blob));

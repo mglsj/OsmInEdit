@@ -262,7 +262,7 @@ Moved out of P4, to P5 with the editing tools: snapping control points to buildi
 (edges, not only nodes), numeric offset inputs, and assigning plans to a building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
 with fallback fonts (P6).
 
-### P4.1: Floor plan layers, edit sessions, align fixes — in progress (slice 1 done)
+### P4.1: Floor plan layers, edit sessions, align fixes — in progress (slices 1–2 done)
 
 Feedback from placing real plans (Vindhya Bhavan, 4-page A3 PDF). Decisions agreed with the
 user are marked ✔; the rest follow from them.
@@ -286,6 +286,8 @@ user are marked ✔; the rest follow from them.
   used (never the buildings' pink). In floor plan mode every visible plan has a frame in its
   colour; the plan in Edit also gets its handles in it. The row shows a swatch; in Edit the
   swatch opens the palette to change it ✔. Plans saved before P4.1 get a colour on restore.
+  (`floorplans/colors.ts`; until slice 3 adds Edit, any row's swatch opens the palette and the
+  selected plan has the handles.)
 - Clicking a row switches the map to the plan's level: a plan on every level leaves the level
   alone; with several levels (`0;1`, `0-2`) the map stays if the shown level is one of them,
   else goes to the lowest ✔.
@@ -310,7 +312,7 @@ user are marked ✔; the rest follow from them.
    pair); `FloorPlans.clearPoints()`. E2E: canvas cursor is `crosshair` for each tool; the
    measure line's colour is drawn under the pointer; Clear empties the control point list and
    leaves the plan in place.
-2. Colours. Unit: `floorplans/colors.ts` `pickColor(used, random)` (unused first, never pink);
+2. ✅ Colours. Unit: `floorplans/colors.ts` `pickColor(used, random)` (unused first, never pink);
    plan file round trip with `color`, and files without one. E2E: a plan's frame is drawn in
    its colour, a second plan in another.
 3. Edit sessions. Unit (`FloorPlans` with a fake store): `edit`, `done`, `cancel`; nothing is

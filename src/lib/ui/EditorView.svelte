@@ -18,6 +18,7 @@
 	import {
 		FloorPlanLayers,
 		PlanToolLayer,
+		planFrames,
 		toolFeatures,
 	} from "#lib/map/floorplan-layers.ts";
 	import {
@@ -142,11 +143,22 @@
 		const marks = new PlanToolLayer(instance);
 		$effect(() => layers.setPlans(floorplans.plans));
 		$effect(() => layers.setLevel(level));
-		$effect(() =>
-			marks.setData(
-				toolFeatures(floorplans.selected, floorplans.tool, planMode, pointer),
-			),
-		);
+		// Frames tell the plans apart in floor plan mode; tool marks show whenever a tool is on.
+		$effect(() => {
+			const frames = planMode
+				? planFrames(floorplans.plans, level).features
+				: [];
+			const tools = toolFeatures(
+				floorplans.selected,
+				floorplans.tool,
+				planMode,
+				pointer,
+			).features;
+			marks.setData({
+				type: "FeatureCollection",
+				features: [...frames, ...tools],
+			});
+		});
 		// In floor plan mode, the selected plan can be dragged (unless a tool takes the clicks).
 		const dragging = new PlanDragging(instance, {
 			plan: () =>

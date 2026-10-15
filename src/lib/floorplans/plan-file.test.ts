@@ -61,6 +61,7 @@ describe("IndoorID plan files", () => {
 			level: "0.5",
 			opacity: 0.4,
 			visible: false,
+			color: "#2563eb",
 			placement: { transform },
 			controlPoints: [{ image: [10, 20], map: [-1.6954, 48.1369] }],
 		};
@@ -76,12 +77,53 @@ describe("IndoorID plan files", () => {
 			level: "0.5",
 			opacity: 0.4,
 			visible: false,
+			color: "#2563eb",
 			controlPoints: plan.controlPoints,
 		});
 		expectCorners(
 			corners(transformOf(read as PlanFileEntry, 400, 300), 400, 300),
 			corners(transform, 400, 300),
 		);
+	});
+});
+
+describe("plan colours in files", () => {
+	const entry = (color: unknown) => ({
+		name: "Plan",
+		image: IMAGE,
+		width: 400,
+		height: 300,
+		level: "0",
+		opacity: 0.5,
+		visible: true,
+		color,
+		placement: {
+			transform: place(
+				{ center: [-1.6953, 48.1368], metresPerPixel: 0.05, bearing: 0 },
+				400,
+				300,
+			),
+		},
+		controlPoints: [],
+	});
+	const read = (color: unknown) =>
+		parsePlansFile(
+			JSON.stringify({
+				format: "indoorid-floorplans",
+				version: 1,
+				plans: [entry(color)],
+			}),
+		)[0];
+
+	it("are left out of files written before plans had one", () => {
+		expect(read(undefined)?.color).toBeUndefined();
+	});
+
+	it("are dropped when they aren't a #rrggbb colour, never passed on to the map", () => {
+		expect(read("red")?.color).toBeUndefined();
+		expect(read("#12345")?.color).toBeUndefined();
+		expect(read(42)?.color).toBeUndefined();
+		expect(read("#A1b2C3")?.color).toBe("#a1b2c3");
 	});
 });
 

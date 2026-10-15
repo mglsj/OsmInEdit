@@ -3,6 +3,7 @@
  * basemap style has loaded; they are applied once it is ready.
  */
 import type { FeatureCollection, Geometry } from "geojson";
+import { BUILDING_COLOR } from "#lib/floorplans/colors.ts";
 import type { FeatureProperties } from "./features.ts";
 import type {
 	FilterSpecification,
@@ -28,8 +29,8 @@ const ABOVE_LABELS = new Set([
 
 /** Outlines of the buildings, drawn only in floor plan mode to place plans against. */
 const BUILDINGS_LAYER = "indoor-buildings";
-/** Magenta, like the floor plan tools: it stands out on plans and imagery. */
-const BUILDING_OUTLINE = "#d6249f";
+/** Magenta stands out on plans and imagery; plans' own colours stay clear of it. */
+const BUILDING_OUTLINE = BUILDING_COLOR;
 
 /** Click tolerance, in pixels around the pointer. */
 const CLICK_TOLERANCE = 4;

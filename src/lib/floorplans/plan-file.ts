@@ -26,6 +26,8 @@ export interface PlanFileEntry {
 	readonly level: string | null;
 	readonly opacity: number;
 	readonly visible: boolean;
+	/** Colour of the plan's frame and marks, `#rrggbb`; files from before colours have none. */
+	readonly color?: string;
 	readonly placement: PlanPlacement;
 	readonly controlPoints: readonly ControlPoint[];
 }
@@ -103,6 +105,7 @@ function readPlan(value: unknown): PlanFileEntry {
 		level: typeof value.level === "string" ? value.level : null,
 		opacity: opacityOf(value.opacity, 0.5),
 		visible: value.visible !== false,
+		...colorOf(value.color),
 		placement: { transform: transform as unknown as Transform },
 		controlPoints: Array.isArray(value.controlPoints)
 			? (value.controlPoints as ControlPoint[])
@@ -152,6 +155,13 @@ function imageOf(value: unknown): string {
 	if (typeof value === "string" && value.startsWith("data:image/"))
 		return value;
 	throw new PlanFileError("A floor plan in this file has no image.");
+}
+
+/** `{ color }` when the value is a `#rrggbb` colour, else nothing: it ends up in the map's style. */
+function colorOf(value: unknown): { color?: string } {
+	return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
+		? { color: value.toLowerCase() }
+		: {};
 }
 
 function opacityOf(value: unknown, fallback: number): number {

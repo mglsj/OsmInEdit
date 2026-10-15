@@ -188,6 +188,16 @@ for (const id of usedFields) {
 		reference: field?.reference,
 		default: field?.default,
 		geometry: field?.geometry,
+		// The access field's rows ("Foot", "Motor Vehicles"…).
+		types: text.types,
+		// The address field's parts; country variants (`city!jp`) are left out.
+		placeholders: text.placeholders
+			? Object.fromEntries(
+					Object.entries(text.placeholders as Record<string, string>).filter(
+						([part]) => !part.includes("!"),
+					),
+				)
+			: undefined,
 	});
 }
 

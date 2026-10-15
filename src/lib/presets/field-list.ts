@@ -148,14 +148,19 @@ export function revertField(
 	return result;
 }
 
+/** Fields iD protects on a feature linked to Wikidata (`ui/fields/input.js`). */
+const LOCKED_WITH_WIKIDATA = ["brand", "network", "operator", "flag"];
+
 /**
- * Whether the field can't be edited, as in iD: the name of a feature linked to Wikidata, which is
- * likely important and researched.
+ * Whether the field can't be edited, as in iD: the name, brand, network, operator or flag of a
+ * feature linked to Wikidata, which is likely important and researched.
  */
 export function isLocked(field: Field, tags: Tags): boolean {
-	return (
-		field.id === "name" &&
-		(tags.wikidata !== undefined ||
-			tags["name:etymology:wikidata"] !== undefined)
-	);
+	if (field.id === "name") {
+		return (
+			tags.wikidata !== undefined ||
+			tags["name:etymology:wikidata"] !== undefined
+		);
+	}
+	return LOCKED_WITH_WIKIDATA.includes(field.id) && tags.wikidata !== undefined;
 }

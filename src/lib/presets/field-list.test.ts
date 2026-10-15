@@ -216,6 +216,17 @@ describe("removing and reverting a field", () => {
 });
 
 describe("isLocked, as iD", () => {
+	it("locks the brand, network, operator and flag of a feature linked to Wikidata", () => {
+		for (const id of ["brand", "network", "operator", "flag"]) {
+			expect(isLocked(field(id, id, id), { [id]: "X", wikidata: "Q1" })).toBe(
+				true,
+			);
+		}
+		expect(isLocked(field("brand", "brand", "Brand"), { brand: "X" })).toBe(
+			false,
+		);
+	});
+
 	it("locks the name of a feature linked to Wikidata", () => {
 		expect(isLocked(name, { name: "Louvre", wikidata: "Q19675" })).toBe(true);
 		expect(

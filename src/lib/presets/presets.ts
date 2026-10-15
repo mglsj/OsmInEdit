@@ -84,6 +84,10 @@ export interface Field {
 	readonly default?: string;
 	/** Geometries the field applies to, when not all of its preset's. */
 	readonly geometry?: readonly PresetGeometry[];
+	/** Names of an access field's rows, by key (`foot`: "Foot"). */
+	readonly types?: Readonly<Record<string, string>>;
+	/** Placeholders of an address field's parts (`street`: "Street"). */
+	readonly placeholders?: Readonly<Record<string, string>>;
 }
 
 /** A group of presets offered together in the feature type list ("Building Features"). */

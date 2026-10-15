@@ -18,6 +18,12 @@ export interface EditorConfig {
 	nominatim_url?: string;
 	/** Taginfo API for value suggestions; the OSMF one by default. */
 	taginfo_url?: string;
+	/** Wikidata API; wikidata.org by default. */
+	wikidata_api_url?: string;
+	/** Wikipedia API, `{lang}` for the language; wikipedia.org by default. */
+	wikipedia_api_url?: string;
+	/** OSM wiki API, for tag documentation; wiki.openstreetmap.org by default. */
+	osm_wiki_api_url?: string;
 	/** URL of a MapLibre style used as the default basemap. */
 	basemap_style: string;
 	/** Minimal zoom at which OSM data is downloaded. */

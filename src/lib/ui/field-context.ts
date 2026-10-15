@@ -1,5 +1,7 @@
+import type { TagDocs } from "#lib/api/osm-wikibase.ts";
 import type { SuggestedValue } from "#lib/presets/combo.ts";
 import type { Field } from "#lib/presets/presets.ts";
+import type { TagReference } from "#lib/presets/wiki.ts";
 
 /** What field inputs need from the editor, beyond their own tags. */
 export interface FieldContext {
@@ -17,6 +19,8 @@ export interface FieldContext {
 	readonly field?: (id: string) => Field | undefined;
 	/** Values for a part of an address (`addr:street`) from the data around the feature. */
 	readonly nearby?: (key: string, part: string) => readonly string[];
+	/** The OSM wiki's documentation of a key or tag, for ⓘ; absent without the wiki. */
+	readonly docs?: (reference: TagReference) => Promise<TagDocs | null>;
 }
 
 export type { TagPatch } from "#lib/presets/combo.ts";

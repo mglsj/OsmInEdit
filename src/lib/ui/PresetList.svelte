@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ChevronRight from "@lucide/svelte/icons/chevron-right";
 	import { SvelteSet } from "svelte/reactivity";
+	import type { TagDocs } from "#lib/api/osm-wikibase.ts";
 	import * as Command from "#lib/components/shadcn/command/index.ts";
 	import type {
 		Preset,
@@ -8,7 +9,13 @@
 		PresetGeometry,
 		PresetIndex,
 	} from "#lib/presets/presets.ts";
+	import {
+		presetReference,
+		type TagReference as Reference,
+	} from "#lib/presets/wiki.ts";
+	import InfoButton from "#lib/ui/InfoButton.svelte";
 	import PresetIcon from "#lib/ui/PresetIcon.svelte";
+	import TagReference from "#lib/ui/TagReference.svelte";
 
 	interface Props {
 		presets: PresetIndex;
@@ -20,10 +27,27 @@
 		onchoose: (preset: Preset) => void;
 		/** Escape: back to the editor without a change. */
 		oncancel: () => void;
+		/** The OSM wiki's documentation, for each row's ⓘ; none without the wiki. */
+		docs?: (reference: Reference) => Promise<TagDocs | null>;
 	}
 
-	let { presets, geometry, current, recent, onchoose, oncancel }: Props =
+	let { presets, geometry, current, recent, onchoose, oncancel, docs }: Props =
 		$props();
+
+	/** Rows whose documentation is shown, by value. */
+	const documented = new SvelteSet<string>();
+	/** Documentation asked for, kept while the list is open. */
+	const asked = new Map<string, Promise<TagDocs | null>>();
+	function docsOf(preset: Preset): Promise<TagDocs | null> | undefined {
+		const reference = presetReference(preset);
+		if (!docs || !reference) return undefined;
+		let found = asked.get(preset.id);
+		if (!found) {
+			found = docs(reference);
+			asked.set(preset.id, found);
+		}
+		return found;
+	}
 
 	let query = $state("");
 	/** The highlighted row's value: a preset or category id, `category>preset` for a member. */
@@ -77,17 +101,38 @@
 	value: string,
 	member: "open" | "closed" | null,
 )}
-	<Command.Item
-		{value}
-		aria-current={preset === current ? "true" : undefined}
-		data-checked={preset === current}
-		disabled={member === "closed"}
-		class={[member && "pl-8", member === "closed" && "hidden"]}
-		onSelect={() => onchoose(preset)}
-	>
-		<PresetIcon icon={preset.icon} size={16} />
-		<span class="truncate">{preset.name}</span>
-	</Command.Item>
+	<!-- ⓘ sits beside the option, not in it: the option is named by the type alone. -->
+	<div class={["flex items-center gap-0.5", member === "closed" && "hidden"]}>
+		<Command.Item
+			{value}
+			aria-current={preset === current ? "true" : undefined}
+			data-checked={preset === current}
+			disabled={member === "closed"}
+			class={["min-w-0 flex-1", member && "pl-8"]}
+			onSelect={() => onchoose(preset)}
+		>
+			<PresetIcon icon={preset.icon} size={16} />
+			<span class="truncate">{preset.name}</span>
+		</Command.Item>
+		{#if docs && presetReference(preset)}
+			<InfoButton
+				label={preset.name}
+				expanded={documented.has(value)}
+				ontoggle={() =>
+					documented.has(value)
+						? documented.delete(value)
+						: documented.add(value)}
+			/>
+		{/if}
+	</div>
+	{#if member !== "closed" && documented.has(value)}
+		{@const found = docsOf(preset)}
+		{#if found}
+			<div class={["pr-1 pb-2", member ? "pl-8" : "pl-2"]}>
+				<TagReference docs={found} />
+			</div>
+		{/if}
+	{/if}
 {/snippet}
 
 <Command.Root

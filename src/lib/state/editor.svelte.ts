@@ -5,7 +5,9 @@
 import { changeTags } from "#lib/actions/change-tags.ts";
 import { MapLoader } from "#lib/api/map-loader.ts";
 import type { Bbox, OsmApi } from "#lib/api/osm-api.ts";
+import type { OsmWikibase } from "#lib/api/osm-wikibase.ts";
 import type { Taginfo } from "#lib/api/taginfo.ts";
+import type { Wikidata } from "#lib/api/wikidata.ts";
 import { buildFeatures } from "#lib/map/features.ts";
 import { AVAILABLE_ICONS } from "#lib/map/style/icons.ts";
 import { entityGeometry } from "#lib/osm/area.ts";
@@ -37,6 +39,12 @@ export interface EditorOptions {
 	readonly minZoom: number;
 	/** Value suggestions for combo fields; none without it. */
 	readonly taginfo?: Pick<Taginfo, "values" | "multikeys">;
+	/** Tag documentation for the ⓘ buttons; none without it. */
+	readonly wikibase?: Pick<OsmWikibase, "docs">;
+	/** Wikidata items, for the wikidata and wikipedia fields. */
+	readonly wikidata?: Pick<Wikidata, "search" | "entity" | "itemsByTitle">;
+	/** Wikipedia article titles for a language and a text. */
+	readonly searchWikipedia?: (lang: string, query: string) => Promise<string[]>;
 }
 
 export class Editor {
@@ -74,6 +82,9 @@ export class Editor {
 		return byKey;
 	});
 	readonly taginfo: EditorOptions["taginfo"];
+	readonly wikibase: EditorOptions["wikibase"];
+	readonly wikidata: EditorOptions["wikidata"];
+	readonly searchWikipedia: EditorOptions["searchWikipedia"];
 
 	#history = new History(this.graph);
 	readonly #api: EditorOptions["api"];
@@ -81,9 +92,19 @@ export class Editor {
 	readonly #minZoom: number;
 	#loads = 0;
 
-	constructor({ api, minZoom, taginfo }: EditorOptions) {
+	constructor({
+		api,
+		minZoom,
+		taginfo,
+		wikibase,
+		wikidata,
+		searchWikipedia,
+	}: EditorOptions) {
 		this.#minZoom = minZoom;
 		this.taginfo = taginfo;
+		this.wikibase = wikibase;
+		this.wikidata = wikidata;
+		this.searchWikipedia = searchWikipedia;
 		this.#api = api;
 		void loadPresetIndex().then((index) => (this.presets = index));
 		void loadSchemaUpgrades().then(
@@ -190,6 +211,23 @@ export class Editor {
 	/** An entity's tags as downloaded, or undefined for a new feature (for a field's revert). */
 	downloadedTags(id: EntityId): Tags | undefined {
 		return this.#history.base.entity(id)?.tags;
+	}
+
+	/**
+	 * Changes tags in the last undo step, as iD does with tags looked up after an edit (the
+	 * Wikipedia article of a Wikidata item). Only while the graph is still `after`, the graph
+	 * that edit made: anything done since wins.
+	 */
+	amendTags(
+		after: Graph,
+		id: EntityId,
+		patch: (tags: Tags) => Tags | null,
+	): void {
+		if (this.graph !== after) return;
+		const entity = this.graph.entity(id);
+		const tags = entity && patch(entity.tags);
+		if (!tags) return;
+		this.graph = this.#history.replace(changeTags(id, tags));
 	}
 
 	setTags(id: EntityId, tags: Tags): void {

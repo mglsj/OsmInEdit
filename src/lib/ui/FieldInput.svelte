@@ -4,6 +4,7 @@
 	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import type { Tags } from "#lib/osm/tags.ts";
 	import type { Field as PresetField } from "#lib/presets/presets.ts";
+	import { fieldReference } from "#lib/presets/wiki.ts";
 	import AccessField from "#lib/ui/AccessField.svelte";
 	import AddressField from "#lib/ui/AddressField.svelte";
 	import CheckField from "#lib/ui/CheckField.svelte";
@@ -14,8 +15,10 @@
 		fieldInputId,
 		type TagPatch,
 	} from "#lib/ui/field-context.ts";
+	import InfoButton from "#lib/ui/InfoButton.svelte";
 	import LocalizedField from "#lib/ui/LocalizedField.svelte";
 	import RadioField from "#lib/ui/RadioField.svelte";
+	import TagReference from "#lib/ui/TagReference.svelte";
 	import TextareaField from "#lib/ui/TextareaField.svelte";
 	import TextField from "#lib/ui/TextField.svelte";
 
@@ -42,6 +45,12 @@
 	}: Props = $props();
 
 	const id = $derived(fieldInputId(field));
+	const reference = $derived(fieldReference(field, tags));
+	let showDocs = $state(false);
+	/** Asked for when ⓘ is clicked, and again when the value documented changes. */
+	const docs = $derived(
+		showDocs && reference ? context.docs?.(reference) : undefined,
+	);
 	const value = $derived(field.key ? tags[field.key] : undefined);
 	const kind = $derived.by(() => {
 		switch (field.type) {
@@ -91,8 +100,20 @@
 				class="size-3.5 text-muted-foreground"
 			/>
 		{/if}
-		<span class="ml-auto flex items-center">{@render actions?.()}</span>
+		<span class="ml-auto flex items-center">
+			{@render actions?.()}
+			{#if reference && context.docs}
+				<InfoButton
+					label={field.label}
+					expanded={showDocs}
+					ontoggle={() => (showDocs = !showDocs)}
+				/>
+			{/if}
+		</span>
 	</div>
+	{#if docs}
+		<TagReference {docs} />
+	{/if}
 	{#if kind === "single-combo"}
 		<ComboField {field} {value} {context} {locked} onchange={set} />
 	{:else if kind === "chips"}

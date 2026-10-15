@@ -211,6 +211,45 @@ export async function serveTaginfo(
 	return requests;
 }
 
+/**
+ * Serves the OSM wiki's data items: a description by title (`Key:room`, `Tag:indoor=room`), each
+ * with an English wiki page of the same title. Other titles are missing.
+ */
+export async function serveWiki(
+	page: Page,
+	descriptions: Record<string, string>,
+) {
+	await page.route("https://wiki.openstreetmap.org/w/api.php?*", (route) => {
+		const titles = (
+			new URL(route.request().url()).searchParams.get("titles") ?? ""
+		).split("|");
+		const entities = Object.fromEntries(
+			titles.map((title, i) => [
+				descriptions[title] ? `Q${i}` : `-${i + 1}`,
+				descriptions[title]
+					? {
+							title,
+							sitelinks: { wiki: { title } },
+							descriptions: {
+								en: { language: "en", value: descriptions[title] },
+							},
+							claims: {
+								P31: [
+									{
+										mainsnak: {
+											datavalue: { value: { language: "en", text: title } },
+										},
+									},
+								],
+							},
+						}
+					: { missing: "" },
+			]),
+		);
+		return route.fulfill({ json: { success: 1, entities } });
+	});
+}
+
 /** Opens the map on a room and selects it. */
 export async function selectRoom(
 	page: Page,

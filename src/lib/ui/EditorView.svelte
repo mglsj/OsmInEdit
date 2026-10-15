@@ -7,7 +7,9 @@
 	import type { Place } from "#lib/api/nominatim.ts";
 	import type { Bbox } from "#lib/api/osm-api.ts";
 	import { OsmApi } from "#lib/api/osm-api.ts";
+	import { OsmWikibase } from "#lib/api/osm-wikibase.ts";
 	import { Taginfo } from "#lib/api/taginfo.ts";
+	import { searchWikipedia, Wikidata } from "#lib/api/wikidata.ts";
 	import { Badge } from "#lib/components/shadcn/badge/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import * as ButtonGroup from "#lib/components/shadcn/button-group/index.ts";
@@ -80,6 +82,10 @@
 			api,
 			minZoom: config.data_min_zoom,
 			taginfo: new Taginfo({ baseUrl: config.taginfo_url }),
+			wikibase: new OsmWikibase({ baseUrl: config.osm_wiki_api_url }),
+			wikidata: new Wikidata({ baseUrl: config.wikidata_api_url }),
+			searchWikipedia: (lang, query) =>
+				searchWikipedia(lang, query, { template: config.wikipedia_api_url }),
 		});
 		return { session, editor, websiteUrl };
 	});

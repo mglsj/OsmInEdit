@@ -20,6 +20,7 @@
 		revertField,
 	} from "#lib/presets/field-list.ts";
 	import type { Preset, Field as PresetField } from "#lib/presets/presets.ts";
+	import type { TagReference } from "#lib/presets/wiki.ts";
 	import type { Editor } from "#lib/state/editor.svelte.ts";
 	import FieldInput from "#lib/ui/FieldInput.svelte";
 	import {
@@ -80,6 +81,12 @@
 		},
 		deprecated: (key) => editor.deprecatedValues.get(key) ?? [],
 		field: (id) => editor.presets?.field(id),
+		get docs() {
+			const wikibase = editor.wikibase;
+			return wikibase
+				? (reference: TagReference) => wikibase.docs(reference)
+				: undefined;
+		},
 		nearby: (key, part) =>
 			addressSuggestions(editor.graph, entity.id, part, key).map(
 				(s) => s.value,

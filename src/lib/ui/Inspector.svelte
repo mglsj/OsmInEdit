@@ -14,11 +14,14 @@
 	import { isNewId, osmId } from "#lib/osm/entity.ts";
 	import { formatTagText, parseTagText } from "#lib/osm/tag-text.ts";
 	import type { Preset } from "#lib/presets/presets.ts";
+	import { presetReference } from "#lib/presets/wiki.ts";
 	import type { Editor } from "#lib/state/editor.svelte.ts";
 	import FieldsSection from "#lib/ui/FieldsSection.svelte";
+	import InfoButton from "#lib/ui/InfoButton.svelte";
 	import InspectorSection from "#lib/ui/InspectorSection.svelte";
 	import PresetIcon from "#lib/ui/PresetIcon.svelte";
 	import PresetList from "#lib/ui/PresetList.svelte";
+	import TagReference from "#lib/ui/TagReference.svelte";
 	import { timeAgo } from "#lib/ui/time-ago.ts";
 
 	interface Props {
@@ -42,6 +45,14 @@
 
 	const geometry = $derived(editor.geometryOf(entity));
 	const preset = $derived(editor.presetOf(entity));
+	let showPresetDocs = $state(false);
+	/** The OSM wiki's documentation of the feature type, once ⓘ is clicked. */
+	const presetDocs = $derived.by(() => {
+		const reference = preset && presetReference(preset);
+		return showPresetDocs && reference
+			? editor.wikibase?.docs(reference)
+			: undefined;
+	});
 	const issues = $derived(editor.issuesOf(entity.id));
 	/** Features without a matching type show their tags, the only way to edit them. */
 	const isFallback = $derived(
@@ -103,25 +114,43 @@
 			recent={editor.recentPresets.list(geometry)}
 			onchoose={choose}
 			oncancel={() => (choosing = false)}
+			docs={editor.wikibase
+				? (reference) =>
+						editor.wikibase?.docs(reference) ?? Promise.resolve(null)
+				: undefined}
 		/>
 	{:else}
 		<ScrollArea class="min-h-0 flex-1">
 			<InspectorSection id="feature-type" title="Feature Type">
-				<button
-					type="button"
-					class="flex w-full items-center gap-3 rounded-md border p-2 text-left outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50"
-					aria-label={`${preset?.name ?? "Feature"}, change feature type`}
-					onclick={() => (choosing = true)}
-				>
-					<PresetIcon icon={preset?.icon} size={28} />
-					<span class="min-w-0 flex-1">
-						<span class="block truncate font-medium">
-							{preset?.name ?? "Feature"}
+				<div class="flex items-center gap-1">
+					<button
+						type="button"
+						class="flex w-full items-center gap-3 rounded-md border p-2 text-left outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50"
+						aria-label={`${preset?.name ?? "Feature"}, change feature type`}
+						onclick={() => (choosing = true)}
+					>
+						<PresetIcon icon={preset?.icon} size={28} />
+						<span class="min-w-0 flex-1">
+							<span class="block truncate font-medium">
+								{preset?.name ?? "Feature"}
+							</span>
+							<span class="block text-xs text-muted-foreground"
+								>{entity.id}</span
+							>
 						</span>
-						<span class="block text-xs text-muted-foreground">{entity.id}</span>
-					</span>
-					<ChevronRight class="size-4 shrink-0 text-muted-foreground" />
-				</button>
+						<ChevronRight class="size-4 shrink-0 text-muted-foreground" />
+					</button>
+					{#if editor.wikibase && preset && presetReference(preset)}
+						<InfoButton
+							label={preset?.name ?? "Feature"}
+							expanded={showPresetDocs}
+							ontoggle={() => (showPresetDocs = !showPresetDocs)}
+						/>
+					{/if}
+				</div>
+				{#if presetDocs}
+					<div class="mt-2"><TagReference docs={presetDocs} /></div>
+				{/if}
 			</InspectorSection>
 
 			{#if issues.length > 0}

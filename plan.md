@@ -247,10 +247,14 @@ test instead of a shared `mock-osm.ts`.
   active tool instead of selecting OSM features.
 - Storage (`persist/plan-store.ts`, `idb`): images and settings in IndexedDB, restored on
   reload. Each plan has a level and shows only on it.
+- Floor plan mode (as in 1.x): the map shows only building outlines; OSM selection, the feature
+  editor and the edit toolbar are off. The selected plan is dragged to move it, and by a corner
+  handle to turn and resize it around the opposite corner (`georef.dragCorner`, as in photo
+  editors: Shift stretches, Ctrl/⌘ resizes from the centre, Alt moves that corner alone, giving
+  a perspective). Drags are previewed live and saved on release (`map/plan-dragging.ts`).
 
 Moved out of P4, to P5 with the editing tools: snapping control points to building outlines
-(edges, not only nodes), numeric offset inputs, dragging a plan, and assigning plans to a
-building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
+(edges, not only nodes), numeric offset inputs, and assigning plans to a building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
 with fallback fonts (P6).
 
 ### P5: Geometry editing
@@ -262,8 +266,8 @@ with fallback fonts (P6).
   tags; copy level.
 - Building, Levels and Features workflows; simple multipolygons (outer + inner).
 - Door widths and incline/conveying arrows on the map; incremental source updates on edit.
-- Floor plans (from P4): snap control points to building outlines, numeric offset, drag a plan,
-  assign plans to a building.
+- Floor plans (from P4): snap control points to building outlines, numeric offset, assign
+  plans to a building.
 - Spatial validation (from P3): level outside the building's levels, missing `indoor=level`
   outline; empty keys or values.
 - History autosaved to IndexedDB with a restore prompt and a `beforeunload` guard.

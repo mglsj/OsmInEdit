@@ -32,6 +32,7 @@
 		type Map as MapLibreMap,
 		type MapMouseEvent,
 	} from "#lib/map/maplibre.ts";
+	import { PlanDragging } from "#lib/map/plan-dragging.ts";
 	import type { EntityId } from "#lib/osm/entity.ts";
 	import { IndexedDbPlanStore } from "#lib/persist/plan-store.ts";
 	import { Editor } from "#lib/state/editor.svelte.ts";
@@ -139,8 +140,19 @@
 		$effect(() => layers.setPlans(floorplans.plans));
 		$effect(() => layers.setLevel(level));
 		$effect(() =>
-			marks.setData(toolFeatures(floorplans.selected, floorplans.tool)),
+			marks.setData(
+				toolFeatures(floorplans.selected, floorplans.tool, planMode),
+			),
 		);
+		// In floor plan mode, the selected plan can be dragged (unless a tool takes the clicks).
+		const dragging = new PlanDragging(instance, {
+			plan: () =>
+				planMode && !floorplans.tool && floorplans.selected?.visible
+					? floorplans.selected
+					: null,
+			onmove: (id, transform) => floorplans.preview(id, transform),
+			onend: (id) => floorplans.commitPlacement(id),
+		});
 		const onClick = (event: MapMouseEvent) => {
 			if (!floorplans.tool) return;
 			toolMessage = floorplans.click(snap(event.point, event.lngLat));
@@ -153,6 +165,7 @@
 		});
 		return () => {
 			instance.off("click", onClick);
+			dragging.remove();
 			marks.remove();
 			layers.remove();
 		};

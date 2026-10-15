@@ -230,6 +230,17 @@ export class FloorPlans {
 		this.tool = { kind: "measure", points: [] };
 	}
 
+	/** Shows a plan at a new place while it is being dragged, without saving it. */
+	preview(id: string, transform: Transform): void {
+		this.plans = this.plans.map((p) => (p.id === id ? { ...p, transform } : p));
+	}
+
+	/** Saves where a dragged plan was dropped. */
+	commitPlacement(id: string): void {
+		const plan = this.plans.find((p) => p.id === id);
+		if (plan) this.#place(plan, plan.transform);
+	}
+
 	/** Turns the selected plan clockwise around the picked spot. */
 	rotate(degrees: number): void {
 		const plan = this.selected;

@@ -5,6 +5,7 @@
  */
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
 import {
+	corners,
 	groundDistance,
 	type LngLat,
 	type Pixel,
@@ -191,11 +192,17 @@ export class FloorPlanLayers {
 }
 
 const TOOL_SOURCE = "floorplan-tool";
+/** The tools' points, corner handles included (`role: "handle"`, `corner` 0–3). */
+export const HANDLES_LAYER = `${TOOL_SOURCE}-points`;
 
-/** Marks of the alignment tools: control points, measured spots, the rotation pin. */
+/**
+ * Marks of the alignment tools: control points, measured spots, the rotation pin, and with
+ * `handles` the plan's frame and the corner handles to drag.
+ */
 export function toolFeatures(
 	plan: FloorPlan | null,
 	tool: Tool | null,
+	handles = false,
 ): FeatureCollection<Point | LineString> {
 	const features: Feature<Point | LineString>[] = [];
 	const point = (position: LngLat, role: string, label = "") =>
@@ -212,6 +219,25 @@ export function toolFeatures(
 		});
 	if (plan) {
 		const at = (pixel: Pixel) => project(plan.transform, pixel);
+		if (handles) {
+			const frame = corners(
+				plan.transform,
+				plan.image.width,
+				plan.image.height,
+			);
+			features.push({
+				type: "Feature",
+				geometry: { type: "LineString", coordinates: [...frame, frame[0]] },
+				properties: { role: "frame" },
+			});
+			for (const [i, corner] of frame.entries()) {
+				features.push({
+					type: "Feature",
+					geometry: { type: "Point", coordinates: corner },
+					properties: { role: "handle", corner: i },
+				});
+			}
+		}
 		plan.controlPoints.forEach(({ image, map }, i) => {
 			const onPlan = at(image);
 			line(onPlan, map);
@@ -244,10 +270,17 @@ export class PlanToolLayer {
 		const install = () => {
 			map.addSource(TOOL_SOURCE, { type: "geojson", data: this.#data });
 			map.addLayer({
+				id: `${TOOL_SOURCE}-frame`,
+				type: "line",
+				source: TOOL_SOURCE,
+				filter: ["==", ["get", "role"], "frame"],
+				paint: { "line-color": TOOL_COLOR, "line-width": 1 },
+			});
+			map.addLayer({
 				id: `${TOOL_SOURCE}-links`,
 				type: "line",
 				source: TOOL_SOURCE,
-				filter: ["==", ["geometry-type"], "LineString"],
+				filter: ["==", ["get", "role"], "link"],
 				paint: {
 					"line-color": TOOL_COLOR,
 					"line-width": 2,
@@ -255,12 +288,12 @@ export class PlanToolLayer {
 				},
 			});
 			map.addLayer({
-				id: `${TOOL_SOURCE}-points`,
+				id: HANDLES_LAYER,
 				type: "circle",
 				source: TOOL_SOURCE,
 				filter: ["==", ["geometry-type"], "Point"],
 				paint: {
-					"circle-radius": 6,
+					"circle-radius": ["case", ["==", ["get", "role"], "handle"], 7, 6],
 					"circle-color": [
 						"case",
 						["==", ["get", "role"], "target"],
@@ -286,7 +319,11 @@ export class PlanToolLayer {
 
 	remove(): void {
 		if (!this.#ready) return;
-		for (const id of [`${TOOL_SOURCE}-points`, `${TOOL_SOURCE}-links`]) {
+		for (const id of [
+			HANDLES_LAYER,
+			`${TOOL_SOURCE}-links`,
+			`${TOOL_SOURCE}-frame`,
+		]) {
 			if (this.#map.getLayer(id)) this.#map.removeLayer(id);
 		}
 		if (this.#map.getSource(TOOL_SOURCE)) this.#map.removeSource(TOOL_SOURCE);

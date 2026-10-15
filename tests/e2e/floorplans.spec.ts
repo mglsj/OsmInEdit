@@ -354,3 +354,112 @@ test("shows a plan only on its level", async ({ page }) => {
 	await expect(page.getByTestId("level")).toHaveText("1");
 	await expectPixel(page, centre.x, centre.y, plan);
 });
+
+/** Drags with the mouse from one screen point to another, in steps like a hand would. */
+async function drag(
+	page: Page,
+	from: { x: number; y: number },
+	to: { x: number; y: number },
+) {
+	await page.mouse.move(from.x, from.y);
+	await page.mouse.down();
+	await page.mouse.move(to.x, to.y, { steps: 8 });
+	await page.mouse.up();
+}
+
+/** Where the 400 × 300 px plan is once imported: centred, 60% of the map tall. */
+async function importedPlanBox(page: Page) {
+	const { cx, cy, scale } = await initialLayout(page, 300);
+	const w = 400 * scale;
+	const h = 300 * scale;
+	return {
+		cx,
+		cy,
+		w,
+		h,
+		left: cx - w / 2,
+		top: cy - h / 2,
+		right: cx + w / 2,
+		bottom: cy + h / 2,
+	};
+}
+
+test("moves a plan by dragging it", async ({ page }) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	await expectPlanAt(page, plan);
+
+	await drag(
+		page,
+		{ x: plan.cx, y: plan.cy },
+		{ x: plan.cx + 100, y: plan.cy + 60 },
+	);
+
+	await expectPlanAt(page, {
+		left: plan.left + 100,
+		top: plan.top + 60,
+		right: plan.right + 100,
+		bottom: plan.bottom + 60,
+	});
+});
+
+test("turns and resizes a plan from a corner, around the opposite one", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+
+	// The top-right corner a quarter of the diagonal further out: 1.25 times larger, the
+	// bottom-left corner staying put.
+	await drag(
+		page,
+		{ x: plan.right, y: plan.top },
+		{ x: plan.right + plan.w / 4, y: plan.top - plan.h / 4 },
+	);
+
+	await expectPlanAt(page, {
+		left: plan.left,
+		top: plan.bottom - plan.h * 1.25,
+		right: plan.left + plan.w * 1.25,
+		bottom: plan.bottom,
+	});
+});
+
+test("stretches a plan from a corner with Shift", async ({ page }) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+
+	await page.keyboard.down("Shift");
+	await drag(
+		page,
+		{ x: plan.right, y: plan.top },
+		{ x: plan.right + 80, y: plan.top },
+	);
+	await page.keyboard.up("Shift");
+
+	await expectPlanAt(page, { ...plan, right: plan.right + 80 });
+});
+
+test("keeps a dragged plan where it was left after a reload", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	await drag(
+		page,
+		{ x: plan.cx, y: plan.cy },
+		{ x: plan.cx + 70, y: plan.cy + 40 },
+	);
+	// (Moved right: the floor plans panel covers the left of the map.)
+	const moved = {
+		left: plan.left + 70,
+		top: plan.top + 40,
+		right: plan.right + 70,
+		bottom: plan.bottom + 40,
+	};
+	await expectPlanAt(page, moved);
+
+	await page.reload();
+
+	await expectPlanAt(page, moved);
+});

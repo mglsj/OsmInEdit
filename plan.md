@@ -236,8 +236,11 @@ test instead of a shared `mock-osm.ts`.
   thumbnails and DPI (default 150). pdf.js is lazy-loaded from its legacy build: pdf.js 6 uses
   JavaScript (`Map.getOrInsertComputed`) that current browsers lack.
 - Drawing (`map/floorplan-layers.ts`): plans cut into tiles of at most 2048 px, each a MapLibre
-  image source warped in perspective, between the background imagery and the indoor data,
-  half-transparent by default, updated by identity (moving only sets coordinates).
+  image source warped in perspective, above the indoor fills and below their outlines and
+  labels, half-transparent by default, updated by identity (moving only sets coordinates).
+  MapLibre doesn't mipmap image sources, so each plan is imported as a pyramid of halved
+  images and the map draws the level matching the zoom: large plans keep their thin lines
+  when shown small.
 - Alignment (`state/floorplans.svelte.ts`, `ui/FloorPlansPanel.svelte`): control points (click
   the plan, then the map; snaps to OSM nodes within 8 px) with per-point residuals and the fit
   kind; measuring a known distance; rotating about a picked spot; opacity. Map clicks go to the
@@ -248,8 +251,7 @@ test instead of a shared `mock-osm.ts`.
 Moved out of P4, to P5 with the editing tools: snapping control points to building outlines
 (edges, not only nodes), numeric offset inputs, dragging a plan, and assigning plans to a
 building. pdf.js standard fonts are not bundled yet: PDFs that rely on non-embedded fonts render
-with fallback fonts (P6). Tiles are covered by unit tests; no browser test renders a plan over
-2048 px.
+with fallback fonts (P6).
 
 ### P5: Geometry editing
 

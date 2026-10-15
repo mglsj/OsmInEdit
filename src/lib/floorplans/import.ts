@@ -1,7 +1,7 @@
 /**
  * Turns floor plan files into images the map can draw: raster files (PNG, JPEG, WebP), SVG
- * drawings and PDF pages. Every plan ends up as an ImageBitmap cut into tiles, plus a PNG or the
- * original file to store and export.
+ * drawings and PDF pages. Every plan ends up as a pyramid of ImageBitmaps cut into tiles, plus a
+ * PNG or the original file to store and export.
  */
 import { type Tile, tiles } from "./tiling.ts";
 
@@ -15,9 +15,23 @@ export interface PlanImage {
 	readonly height: number;
 	/** The image to store and export: the original raster file, or a PNG rendering. */
 	readonly blob: Blob;
-	/** The image cut into GPU-sized tiles. */
+	/**
+	 * The image at full size, then halved again and again: the map draws the level matching the
+	 * zoom. MapLibre doesn't mipmap image sources, so a large plan drawn small would otherwise
+	 * lose its thin lines between the pixels it samples.
+	 */
+	readonly levels: readonly PlanLevel[];
+}
+
+export interface PlanLevel {
+	/** Image pixels per pixel of this level: 1, 2, 4… */
+	readonly scale: number;
+	/** The level cut into GPU-sized tiles, placed in full-size image pixels. */
 	readonly tiles: readonly { tile: Tile; bitmap: ImageBitmap }[];
 }
+
+/** The pyramid stops once a level fits in this many pixels. */
+const SMALLEST_LEVEL = 256;
 
 export type PlanFileKind = "raster" | "svg" | "pdf" | "plans";
 
@@ -176,28 +190,60 @@ async function fromCanvas(canvas: HTMLCanvasElement): Promise<PlanImage> {
 	return fromBitmap(await createImageBitmap(canvas), blob);
 }
 
-/** Cuts a decoded image into tiles. */
+/** Builds the pyramid of a decoded image, each level cut into tiles. */
 export async function fromBitmap(
 	bitmap: ImageBitmap,
 	blob: Blob,
 ): Promise<PlanImage> {
 	const { width, height } = bitmap;
-	const parts = tiles(width, height);
-	const result =
-		parts.length === 1
-			? [{ tile: parts[0] as Tile, bitmap }]
-			: await Promise.all(
-					parts.map(async (tile) => ({
-						tile,
-						bitmap: await createImageBitmap(
-							bitmap,
-							tile.x,
-							tile.y,
-							tile.width,
-							tile.height,
-						),
-					})),
-				);
-	if (parts.length > 1) bitmap.close();
-	return { width, height, blob, tiles: result };
+	const levels: PlanLevel[] = [];
+	let level: ImageBitmap | null = bitmap;
+	for (let scale = 1; level; scale *= 2) {
+		const current: ImageBitmap = level;
+		level =
+			Math.max(current.width, current.height) > SMALLEST_LEVEL
+				? await createImageBitmap(current, {
+						resizeWidth: Math.max(1, Math.round(current.width / 2)),
+						resizeHeight: Math.max(1, Math.round(current.height / 2)),
+						resizeQuality: "high",
+					})
+				: null;
+		levels.push({ scale, tiles: await cut(current, width, height) });
+	}
+	return { width, height, blob, levels };
+}
+
+/**
+ * Cuts one level into tiles, placed in the pixels of the full image (`width` × `height`). The
+ * level's bitmap is used as is when it fits in one tile, else closed once cut.
+ */
+async function cut(
+	bitmap: ImageBitmap,
+	width: number,
+	height: number,
+): Promise<{ tile: Tile; bitmap: ImageBitmap }[]> {
+	const fx = width / bitmap.width;
+	const fy = height / bitmap.height;
+	const parts = tiles(bitmap.width, bitmap.height);
+	const full = (tile: Tile): Tile => ({
+		x: tile.x * fx,
+		y: tile.y * fy,
+		width: tile.width * fx,
+		height: tile.height * fy,
+	});
+	if (parts.length === 1) return [{ tile: full(parts[0] as Tile), bitmap }];
+	const result = await Promise.all(
+		parts.map(async (tile) => ({
+			tile: full(tile),
+			bitmap: await createImageBitmap(
+				bitmap,
+				tile.x,
+				tile.y,
+				tile.width,
+				tile.height,
+			),
+		})),
+	);
+	bitmap.close();
+	return result;
 }

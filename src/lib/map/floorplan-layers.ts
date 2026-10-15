@@ -1,10 +1,15 @@
 /**
- * Draws floor plans on the map: one MapLibre image source and raster layer per plan tile, between
- * the background imagery and the indoor data. Plans are compared by identity, so only what
+ * Draws floor plans on the map: one MapLibre image source and raster layer per plan tile, above
+ * the indoor fills (which would hide them) and below the indoor outlines, icons and labels. Plans are compared by identity, so only what
  * changed is updated: moving a plan sets new coordinates, it never re-uploads the image.
  */
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
-import { type LngLat, type Pixel, project } from "#lib/floorplans/georef.ts";
+import {
+	groundDistance,
+	type LngLat,
+	type Pixel,
+	project,
+} from "#lib/floorplans/georef.ts";
 import { tileCorners } from "#lib/floorplans/tiling.ts";
 import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
 import type { FloorPlan, Tool } from "#lib/state/floorplans.svelte.ts";
@@ -14,12 +19,16 @@ import type {
 	Map as MapLibreMap,
 } from "./maplibre.ts";
 
+const EARTH_RADIUS = 6378137;
+
 /** Prefix of the floor plan source and layer ids. */
 export const FLOORPLAN_PREFIX = "floorplan-";
 
 interface Shown {
 	readonly plan: FloorPlan;
 	readonly ids: readonly string[];
+	/** Index of the pyramid level drawn. */
+	readonly level: number;
 }
 
 export class FloorPlanLayers {
@@ -34,6 +43,8 @@ export class FloorPlanLayers {
 		const install = () => {
 			this.#ready = true;
 			this.#sync();
+			// Zooming may call for another level of the plans' pyramids.
+			map.on("zoom", this.#onZoom);
 		};
 		if (map.isStyleLoaded()) install();
 		else map.once("load", install);
@@ -52,25 +63,35 @@ export class FloorPlanLayers {
 	}
 
 	remove(): void {
+		this.#map.off("zoom", this.#onZoom);
 		for (const id of [...this.#shown.keys()]) this.#hide(id);
 	}
+
+	readonly #onZoom = () => this.#sync();
 
 	#sync(): void {
 		const wanted = this.#plans.filter(
 			(p) => p.visible && isPlanOnLevel(p, this.#level),
 		);
-		const wantedIds = new Set(wanted.map((p) => p.id));
+		const levels = new Map(wanted.map((p) => [p.id, this.#pyramidLevel(p)]));
 		for (const [id, shown] of this.#shown) {
-			if (!wantedIds.has(id) || shown.plan.image !== this.#find(id)?.image) {
+			if (
+				shown.plan.image !== this.#find(id)?.image ||
+				shown.level !== levels.get(id)
+			) {
 				this.#hide(id);
 			}
 		}
+		let added = false;
 		for (const plan of wanted) {
 			const shown = this.#shown.get(plan.id);
-			if (!shown) this.#show(plan);
-			else if (shown.plan !== plan) this.#update(shown, plan);
+			if (!shown) {
+				this.#show(plan, levels.get(plan.id) ?? 0);
+				added = true;
+			} else if (shown.plan !== plan) this.#update(shown, plan);
 		}
-		// Keep the plans' order: each one moved below the indoor data, in turn.
+		if (!added) return;
+		// Keep the plans' order: each one moved below the indoor outlines, in turn.
 		for (const plan of wanted) {
 			for (const id of this.#shown.get(plan.id)?.ids ?? []) {
 				this.#map.moveLayer(id, this.#below());
@@ -78,12 +99,41 @@ export class FloorPlanLayers {
 		}
 	}
 
+	/**
+	 * The pyramid level to draw: the smallest one still having at least one pixel per screen
+	 * pixel, so the GPU never shrinks a level by more than half.
+	 */
+	#pyramidLevel(plan: FloorPlan): number {
+		const { width, height, levels } = plan.image;
+		const centre: Pixel = [width / 2, height / 2];
+		const step = Math.min(100, width / 2);
+		const at = project(plan.transform, centre);
+		const metresPerImagePixel =
+			groundDistance(
+				at,
+				project(plan.transform, [centre[0] + step, centre[1]]),
+			) / step;
+		// Ground size of a device pixel: the 512 px world at this zoom, at this latitude.
+		const metresPerDevicePixel =
+			(2 * Math.PI * EARTH_RADIUS * Math.cos((at[1] * Math.PI) / 180)) /
+			(512 * 2 ** this.#map.getZoom()) /
+			(window.devicePixelRatio || 1);
+		const imagePixelsPerDevicePixel =
+			metresPerDevicePixel / metresPerImagePixel;
+		const level = Math.floor(Math.log2(imagePixelsPerDevicePixel));
+		return Math.max(
+			0,
+			Math.min(levels.length - 1, Number.isFinite(level) ? level : 0),
+		);
+	}
+
 	#find(id: string): FloorPlan | undefined {
 		return this.#plans.find((p) => p.id === id);
 	}
 
-	#show(plan: FloorPlan): void {
-		const ids = plan.image.tiles.map(({ tile, bitmap }, i) => {
+	#show(plan: FloorPlan, level: number): void {
+		const tiles = plan.image.levels[level]?.tiles ?? [];
+		const ids = tiles.map(({ tile, bitmap }, i) => {
 			const id = `${FLOORPLAN_PREFIX}${plan.id}-${i}`;
 			this.#map.addSource(id, {
 				type: "image",
@@ -103,12 +153,12 @@ export class FloorPlanLayers {
 			);
 			return id;
 		});
-		this.#shown.set(plan.id, { plan, ids });
+		this.#shown.set(plan.id, { plan, ids, level });
 	}
 
 	#update(shown: Shown, plan: FloorPlan): void {
 		if (plan.transform !== shown.plan.transform) {
-			plan.image.tiles.forEach(({ tile }, i) => {
+			plan.image.levels[shown.level]?.tiles.forEach(({ tile }, i) => {
 				const id = shown.ids[i];
 				if (!id) return;
 				this.#map
@@ -121,7 +171,7 @@ export class FloorPlanLayers {
 				this.#map.setPaintProperty(id, "raster-opacity", plan.opacity);
 			}
 		}
-		this.#shown.set(plan.id, { plan, ids: shown.ids });
+		this.#shown.set(plan.id, { ...shown, plan });
 	}
 
 	#hide(id: string): void {
@@ -132,10 +182,10 @@ export class FloorPlanLayers {
 		this.#shown.delete(id);
 	}
 
-	/** The layer plans go below: the indoor data, or else the basemap labels. */
+	/** The layer plans go below: the indoor outlines, or else the basemap labels. */
 	#below(): string | undefined {
-		return this.#map.getLayer("indoor-fill")
-			? "indoor-fill"
+		return this.#map.getLayer("indoor-outline")
+			? "indoor-outline"
 			: this.#map.getStyle().layers.find((l) => l.type === "symbol")?.id;
 	}
 }

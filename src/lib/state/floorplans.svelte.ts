@@ -281,7 +281,9 @@ export class FloorPlans {
 		const plan = this.plans.find((p) => p.id === id);
 		this.plans = this.plans.filter((p) => p.id !== id);
 		if (this.selectedId === id) this.select(null);
-		for (const { bitmap } of plan?.image.tiles ?? []) bitmap.close();
+		for (const level of plan?.image.levels ?? []) {
+			for (const { bitmap } of level.tiles) bitmap.close();
+		}
 		this.#persist(this.#store?.delete(id));
 	}
 

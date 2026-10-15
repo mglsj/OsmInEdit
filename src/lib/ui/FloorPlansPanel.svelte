@@ -240,7 +240,8 @@
 		<Card.Header>
 			<Card.Title>Floor plans</Card.Title>
 			<Card.Description>
-				PNG, JPEG, WebP, SVG or PDF. Plans are drawn under the indoor data.
+				PNG, JPEG, WebP, SVG or PDF. Plans are drawn over the rooms, under their
+				outlines.
 			</Card.Description>
 			<Card.Action>
 				<Button size="sm" disabled={busy} onclick={() => input?.click()}>

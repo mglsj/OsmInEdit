@@ -8,6 +8,7 @@ import {
 	LAT,
 	LON,
 	mapLocator,
+	room,
 	serveOsm,
 	test,
 } from "./fixtures.ts";
@@ -87,6 +88,36 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 		page.getByRole("list", { name: "Floor plans" }).getByRole("listitem"),
 	).toContainText(["plan, page 2 600 × 450 px"]);
 	await expectPlanDrawn(page, [0, 0, 255], 4 / 3);
+});
+
+test("draws a plan over the rooms already mapped", async ({ page }) => {
+	await serveOsm(page, room(100, LON, LAT, "0"));
+	await importPlan(page, "plan.png");
+	const box = await mapLocator(page).boundingBox();
+	if (!box) throw new Error("No map");
+	// The room's fill (80% opaque), then the plan at half opacity on top.
+	const roomFill = blend([0xd6, 0xd1, 0xc7], 0.8, BACKGROUND);
+	await expectPixel(
+		page,
+		box.x + box.width / 2,
+		box.y + box.height / 2,
+		blend(RED, 0.5, roomFill),
+	);
+});
+
+test("keeps the fine lines of a large plan when it is shown small", async ({
+	page,
+}) => {
+	// 4000 × 3000 px of alternating 1 px black and white columns, shown ~400 px tall: each
+	// screen pixel covers several columns and should average them to mid-grey everywhere.
+	await importPlan(page, "stripes.png");
+	const box = await mapLocator(page).boundingBox();
+	if (!box) throw new Error("No map");
+	const grey = blend([128, 128, 128], 0.5, BACKGROUND);
+	const cy = box.y + box.height / 2;
+	for (const dx of [-150, -97, -41, 0, 23, 71, 133]) {
+		await expectPixel(page, box.x + box.width / 2 + dx, cy, grey, 12);
+	}
 });
 
 /** Size of the world at zoom 19, in screen pixels (MapLibre tiles are 512 px). */

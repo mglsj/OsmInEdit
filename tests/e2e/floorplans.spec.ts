@@ -918,3 +918,27 @@ test("draws the layers in the list's order, changed by dragging or Alt+arrows", 
 	await page.getByRole("button", { name: "Show buildings" }).click();
 	await expectPixel(page, mx + 298, cy, greenOnRed);
 });
+
+test("shows the map's grab cursor over plans when none is in Edit", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	const canvas = page.locator("canvas.maplibregl-canvas");
+	await page.mouse.move(plan.cx, plan.cy);
+	await expect(canvas).toHaveCSS("cursor", "move");
+
+	// Done, without moving the pointer, then moving it over the locked plan.
+	await page.getByRole("button", { name: "Done" }).click();
+	await expect(canvas).toHaveCSS("cursor", "grab");
+	await page.mouse.move(plan.cx + 20, plan.cy + 10);
+	await expect(canvas).toHaveCSS("cursor", "grab");
+
+	// Back in Edit, the plan can be moved again; out of floor plan mode, the map's cursor.
+	await page.getByRole("button", { name: "Edit plan" }).click();
+	await page.mouse.move(plan.cx, plan.cy);
+	await expect(canvas).toHaveCSS("cursor", "move");
+	await page.getByRole("button", { name: "Close" }).click();
+	await page.mouse.move(plan.cx + 20, plan.cy);
+	await expect(canvas).toHaveCSS("cursor", "grab");
+});

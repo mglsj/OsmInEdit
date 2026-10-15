@@ -17,6 +17,9 @@ import type { FloorPlan } from "#lib/state/floorplans.svelte.ts";
 import { HANDLES_LAYER } from "./floorplan-layers.ts";
 import type { Map as MapLibreMap, MapMouseEvent } from "./maplibre.ts";
 
+/** Cursors shown over a plan that can be dragged. */
+const DRAG_CURSORS = new Set(["nwse-resize", "grab", "move"]);
+
 /** How far from a corner handle a press still grabs it, in pixels. */
 const HANDLE_TOLERANCE = 8;
 
@@ -135,8 +138,13 @@ export class PlanDragging {
 	}
 
 	#updateCursor(event: MapMouseEvent): void {
+		const canvas = this.#map.getCanvas();
 		const plan = this.#options.plan();
-		if (!plan) return;
+		if (!plan) {
+			// Nothing to drag: back to the map's own cursor, leaving others' (a tool's) alone.
+			if (DRAG_CURSORS.has(canvas.style.cursor)) canvas.style.cursor = "";
+			return;
+		}
 		const grab = this.#grab(plan, event);
 		const cursor =
 			grab?.kind === "corner"
@@ -146,6 +154,6 @@ export class PlanDragging {
 					: grab?.kind === "body"
 						? "move"
 						: "";
-		this.#map.getCanvas().style.cursor = cursor;
+		canvas.style.cursor = cursor;
 	}
 }

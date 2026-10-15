@@ -192,8 +192,11 @@
 		instance.on("mousemove", onPointer);
 		instance.on("mouseout", onLeave);
 		// On the canvas itself: MapLibre's own cursor rule on its container wins over a class.
+		// Reset whenever what can be dragged changes: plan dragging sets it again on the next move.
 		$effect(() => {
-			instance.getCanvas().style.cursor = floorplans.tool ? "crosshair" : "";
+			const tool = floorplans.tool;
+			void [floorplans.editingId, planMode];
+			instance.getCanvas().style.cursor = tool ? "crosshair" : "";
 		});
 		return () => {
 			instance.off("click", onClick);

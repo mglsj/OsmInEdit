@@ -67,6 +67,77 @@ test("changing the type keeps the other tags", async ({ page }) => {
 	);
 });
 
+test("Enter chooses the first feature type found", async ({ page }) => {
+	const editor = await selectRoom(page);
+	await featureType(editor, "Room").click();
+	const search = page.getByRole("combobox", { name: "Search feature types" });
+	await search.fill("stairwell");
+	await search.press("Enter");
+	await expect(featureType(editor, "Indoor Stairwell")).toBeVisible();
+});
+
+test("lists the indoor types first, and the last types chosen above them", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page);
+	await featureType(editor, "Room").click();
+	const options = editor.getByRole("option");
+	await expect(options.first()).toHaveText("Room");
+	await expect(options.nth(1)).toHaveText("Indoor Corridor");
+	// The feature's type is marked.
+	await expect(options.first()).toHaveAttribute("aria-current", "true");
+
+	await page
+		.getByRole("combobox", { name: "Search feature types" })
+		.fill("cafe");
+	await editor.getByRole("option", { name: "Cafe", exact: true }).click();
+	await expect(featureType(editor, "Cafe")).toBeVisible();
+
+	// Remembered across visits, for areas.
+	await page.reload();
+	const again = await selectRoom(page);
+	await featureType(again, "Room").click();
+	await expect(again.getByRole("option").first()).toHaveText("Cafe");
+	await expect(again.getByRole("option").nth(1)).toHaveText("Room");
+});
+
+test("categories open in place, with the mouse or the arrow keys", async ({
+	page,
+}) => {
+	const editor = await selectRoom(page);
+	await featureType(editor, "Room").click();
+	const category = editor.getByRole("option", { name: "Building Features" });
+	const house = editor.getByRole("option", { name: "House", exact: true });
+	await expect(house).toBeHidden();
+
+	await category.click();
+	await expect(house).toBeVisible();
+	await category.click();
+	await expect(house).toBeHidden();
+
+	// Down to the category, → opens it, ↓ to its first member, ← back and closed.
+	const search = page.getByRole("combobox", { name: "Search feature types" });
+	const names = await editor.getByRole("option").allTextContents();
+	for (let i = 0; i < names.indexOf("Building Features"); i++) {
+		await search.press("ArrowDown");
+	}
+	await expect(category).toHaveAttribute("aria-selected", "true");
+	await search.press("ArrowRight");
+	await expect(category).toHaveAttribute("aria-expanded", "true");
+	await search.press("ArrowDown");
+	await expect(
+		editor.getByRole("option", { name: "Building", exact: true }),
+	).toHaveAttribute("aria-selected", "true");
+	await search.press("ArrowLeft");
+	await expect(category).toHaveAttribute("aria-selected", "true");
+	await expect(house).toBeHidden();
+
+	await search.press("ArrowRight");
+	await house.click();
+	await expect(featureType(editor, "House")).toBeVisible();
+	await expect(await tagsBox(page)).toHaveValue("building=house\nlevel=0");
+});
+
 test("the raw tag editor edits every tag", async ({ page }) => {
 	const editor = await selectRoom(page);
 	await (await tagsBox(page)).fill("indoor=room\nlevel=0\nname=Library");

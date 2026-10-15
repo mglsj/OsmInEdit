@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ArrowLeft from "@lucide/svelte/icons/arrow-left";
 	import Check from "@lucide/svelte/icons/check";
 	import ChevronRight from "@lucide/svelte/icons/chevron-right";
 	import ExternalLink from "@lucide/svelte/icons/external-link";
@@ -7,17 +8,17 @@
 	import { untrack } from "svelte";
 	import * as Alert from "#lib/components/shadcn/alert/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
-	import * as Command from "#lib/components/shadcn/command/index.ts";
 	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
 	import { Textarea } from "#lib/components/shadcn/textarea/index.ts";
-	import { iconUrl } from "#lib/map/style/icons.ts";
 	import { isNewId, osmId } from "#lib/osm/entity.ts";
 	import { formatTagText, parseTagText } from "#lib/osm/tag-text.ts";
 	import type { Preset, Field as PresetField } from "#lib/presets/presets.ts";
 	import type { Editor } from "#lib/state/editor.svelte.ts";
 	import FieldInput from "#lib/ui/FieldInput.svelte";
 	import InspectorSection from "#lib/ui/InspectorSection.svelte";
+	import PresetIcon from "#lib/ui/PresetIcon.svelte";
+	import PresetList from "#lib/ui/PresetList.svelte";
 	import { timeAgo } from "#lib/ui/time-ago.ts";
 
 	interface Props {
@@ -38,7 +39,6 @@
 	const changed = $derived(entity !== selectedAs);
 
 	let choosing = $state(false);
-	let query = $state("");
 
 	const geometry = $derived(editor.geometryOf(entity));
 	const preset = $derived(editor.presetOf(entity));
@@ -66,14 +66,6 @@
 	const lastEdited = $derived(
 		entity.timestamp ? timeAgo(entity.timestamp) : null,
 	);
-	const results = $derived(
-		editor.presets
-			? query.trim()
-				? editor.presets.search(query, geometry)
-				: editor.presets.defaults(geometry)
-			: [],
-	);
-
 	function setField(field: PresetField, value: string) {
 		if (!field.key) return;
 		const tags: Record<string, string> = { ...entity.tags };
@@ -85,40 +77,26 @@
 	function choose(next: Preset) {
 		editor.setPreset(entity, next);
 		choosing = false;
-		query = "";
-	}
-
-	function onPickerKeydown(event: KeyboardEvent) {
-		if (event.key === "Escape") {
-			event.stopPropagation();
-			choosing = false;
-		}
 	}
 </script>
-
-{#snippet presetIcon(
-	preset: Preset | undefined,
-	size: number,
-)}
-	{@const url = iconUrl(preset?.icon)}
-	{#if url}
-		<img
-			src={url}
-			alt=""
-			width={size}
-			height={size}
-			class="shrink-0 dark:invert"
-		>
-	{:else}
-		<span class="shrink-0" style:width="{size}px"></span>
-	{/if}
-{/snippet}
 
 <aside
 	aria-label="Feature editor"
 	class="flex h-full w-88 max-w-[calc(100vw-2rem)] flex-col border-r bg-background shadow-lg"
 >
 	<header class="flex items-center gap-2 border-b px-4 py-3">
+		{#if choosing}
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				class="-ml-2"
+				aria-label="Back to the feature"
+				title="Back to the feature"
+				onclick={() => (choosing = false)}
+			>
+				<ArrowLeft />
+			</Button>
+		{/if}
 		<h2 class="min-w-0 flex-1 truncate text-base font-semibold">
 			{choosing ? "Select feature type" : "Edit feature"}
 		</h2>
@@ -137,31 +115,15 @@
 		</Button>
 	</header>
 
-	{#if choosing}
-		<Command.Root
-			shouldFilter={false}
-			label="Search feature types"
-			class="min-h-0 flex-1 rounded-none!"
-		>
-			<Command.Input
-				bind:value={query}
-				placeholder="Search feature types"
-				autocomplete="off"
-				onkeydown={onPickerKeydown}
-				{@attach (input) => input.focus()}
-			/>
-			<Command.List class="max-h-none flex-1">
-				<Command.Empty>No feature type found</Command.Empty>
-				<Command.Group>
-					{#each results as result (result.id)}
-						<Command.Item value={result.id} onSelect={() => choose(result)}>
-							{@render presetIcon(result, 16)}
-							{result.name}
-						</Command.Item>
-					{/each}
-				</Command.Group>
-			</Command.List>
-		</Command.Root>
+	{#if choosing && editor.presets}
+		<PresetList
+			presets={editor.presets}
+			{geometry}
+			current={preset}
+			recent={editor.recentPresets.list(geometry)}
+			onchoose={choose}
+			oncancel={() => (choosing = false)}
+		/>
 	{:else}
 		<ScrollArea class="min-h-0 flex-1">
 			<InspectorSection id="feature-type" title="Feature Type">
@@ -171,7 +133,7 @@
 					aria-label={`${preset?.name ?? "Feature"}, change feature type`}
 					onclick={() => (choosing = true)}
 				>
-					{@render presetIcon(preset, 28)}
+					<PresetIcon icon={preset?.icon} size={28} />
 					<span class="min-w-0 flex-1">
 						<span class="block truncate font-medium">
 							{preset?.name ?? "Feature"}

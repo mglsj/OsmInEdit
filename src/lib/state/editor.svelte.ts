@@ -13,12 +13,12 @@ import { Graph } from "#lib/osm/graph.ts";
 import { type Action, History } from "#lib/osm/history.ts";
 import type { Tags } from "#lib/osm/tags.ts";
 import { loadPresetIndex, loadSchemaUpgrades } from "#lib/presets/load.ts";
-import {
-	applyPreset,
-	type Preset,
-	type PresetGeometry,
-	type PresetIndex,
+import type {
+	Preset,
+	PresetGeometry,
+	PresetIndex,
 } from "#lib/presets/presets.ts";
+import { RecentPresets } from "#lib/presets/recent.ts";
 import { LOCAL_UPGRADES, type UpgradeRule } from "#lib/validation/upgrades.ts";
 import { type Issue, validate } from "#lib/validation/validate.ts";
 
@@ -49,6 +49,8 @@ export class Editor {
 		}),
 	);
 	selectedId = $state<EntityId | null>(null);
+	/** The feature types chosen last, offered first in the type list. */
+	readonly recentPresets = new RecentPresets(browserStorage());
 	/** Tag upgrade rules: local ones at once, the schema's once loaded. */
 	upgrades = $state.raw<readonly UpgradeRule[]>(LOCAL_UPGRADES);
 	/** The selected entity, or null when nothing (or something deleted) is selected. */
@@ -172,8 +174,16 @@ export class Editor {
 	}
 
 	setPreset(entity: Entity, preset: Preset): void {
-		const tags = applyPreset(entity.tags, this.presetOf(entity), preset);
+		const geometry = this.geometryOf(entity);
+		const tags =
+			this.presets?.changePreset(
+				entity.tags,
+				this.presetOf(entity),
+				preset,
+				geometry,
+			) ?? entity.tags;
 		this.perform(changeTags(entity.id, tags), `Change to ${preset.name}`);
+		this.recentPresets.add(preset.id, geometry);
 	}
 
 	#receive(entities: Entity[]): void {
@@ -181,3 +191,14 @@ export class Editor {
 		this.graph = this.#history.graph;
 	}
 }
+
+/** The browser's localStorage, or a stand-in that keeps nothing where it is unavailable. */
+function browserStorage(): Pick<Storage, "getItem" | "setItem"> {
+	try {
+		return globalThis.localStorage ?? NO_STORAGE;
+	} catch {
+		return NO_STORAGE;
+	}
+}
+
+const NO_STORAGE = { getItem: () => null, setItem: () => {} };

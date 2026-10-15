@@ -356,7 +356,8 @@ Measured on a synthetic area of 10,000 rooms (50,000 entities, 3.2 MB of GeoJSON
 #### P5.1 Feature editor, as in iD
 
 Slices: (1) ✅ preset data: field properties, universal fields, categories
-(`generated/categories.json`); (2) ✅ layout and sections (`ui/InspectorSection.svelte`); (3) feature type list; (4) Fields
+(`generated/categories.json`); (2) ✅ layout and sections (`ui/InspectorSection.svelte`); (3) ✅ feature type
+list (`ui/PresetList.svelte`, `presets/recent.ts`); (4) Fields
 section; (5) combo, chip and choice fields with taginfo; (6) text, number, date, colour,
 localized, address and access fields; (7) Wikidata, Wikipedia and wiki references; (8) tag
 table; (9) relations and members; (10) one undo step per field edit. Hover preview and
@@ -372,11 +373,16 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
   (parent relations). Footer: "View on openstreetmap.org", last edited when and by whom
   (hidden for new features) ✔.
 - **Feature type list** (slides in over the editor): search ranked like iD (names and aliases
-  at word starts, without accents, terms, tag values, fuzzy matches, `key=value`), up to 8
-  recent presets per geometry (30 kept), the schema defaults, categories that expand in place,
-  ⓘ on each row, keyboard navigation. Choosing a preset follows iD's `actionChangePreset`:
+  at word starts, without accents, terms, tag values, fuzzy matches, `key=value`) ✔, up to 8
+  recent presets per geometry (30 kept) ✔, IndoorID's indoor defaults (`DEFAULT_PRESETS`,
+  not the schema's) ✔, categories that expand in place ✔, ⓘ on each row (with slice 7),
+  keyboard navigation (↑↓, Enter picks the highlighted row, the first by default, → and ←
+  open and close a category) ✔. Choosing a preset follows iD's `actionChangePreset` ✔:
   drop the old preset's `removeTags` and field defaults and the field keys the new one does
-  not use, then add the new `addTags`, `area=yes` when needed and field defaults.
+  not use, then add the new `addTags`, `area=yes` when needed and field defaults. Two
+  indoor rules on top ✔: `level`, `level:ref` and `repeat_on` always stay, and a feature
+  with a level or `indoor=*` gets no `building` default (iD's `building_area_yes` would make
+  a room turned cafe a building).
 - **Fields**: the preset's fields, then its `moreFields` and the universal fields once they
   have a value; an "Add field" combobox for the others (matching labels, terms and keys).
   Each label row: remove (clears all the field's keys), revert (back to the downloaded

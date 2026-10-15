@@ -1,7 +1,8 @@
 /**
  * Extracts the presets IndoorID needs from iD's tagging schema
  * (@openstreetmap/id-tagging-schema, ISC) into src/lib/presets/generated/, with English
- * labels resolved, and copies the Maki and Temaki icons (CC0) they use into its `icons/`.
+ * labels resolved, and copies the Maki and Temaki icons (CC0) they and the categories use
+ * into its `icons/`.
  * Runs on `bun install` (the `prepare` script); the output is not committed.
  *
  * Usage: bun scripts/build-presets.ts
@@ -82,10 +83,8 @@ for (const [id, preset] of Object.entries(presets)) {
 	const own = {
 		id,
 		name: (text.name as string | undefined) ?? id,
-		terms: [
-			...((text.terms as string[] | undefined) ?? []),
-			...((text.aliases as string[] | undefined) ?? []),
-		],
+		aliases: (text.aliases as string[] | undefined) ?? [],
+		terms: (text.terms as string[] | undefined) ?? [],
 		icon: preset.icon,
 		geometry: preset.geometry,
 		tags: preset.tags,
@@ -204,7 +203,9 @@ const iconsOut = join(out, "icons");
 rmSync(iconsOut, { recursive: true, force: true });
 mkdirSync(iconsOut);
 let icons = 0;
-for (const icon of new Set(outPresets.map((p) => p.icon))) {
+for (const icon of new Set(
+	[...outPresets, ...outCategories].map((p) => p.icon),
+)) {
 	if (typeof icon !== "string") continue;
 	const [, set, name] = icon.match(/^(\w+)-(.+)$/) ?? [];
 	const dir = set && ICON_SETS[set];

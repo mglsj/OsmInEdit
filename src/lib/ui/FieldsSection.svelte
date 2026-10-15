@@ -81,6 +81,17 @@
 		},
 		deprecated: (key) => editor.deprecatedValues.get(key) ?? [],
 		field: (id) => editor.presets?.field(id),
+		amend: (work) => {
+			const after = editor.graph;
+			const id = entity.id;
+			work.then((patch) => editor.amendTags(after, id, patch)).catch(() => {});
+		},
+		get wikidata() {
+			return editor.wikidata;
+		},
+		get searchWikipedia() {
+			return editor.searchWikipedia;
+		},
 		get docs() {
 			const wikibase = editor.wikibase;
 			return wikibase

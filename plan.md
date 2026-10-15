@@ -363,7 +363,9 @@ section (`presets/field-list.ts`, `ui/FieldsSection.svelte`); (5) ✅ combo, chi
 `ui/CheckField.svelte`, `ui/RadioField.svelte`); (6) ✅ text, number, date, colour,
 localized, address and access fields (`presets/text.ts`, `localized.ts`, `address.ts`,
 `access.ts`; `ui/TextField.svelte`, `TextareaField`, `LocalizedField`, `AddressField`,
-`AccessField`); (7) Wikidata, Wikipedia and wiki references; (8) tag
+`AccessField`); (7) ✅ Wikidata, Wikipedia and wiki references
+(`api/wikidata.ts`, `api/osm-wikibase.ts`, `presets/wiki.ts`, `ui/WikidataField.svelte`,
+`ui/WikipediaField.svelte`, `ui/TagReference.svelte`); (8) tag
 table; (9) relations and members; (10) one undo step per field edit. Hover preview and
 multi-selection come with P5.3.
 
@@ -379,7 +381,7 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
 - **Feature type list** (slides in over the editor): search ranked like iD (names and aliases
   at word starts, without accents, terms, tag values, fuzzy matches, `key=value`) ✔, up to 8
   recent presets per geometry (30 kept) ✔, IndoorID's indoor defaults (`DEFAULT_PRESETS`,
-  not the schema's) ✔, categories that expand in place ✔, ⓘ on each row (with slice 7),
+  not the schema's) ✔, categories that expand in place ✔, ⓘ beside each row ✔,
   keyboard navigation (↑↓, Enter picks the highlighted row, the first by default, → and ←
   open and close a category) ✔. Choosing a preset follows iD's `actionChangePreset` ✔:
   drop the old preset's `removeTags` and field defaults and the field keys the new one does
@@ -391,7 +393,7 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
   label) once they have a value or were added; an "Add field" combobox for the others,
   universal ones last (matching labels, terms and keys; adding sets the field's default).
   Each label row: remove (clears all the field's keys), revert (back to the downloaded
-  values), ⓘ (with slice 7), and a lock for locked fields (iD's rule: `name` when the
+  values), ⓘ ✔, and a lock for locked fields (iD's rule: `name` when the
   feature has `wikidata` or `name:etymology:wikidata`). `prerequisiteTag` hides a field
   until its condition is met, unless it has a value. Fields for some countries only (US
   GNIS, French SIRET…) are left out of the build: IndoorID doesn't know the country. The preset build keeps the field properties this needs (option titles
@@ -421,8 +423,13 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
     house number + street and city + postcode, everywhere; street, place, city and
     postcode suggested from nearby loaded data, house numbers from the building the
     feature is in), access (a row per kind of traffic, implied access as placeholder) ✔;
-    brand, network, operator and flag are locked with Wikidata, as iD ✔; wikidata and
-    wikipedia (searching those sites, each filling the other) come with slice 7.
+    brand, network, operator and flag are locked with Wikidata, as iD ✔; wikidata
+    (searched by the feature's name when nothing is typed, its description and
+    identifier shown, its English Wikipedia article set in the same undo step) and
+    wikipedia (language from iD's wmf-sitematrix list, titles suggested by Wikipedia, an
+    article address can be pasted, its Wikidata item set in the same undo step) ✔. Searches
+    and descriptions are in English; the dropdowns of these two fields don't complete
+    inline as iD's do.
 - **Tags (N)**: a table of key and value inputs with a delete button, an always-present empty
   "Add new tag" row, key/value autocomplete from taginfo, Enter/`=` moving between cells, a
   duplicate key jumping to the existing row, and a List/Text toggle (the current text view)
@@ -435,7 +442,8 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
 - **Hover preview** ✔: hovering a feature shows its editor read-only.
 - **Services** ✔: taginfo (suggestions, debounced 300 ms and cached), Wikidata and Wikipedia
   (their fields), and the OSM wiki's Wikibase for ⓘ tag references (description, image,
-  link) ✔. Their URLs go in `config.json`; e2e tests serve them from fixtures.
+  link) ✔; ⓘ on fields, the Feature Type and the type list ✔ (the tag table's come with
+  slice 8). Their URLs go in `config.json`; e2e tests serve them from fixtures.
 - **Undo**: one history step per field edit, as in iD. Text is applied when leaving the field
   until P5.2 lands, then live as you type ✔.
 

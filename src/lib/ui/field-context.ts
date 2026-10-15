@@ -1,4 +1,6 @@
 import type { TagDocs } from "#lib/api/osm-wikibase.ts";
+import type { Wikidata } from "#lib/api/wikidata.ts";
+import type { Tags } from "#lib/osm/tags.ts";
 import type { SuggestedValue } from "#lib/presets/combo.ts";
 import type { Field } from "#lib/presets/presets.ts";
 import type { TagReference } from "#lib/presets/wiki.ts";
@@ -21,6 +23,15 @@ export interface FieldContext {
 	readonly nearby?: (key: string, part: string) => readonly string[];
 	/** The OSM wiki's documentation of a key or tag, for ⓘ; absent without the wiki. */
 	readonly docs?: (reference: TagReference) => Promise<TagDocs | null>;
+	/**
+	 * Changes the feature's tags in the undo step just made, once `work` resolves (iD sets the
+	 * Wikipedia article of a Wikidata item that way); dropped if anything was done since.
+	 */
+	readonly amend?: (work: Promise<(tags: Tags) => Tags | null>) => void;
+	/** Wikidata, for the wikidata and wikipedia fields. */
+	readonly wikidata?: Pick<Wikidata, "search" | "entity" | "itemsByTitle">;
+	/** Wikipedia article titles for a language and a text. */
+	readonly searchWikipedia?: (lang: string, query: string) => Promise<string[]>;
 }
 
 export type { TagPatch } from "#lib/presets/combo.ts";

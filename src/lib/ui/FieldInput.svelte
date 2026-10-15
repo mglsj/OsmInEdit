@@ -21,6 +21,8 @@
 	import TagReference from "#lib/ui/TagReference.svelte";
 	import TextareaField from "#lib/ui/TextareaField.svelte";
 	import TextField from "#lib/ui/TextField.svelte";
+	import WikidataField from "#lib/ui/WikidataField.svelte";
+	import WikipediaField from "#lib/ui/WikipediaField.svelte";
 
 	interface Props {
 		field: PresetField;
@@ -75,11 +77,14 @@
 				return "address";
 			case "localized":
 				return "localized";
+			case "wikidata":
+				return "wikidata";
+			case "wikipedia":
+				return "wikipedia";
 			case "textarea":
 				return "textarea";
 			default:
-				// text, tel, email, url, identifier, schedule, date, colour, number, integer;
-				// and, until they come, wikidata and wikipedia.
+				// text, tel, email, url, identifier, schedule, date, colour, number, integer.
 				return "text";
 		}
 	});
@@ -128,6 +133,10 @@
 		<AddressField {field} {tags} {context} {locked} {onchange} />
 	{:else if kind === "localized"}
 		<LocalizedField {field} {tags} {locked} {onchange} />
+	{:else if kind === "wikidata"}
+		<WikidataField {field} {tags} {context} {locked} {onchange} />
+	{:else if kind === "wikipedia"}
+		<WikipediaField {field} {tags} {context} {locked} {onchange} />
 	{:else if kind === "textarea"}
 		<TextareaField {field} {tags} {locked} {onchange} />
 	{:else}

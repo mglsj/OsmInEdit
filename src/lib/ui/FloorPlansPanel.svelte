@@ -343,7 +343,7 @@
 
 <aside
 	aria-label="Floor plan editor"
-	class="flex h-full w-88 max-w-[calc(100vw-2rem)] flex-col border-r bg-background shadow-lg"
+	class="flex h-full w-full flex-col border-r bg-background shadow-lg"
 >
 	<header class="flex items-start gap-2 px-4 py-3">
 		<div class="min-w-0 flex-1">

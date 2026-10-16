@@ -4,6 +4,7 @@
 	import Undo2 from "@lucide/svelte/icons/undo-2";
 	import Upload from "@lucide/svelte/icons/upload";
 	import { type Component, untrack } from "svelte";
+	import { innerWidth } from "svelte/reactivity/window";
 	import type { Place } from "#lib/api/nominatim.ts";
 	import type { Bbox } from "#lib/api/osm-api.ts";
 	import { OsmApi } from "#lib/api/osm-api.ts";
@@ -51,6 +52,13 @@
 	import Inspector from "#lib/ui/Inspector.svelte";
 	import LevelControl from "#lib/ui/LevelControl.svelte";
 	import MapView from "#lib/ui/MapView.svelte";
+	import PanelResizer from "#lib/ui/PanelResizer.svelte";
+	import {
+		clampWidth,
+		rememberedWidth,
+		rememberWidth,
+		widthBounds,
+	} from "#lib/ui/panel-width.ts";
 	import SaveDialog from "#lib/ui/SaveDialog.svelte";
 	import SearchPlace from "#lib/ui/SearchPlace.svelte";
 	import UnsavedPlanDialog from "#lib/ui/UnsavedPlanDialog.svelte";
@@ -114,8 +122,14 @@
 		decode: importRaster,
 	});
 	void floorplans.restore();
-	/** Where map controls start when the side panel (22rem wide) is open. */
-	const SIDE_PANEL_OFFSET = "23rem";
+	/** The side panel's width, as the user left it, kept within the window. */
+	let panelWidth = $state(rememberedWidth(localStorage));
+	const panelBounds = $derived(widthBounds(innerWidth.current ?? 1280));
+	const shownPanelWidth = $derived(clampWidth(panelWidth, panelBounds));
+	function keepPanelWidth(width: number) {
+		panelWidth = width;
+		rememberWidth(localStorage, width);
+	}
 	/** Snapping distance for alignment clicks, in screen pixels. */
 	const SNAP_DISTANCE = 8;
 
@@ -398,7 +412,11 @@
 
 <!-- The side panel edits the selected feature, or the floor plans in floor plan mode. -->
 {#if editor.selected || planMode}
-	<div bind:this={sidePanel} class="absolute inset-y-0 left-0 z-30">
+	<div
+		bind:this={sidePanel}
+		class="absolute inset-y-0 left-0 z-30"
+		style:width="{shownPanelWidth}px"
+	>
 		{#if editor.selected}
 			{#key editor.selected.id}
 				<Inspector {editor} entity={editor.selected} {websiteUrl} />
@@ -413,12 +431,21 @@
 				onshowlevel={(shown) => (level = shown)}
 			/>
 		{/if}
+		<PanelResizer
+			width={shownPanelWidth}
+			bounds={panelBounds}
+			label="Resize the side panel"
+			onresize={(width) => (panelWidth = width)}
+			oncommit={keepPanelWidth}
+		/>
 	</div>
 {/if}
 
 <div
 	class="absolute top-4 z-20 flex flex-col items-start gap-2"
-	style:left={editor.selected || planMode ? SIDE_PANEL_OFFSET : "1rem"}
+	style:left={editor.selected || planMode
+		? `calc(${shownPanelWidth}px + 1rem)`
+		: "1rem"}
 >
 	<SearchPlace
 		getView={visibleArea}

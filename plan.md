@@ -26,8 +26,8 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P4    | Floor plans                                | Done        |
 | P4.1  | Floor plan layers, edit sessions, align UX | Done        |
 | P5.0–2 | Quick fixes, feature editor, fast core    | Done        |
-| R0    | Fixes and fast feedback (review)           | Next        |
-| R1    | Foundations for editing (review)           | Not started |
+| R0    | Fixes and fast feedback (review)           | Done        |
+| R1    | Foundations for editing (review)           | Next        |
 | R2    | Floor plan content model (review)          | Not started |
 | P4.2  | Vector and light raster floor plans        | Not started |
 | P5.3  | Geometry editing                           | Not started |
@@ -638,7 +638,7 @@ raster plans (P4.2), geometry editing (P5.3), autosave and conflicts (P5.4), par
 Vector plans come before editing so that drawing can snap to plan walls from the start. Each
 slice still agrees its test seams first.
 
-### R0: Fixes and fast feedback — S
+### R0: Fixes and fast feedback — S — done
 
 1. The six bugs above that are small: duplicate issue ids, readiness race (`whenStyleReady`
    plus an `AbortSignal` per layer owner), `newIds(type, n)`, no empty undo steps, relation
@@ -649,6 +649,15 @@ slice still agrees its test seams first.
    test clicks once instead of looping; `clickMap()`, `lngLatAt()` and an `inspector(page)`
    page object in `fixtures.ts`; `locale: "en-US"` pinned.
 4. Leftovers: `editor_name`, unused shadcn components, config validation with defaults.
+
+Done ✅: R0.1 (`map/ready.ts` `styleReady`, issue ids with a key, `newId` reserving, no empty
+steps, relation delete cleanup; the store keeping image-less plans moves to R2's schema),
+R0.2 (`data-drawn` and `mapDrawn()`, `clickMap()`, `lngLatAt()`, `inspector(page)`,
+`fullyParallel`, `en-US`; locally still about 4.8 minutes on two workers, CPU-bound by
+software WebGL, and four workers time out PDF imports), R0.3 (CI caches, cancel in progress,
+two e2e shards; flaky tests show in the GitHub reporter's summary; not run yet, since CI only
+runs on `master` and pull requests), R0.4 (`config-schema.ts` `parseConfig` with defaults and
+clear errors, `editor_name` and two unused shadcn components removed).
 
 ### R1: Foundations for editing — M–L
 

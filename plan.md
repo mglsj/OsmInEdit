@@ -706,6 +706,11 @@ cancels); modes `browse`, `floorplan` (move and corner handles, on `edit/plan-dr
 the pointer leaves the map, and bits-ui popovers that reopen while closing no longer open under
 the side panel (`[data-bits-floating-content-wrapper]` gets `z-50` in `app.css`; the
 relations test flaked on it).
+R1.5: `state/selection.svelte.ts` (`Selection`: `ids`, `single`, `hover`, `select`, `toggle`,
+`remap` after an upload) in the Editor, whose `selected` is the one feature when a single one is
+selected; `IndoorMap.setSelected(ids)` and `setHover(id)` set feature-state, the hovered
+feature outlined at 45% of the selection colour; browse mode hovers from its hit test and
+clears it on leaving the map; the Inspector is keyed on the selection.
 
 ### R2: Floor plan content model — M
 

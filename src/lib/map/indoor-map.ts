@@ -45,7 +45,8 @@ export class IndoorMap {
 	/** Features were sent since the map last finished drawing. */
 	#drawing = false;
 	#level = 0;
-	#selected: string | null = null;
+	#selected: readonly string[] = [];
+	#hover: readonly string[] = [];
 	#planMode = false;
 	#buildingsVisible = true;
 
@@ -122,21 +123,39 @@ export class IndoorMap {
 		);
 	}
 
-	/** Highlights a feature, by `@id`, or nothing. */
-	setSelected(id: string | null): void {
-		if (this.#ready && this.#selected !== null) {
-			this.#map.setFeatureState(
-				{ source: INDOOR_SOURCE, id: this.#selected },
-				{ selected: false },
-			);
+	/** Outlines the selected features, by `@id`. */
+	setSelected(ids: readonly string[]): void {
+		this.#selected = this.#mark("selected", this.#selected, ids);
+	}
+
+	/** Outlines the feature under the pointer faintly, by `@id`, or none. */
+	setHover(id: string | null): void {
+		this.#hover = this.#mark("hover", this.#hover, id === null ? [] : [id]);
+	}
+
+	/** Moves a feature-state flag from the features in `before` to those in `after`. */
+	#mark(
+		flag: "selected" | "hover",
+		before: readonly string[],
+		after: readonly string[],
+	): readonly string[] {
+		if (this.#ready) {
+			const kept = new Set(after);
+			for (const id of before) {
+				if (kept.has(id)) continue;
+				this.#map.setFeatureState(
+					{ source: INDOOR_SOURCE, id },
+					{ [flag]: false },
+				);
+			}
+			for (const id of after) {
+				this.#map.setFeatureState(
+					{ source: INDOOR_SOURCE, id },
+					{ [flag]: true },
+				);
+			}
 		}
-		this.#selected = id;
-		if (this.#ready && id !== null) {
-			this.#map.setFeatureState(
-				{ source: INDOOR_SOURCE, id },
-				{ selected: true },
-			);
-		}
+		return after;
 	}
 
 	/**
@@ -211,7 +230,8 @@ export class IndoorMap {
 		);
 		this.#ready = true;
 		this.#applyPlanMode();
-		this.setSelected(this.#selected);
+		this.#mark("selected", [], this.#selected);
+		this.#mark("hover", [], this.#hover);
 	}
 
 	#source(): GeoJSONSource | undefined {

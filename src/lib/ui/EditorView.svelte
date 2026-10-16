@@ -172,7 +172,8 @@
 		const indoor = new IndoorMap(instance);
 		$effect(() => indoor.setFeatures(editor.features));
 		$effect(() => indoor.setLevel(level));
-		$effect(() => indoor.setSelected(editor.selectedId));
+		$effect(() => indoor.setSelected(editor.selection.ids));
+		$effect(() => indoor.setHover(editor.selection.hover));
 		$effect(() => indoor.setPlanMode(planMode));
 		$effect(() => indoor.setBuildingsVisible(floorplans.buildings.visible));
 		const stopDrawn = indoor.onDrawn((count) => (drawn = count));
@@ -207,6 +208,7 @@
 						browseMode({
 							hitTest: (point) => indoor.hitTest(point),
 							select: (id) => editor.select(id as EntityId | null),
+							hover: (id) => editor.selection.setHover(id as EntityId | null),
 						}),
 					);
 					break;
@@ -481,7 +483,7 @@
 		style:width="{shownPanelWidth}px"
 	>
 		{#if editor.selected}
-			{#key editor.selected.id}
+			{#key editor.selection.ids.join(",")}
 				<Inspector
 					{editor}
 					entity={editor.selected}

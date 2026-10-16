@@ -42,6 +42,7 @@ import type {
 import { RecentPresets } from "#lib/presets/recent.ts";
 import { LOCAL_UPGRADES, type UpgradeRule } from "#lib/validation/upgrades.ts";
 import { type Issue, validate } from "#lib/validation/validate.ts";
+import { Selection } from "./selection.svelte.ts";
 
 export type LoadStatus =
 	| { readonly kind: "idle" }
@@ -79,16 +80,22 @@ export class Editor {
 			presets: this.presets ?? undefined,
 		}),
 	);
-	selectedId = $state<EntityId | null>(null);
+	/** The selected features and the hovered one. */
+	readonly selection = new Selection();
 	/** The feature types chosen last, offered first in the type list. */
 	readonly recentPresets = new RecentPresets(browserStorage());
 	/** Keys the tag table never suggests, once loaded. */
 	discardedKeys = $state.raw<readonly string[]>([]);
 	/** Tag upgrade rules: local ones at once, the schema's once loaded. */
 	upgrades = $state.raw<readonly UpgradeRule[]>(LOCAL_UPGRADES);
-	/** The selected entity, or null when nothing (or something deleted) is selected. */
+	/**
+	 * The selected entity, or null when nothing, several features or something deleted is
+	 * selected: the Inspector edits one feature.
+	 */
 	readonly selected = $derived(
-		this.selectedId ? (this.graph.entity(this.selectedId) ?? null) : null,
+		this.selection.single
+			? (this.graph.entity(this.selection.single) ?? null)
+			: null,
 	);
 
 	/** Values the schema deprecates, by key: combo fields never suggest them. */
@@ -220,16 +227,14 @@ export class Editor {
 	async upload(changesetTags: Tags): Promise<number> {
 		const result = await this.#api.upload(this.graph, changesetTags);
 		this.#history = new History(result.graph);
-		if (this.selectedId) {
-			this.selectedId = result.idMap.get(this.selectedId) ?? this.selectedId;
-		}
+		this.selection.remap(result.idMap);
 		this.graph = result.graph;
 		return result.changesetId;
 	}
 
-	select(id: EntityId | null): void {
+	select(ids: EntityId | readonly EntityId[] | null): void {
 		this.#typing = null;
-		this.selectedId = id;
+		this.selection.select(ids);
 	}
 
 	geometryOf(entity: Entity): PresetGeometry {

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import {
 	expect,
+	inspector,
 	LAT,
 	LON,
 	mapCenter,
@@ -11,11 +12,8 @@ import {
 
 /** The name as the tag table shows it (the graph's value). */
 async function nameTag(page: Page) {
-	const editor = page.getByRole("complementary", { name: "Feature editor" });
-	const tags = editor.getByRole("button", { name: /^Tags \(\d+\)$/ });
-	if ((await tags.getAttribute("aria-expanded")) === "false")
-		await tags.click();
-	return editor.getByRole("combobox", { name: "Value of name" });
+	const table = await inspector(page).tags();
+	return table.getByRole("combobox", { name: "Value of name" });
 }
 
 test("a name is applied while it is typed, and one Undo takes the whole edit back", async ({

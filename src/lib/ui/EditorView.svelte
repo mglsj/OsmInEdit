@@ -167,8 +167,10 @@
 			// While aligning a floor plan, clicks go to the alignment tool.
 			if (!planMode) editor.select(id as EntityId | null);
 		});
+		const stopDrawn = indoor.onDrawn((count) => (drawn = count));
 		return () => {
 			stopClicks();
+			stopDrawn();
 			indoor.remove();
 		};
 	});
@@ -323,6 +325,9 @@
 		if (extent && view && !extentsIntersect(extent, view)) zoomTo(id);
 	}
 
+	/** Indoor features the map has drawn (for the e2e tests' `data-drawn`). */
+	let drawn = $state<number>();
+
 	/** The side panel, which covers the left of the map while it is open. */
 	let sidePanel = $state<HTMLElement>();
 
@@ -472,6 +477,7 @@
 	}}
 	bind:map
 	onmove={onMove}
+	{drawn}
 />
 
 <!-- The side panel edits the selected feature, or the floor plans in floor plan mode. -->

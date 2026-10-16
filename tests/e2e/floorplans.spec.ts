@@ -7,13 +7,17 @@ import {
 	camera,
 	expect,
 	expectPixel,
+	inspector,
 	LAT,
 	LON,
+	lngLatAt,
+	mapDrawn,
 	mapLocator,
 	pixelAt,
 	room,
 	serveOsm,
 	test,
+	WORLD,
 } from "./fixtures.ts";
 
 const FILES = path.join(import.meta.dirname, "files");
@@ -172,11 +176,10 @@ test("floor plan mode shows only building outlines, without selection", async ({
 	const box = await mapLocator(page).boundingBox();
 	if (!box) throw new Error("No map");
 	const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-	const editor = page.getByRole("complementary", { name: "Feature editor" });
-	await expect(async () => {
-		await page.mouse.click(centre.x, centre.y);
-		await expect(editor).toBeVisible({ timeout: 500 });
-	}).toPass({ timeout: 10_000 });
+	const editor = inspector(page).root;
+	await mapDrawn(page);
+	await page.mouse.click(centre.x, centre.y);
+	await expect(editor).toBeVisible();
 	const editing = await pixelAt(page, centre.x, centre.y);
 
 	// The feature editor and the floor plan editor take turns in the side panel, on the left.
@@ -226,20 +229,6 @@ test("keeps the fine lines of a large plan when it is shown small", async ({
 		await expectPixel(page, cx + dx, cy, grey, 12);
 	}
 });
-
-/** Size of the world at zoom 19, in screen pixels (MapLibre tiles are 512 px). */
-const WORLD = 512 * 2 ** 19;
-
-/** The [lon, lat] shown `dx`, `dy` screen pixels from the map centre (LON, LAT) at zoom 19. */
-function lngLatAt(dx: number, dy: number): [number, number] {
-	const phi = (LAT * Math.PI) / 180;
-	const x = ((LON + 180) / 360) * WORLD + dx;
-	const y =
-		((1 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / Math.PI) / 2) * WORLD +
-		dy;
-	const lat = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / WORLD)));
-	return [(x / WORLD) * 360 - 180, (lat * 180) / Math.PI];
-}
 
 /**
  * Checks a rectangle of plan colour, 5 px inside and outside each edge (screen pixels): clear of

@@ -22,9 +22,17 @@
 		map?: MapLibreMap;
 		/** Called once the style is loaded and after every camera movement. */
 		onmove?: (camera: Camera) => void;
+		/** Indoor features drawn so far, shown as `data-drawn` for the e2e tests. */
+		drawn?: number;
 	}
 
-	let { styleUrl, initialCamera, map = $bindable(), onmove }: Props = $props();
+	let {
+		styleUrl,
+		initialCamera,
+		map = $bindable(),
+		onmove,
+		drawn,
+	}: Props = $props();
 
 	let error = $state<string>();
 	let camera = $state<Camera>();
@@ -88,6 +96,7 @@
 	data-testid="map"
 	data-zoom={camera?.zoom}
 	data-center={camera ? `${camera.lat},${camera.lon}` : undefined}
+	data-drawn={drawn}
 ></div>
 
 {#if error}

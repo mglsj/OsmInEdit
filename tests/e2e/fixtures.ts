@@ -125,6 +125,64 @@ export async function mapCenter(page: Page): Promise<{ x: number; y: number }> {
 	};
 }
 
+/**
+ * Waits until the map has drawn at least `atLeast` indoor features (its `data-drawn`, set once
+ * the map is idle after the features it was last sent).
+ */
+export async function mapDrawn(page: Page, atLeast = 1) {
+	await expect
+		.poll(
+			async () =>
+				Number((await mapLocator(page).getAttribute("data-drawn")) ?? -1),
+			{ timeout: 10_000 },
+		)
+		.toBeGreaterThanOrEqual(atLeast);
+}
+
+/** Clicks the map `dx`, `dy` screen pixels from its centre. */
+export async function clickMap(page: Page, dx = 0, dy = 0) {
+	const { x, y } = await mapCenter(page);
+	await page.mouse.click(x + dx, y + dy);
+}
+
+/** Size of the world at zoom 19, in screen pixels (MapLibre tiles are 512 px). */
+export const WORLD = 512 * 2 ** 19;
+
+/** The [lon, lat] shown `dx`, `dy` screen pixels from the map centre (LON, LAT) at zoom 19. */
+export function lngLatAt(dx: number, dy: number): [number, number] {
+	const phi = (LAT * Math.PI) / 180;
+	const x = ((LON + 180) / 360) * WORLD + dx;
+	const y =
+		((1 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / Math.PI) / 2) * WORLD +
+		dy;
+	const lat = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / WORLD)));
+	return [(x / WORLD) * 360 - 180, (lat * 180) / Math.PI];
+}
+
+/** The feature editor (the Inspector) and its sections. */
+export function inspector(page: Page) {
+	const root = page.getByRole("complementary", { name: "Feature editor" });
+	/** A section's heading, which opens and closes it: "Tags (3)", "Relations (1)". */
+	const section = (name: string | RegExp) => root.getByRole("button", { name });
+	/** Opens a section if it is closed. */
+	const open = async (name: string | RegExp) => {
+		const heading = section(name);
+		if ((await heading.getAttribute("aria-expanded")) === "false") {
+			await heading.click();
+		}
+	};
+	return {
+		root,
+		section,
+		open,
+		/** The tag table (list view), its section opened. */
+		async tags() {
+			await open(/^Tags \(\d+\)$/);
+			return root.getByRole("list", { name: "Tags" });
+		},
+	};
+}
+
 /** Default place of the OSM extracts below. */
 export const LAT = 48.13;
 export const LON = -1.69;
@@ -262,13 +320,11 @@ export async function selectRoom(
 	await serveOsm(page, elements);
 	await page.goto(`/#19/${LAT}/${LON}/0`);
 	await camera(page);
-	const { x, y } = await mapCenter(page);
-	const editor = page.getByRole("complementary", { name: "Feature editor" });
 	// The room is drawn once its data has loaded.
-	await expect(async () => {
-		await page.mouse.click(x, y);
-		await expect(editor).toBeVisible({ timeout: 500 });
-	}).toPass({ timeout: 10_000 });
+	await mapDrawn(page);
+	await clickMap(page);
+	const editor = inspector(page).root;
+	await expect(editor).toBeVisible();
 	return editor;
 }
 
@@ -277,12 +333,9 @@ export async function selectRoom(
  * switched from the list if needed.
  */
 export async function tagsBox(page: Page): Promise<Locator> {
-	const editor = page.getByRole("complementary", { name: "Feature editor" });
-	const section = editor.getByRole("button", { name: /^Tags \(\d+\)$/ });
-	if ((await section.getAttribute("aria-expanded")) === "false") {
-		await section.click();
-	}
-	const text = editor.getByRole("radio", { name: "Text view" });
+	const { root, open } = inspector(page);
+	await open(/^Tags \(\d+\)$/);
+	const text = root.getByRole("radio", { name: "Text view" });
 	if ((await text.getAttribute("aria-checked")) !== "true") await text.click();
-	return editor.getByRole("textbox", { name: "Tags", exact: true });
+	return root.getByRole("textbox", { name: "Tags", exact: true });
 }

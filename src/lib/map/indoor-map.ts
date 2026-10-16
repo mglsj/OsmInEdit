@@ -42,6 +42,8 @@ export class IndoorMap {
 	/** The features last given, and those the source holds (by entity id). */
 	#features: StoredFeatures | null = null;
 	#sent = new Map<string, IndoorFeature>();
+	/** Features were sent since the map last finished drawing. */
+	#drawing = false;
 	#level = 0;
 	#selected: string | null = null;
 	#planMode = false;
@@ -66,6 +68,7 @@ export class IndoorMap {
 		if (!source) return;
 		const { add, remove } = diffFeatures(this.#sent, features.byId);
 		if (add.length + remove.length === 0) return;
+		this.#drawing = true;
 		if (add.length + remove.length > features.byId.size / 2) {
 			void source.setData(features.collection);
 			this.#sent = new Map(features.byId);
@@ -137,6 +140,21 @@ export class IndoorMap {
 	}
 
 	/**
+	 * Calls `listener` with the number of features drawn, each time the map has finished
+	 * drawing what it was last sent (the e2e tests wait on it rather than retrying clicks).
+	 * Returns a function removing the listener.
+	 */
+	onDrawn(listener: (count: number) => void): () => void {
+		const onIdle = () => {
+			if (!this.#ready || !this.#drawing) return;
+			this.#drawing = false;
+			listener(this.#sent.size);
+		};
+		this.#map.on("idle", onIdle);
+		return () => this.#map.off("idle", onIdle);
+	}
+
+	/**
 	 * Calls `handler` with the `@id` of the clicked feature, topmost first, or null for a click
 	 * on empty space. Returns a function removing the handler.
 	 */
@@ -199,6 +217,7 @@ export class IndoorMap {
 			promoteId: "@id",
 		});
 		this.#sent = new Map(this.#features?.byId ?? []);
+		this.#drawing = true;
 		for (const layer of indoorLayers(this.#level)) {
 			map.addLayer(layer, ABOVE_LABELS.has(layer.id) ? undefined : firstLabel);
 		}

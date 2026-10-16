@@ -1,5 +1,6 @@
 import {
 	expect,
+	inspector,
 	selectRoom,
 	serveTaginfo,
 	serveWiki,
@@ -7,14 +8,8 @@ import {
 	test,
 } from "./fixtures.ts";
 
-async function openTags(page: import("@playwright/test").Page) {
-	const editor = page.getByRole("complementary", { name: "Feature editor" });
-	const section = editor.getByRole("button", { name: /^Tags \(\d+\)$/ });
-	if ((await section.getAttribute("aria-expanded")) === "false") {
-		await section.click();
-	}
-	return editor.getByRole("list", { name: "Tags" });
-}
+const openTags = (page: import("@playwright/test").Page) =>
+	inspector(page).tags();
 
 test("tags are a table, sorted, with a row to add one", async ({ page }) => {
 	await selectRoom(page, { name: "Library" });

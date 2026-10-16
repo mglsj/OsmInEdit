@@ -3,6 +3,7 @@ import {
 	camera,
 	type Element,
 	expect,
+	inspector,
 	LAT,
 	LON,
 	room,
@@ -72,11 +73,7 @@ async function serveRoles(page: Page, roles: Record<string, string[]>) {
 	);
 }
 
-function section(page: Page, name: RegExp) {
-	return page
-		.getByRole("complementary", { name: "Feature editor" })
-		.getByRole("button", { name });
-}
+const section = (page: Page, name: RegExp) => inspector(page).section(name);
 
 test("Relations lists the feature's relations: a role is changed, a membership removed", async ({
 	page,

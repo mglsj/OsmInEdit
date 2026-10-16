@@ -4,9 +4,11 @@ import {
 	expect,
 	expectPixel,
 	hash,
+	inspector,
 	LAT,
 	LON,
 	mapCenter,
+	mapDrawn,
 	pixelAt,
 	room,
 	serveOsm,
@@ -144,11 +146,10 @@ test("edits are drawn at once: a room moved to another level leaves this one, an
 	await page.goto(`/#19/${LAT}/${LON}/0`);
 	const { x, y } = await mapCenter(page);
 	await expectPixel(page, x, y, ROOM);
-	const editor = page.getByRole("complementary", { name: "Feature editor" });
-	await expect(async () => {
-		await page.mouse.click(x, y);
-		await expect(editor).toBeVisible({ timeout: 500 });
-	}).toPass({ timeout: 10_000 });
+	const editor = inspector(page).root;
+	await mapDrawn(page);
+	await page.mouse.click(x, y);
+	await expect(editor).toBeVisible();
 	const selected = (await pixelAt(page, x, y)).join(",");
 
 	const level = editor.getByRole("combobox", { name: "Level", exact: true });

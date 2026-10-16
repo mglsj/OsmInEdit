@@ -120,6 +120,11 @@ runs the same commands.
 - Unit tests sit next to the module (`hash.ts` → `hash.test.ts`) and test public functions.
   Build entities with `node()`, `way()`, `relation()` from `#lib/osm/fixtures.ts`; test the API
   client with a fake `fetch` (see `api/osm-api.test.ts`), never the network.
+- Component tests (`Foo.svelte` → `Foo.component.test.ts`) run in Chromium (Vitest browser
+  mode, the `component` project; `bun run test:unit` runs both projects). Render with
+  `render()` from `vitest-browser-svelte`, query with `page` and type with `userEvent` from
+  `vitest/browser`; put the props under `props` when one is named `context` (a mount option).
+  Test a component's behaviour here rather than in e2e when the map isn't involved.
 - E2E tests use the `test` fixture from `tests/e2e/fixtures.ts`: it blocks all external requests
   and serves a blank basemap style. Override a route in the test when you need specific data.
   `camera()` reads the map's camera, `pixelAt()`/`expectPixel()` check rendered colours (WebGL

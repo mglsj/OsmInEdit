@@ -738,6 +738,11 @@ once for nothing typed and after 300 ms while typing, older answers dropped) and
 tag table, roles, chips, address and wiki fields use; `ComboField` takes `mixed` ("Multiple
 values", nothing changed until something is typed or chosen) for R1.10. Its look is checked by
 R1.11's component tests.
+R1.11 (before R1.10, so mixed values are tested component by component): Vitest runs two
+projects, `unit` (Node) and `component` (`*.component.test.ts`, rendered with
+`vitest-browser-svelte` in Playwright's Chromium, `@vitest/browser-playwright`); first tests for
+`ComboField` (keys, filtering, mixed), `SearchCombo` and `TagEditor`; CI's check job installs
+Chromium for them (triggers unchanged).
 
 ### R2: Floor plan content model — M
 

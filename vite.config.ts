@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import adapter from "@sveltejs/adapter-static";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
+import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
 function gitHash(): string {
@@ -25,7 +26,30 @@ export default defineConfig({
 		__GIT_HASH__: JSON.stringify(gitHash()),
 	},
 	test: {
-		include: ["src/**/*.test.ts"],
-		environment: "node",
+		projects: [
+			{
+				extends: true,
+				test: {
+					name: "unit",
+					include: ["src/**/*.test.ts"],
+					exclude: ["src/**/*.component.test.ts"],
+					environment: "node",
+				},
+			},
+			{
+				// Components rendered in Chromium (Playwright's, as the e2e tests use).
+				extends: true,
+				test: {
+					name: "component",
+					include: ["src/**/*.component.test.ts"],
+					browser: {
+						enabled: true,
+						headless: true,
+						provider: playwright(),
+						instances: [{ browser: "chromium" }],
+					},
+				},
+			},
+		],
 	},
 });

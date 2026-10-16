@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { changeTags } from "#lib/actions/change-tags.ts";
 import type { Bbox } from "#lib/api/osm-api.ts";
+import { msg } from "#lib/i18n/messages.ts";
 import type { Entity } from "#lib/osm/entity.ts";
 import { node } from "#lib/osm/fixtures.ts";
 import { Graph } from "#lib/osm/graph.ts";
@@ -70,9 +71,12 @@ describe("DataSync: downloads into the history, uploads from it", () => {
 		});
 		history.perform(
 			(graph) => graph.replace(node("n-1", {}, [0, 0])),
-			"Add a point",
+			msg("undo_change_tags"),
 		);
-		history.perform(changeTags("n-1", { amenity: "bench" }), "Change tags");
+		history.perform(
+			changeTags("n-1", { amenity: "bench" }),
+			msg("undo_change_tags"),
+		);
 		selection.select("n-1");
 		expect(await sync.upload({ comment: "Benches" })).toBe(42);
 		expect(history.graph).toBe(uploaded);

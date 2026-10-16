@@ -11,6 +11,7 @@
 	import { Input } from "#lib/components/shadcn/input/index.ts";
 	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
 	import { Textarea } from "#lib/components/shadcn/textarea/index.ts";
+	import { t } from "#lib/i18n/messages.ts";
 	import { getEditor } from "#lib/state/editor.svelte.ts";
 	import type { Session } from "#lib/state/session.svelte.ts";
 
@@ -119,7 +120,7 @@
 					<Alert.Description>
 						<ul class="list-disc pl-4">
 							{#each issues as issue (issue.id)}
-								<li>{issue.message} ({issue.entityId})</li>
+								<li>{t(issue.message)} ({issue.entityId})</li>
 							{/each}
 						</ul>
 					</Alert.Description>

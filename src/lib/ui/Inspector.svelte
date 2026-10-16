@@ -9,6 +9,7 @@
 	import * as Alert from "#lib/components/shadcn/alert/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
+	import { t } from "#lib/i18n/messages.ts";
 	import { type EntityId, isNewId, osmId } from "#lib/osm/entity.ts";
 	import type { Extent } from "#lib/osm/relations.ts";
 	import type { Preset } from "#lib/presets/presets.ts";
@@ -174,7 +175,7 @@
 						{#each issues as issue (issue.id)}
 							<Alert.Root role="note">
 								<TriangleAlert />
-								<Alert.Description>{issue.message}</Alert.Description>
+								<Alert.Description>{t(issue.message)}</Alert.Description>
 								{#if issue.fix}
 									<div class="col-start-2 mt-2">
 										<Button
@@ -182,7 +183,7 @@
 											size="xs"
 											onclick={() => fix(editor, issue)}
 										>
-											{issue.fix.label}
+											{t(issue.fix.label)}
 										</Button>
 									</div>
 								{/if}

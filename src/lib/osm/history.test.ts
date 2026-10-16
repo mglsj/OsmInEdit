@@ -41,10 +41,17 @@ describe("History", () => {
 		expect(history.graph.entity("n1")?.tags).toEqual({ amenity: "chair" });
 	});
 
+	it("makes a step of a follow-up change with nothing to fold into", () => {
+		const history = new History(Graph.fromEntities([bench]));
+		history.replace(retag({ amenity: "bench" }), "Retag");
+		expect(history.undo()).toBe("Retag");
+		expect(history.canUndo).toBe(false);
+	});
+
 	it("folds a follow-up change into the last step (iD's replace)", () => {
 		const history = new History(Graph.fromEntities([bench]));
 		history.perform(retag({ amenity: "bench" }), "Tag as bench");
-		history.replace(retag({ amenity: "bench", backrest: "yes" }));
+		history.replace(retag({ amenity: "bench", backrest: "yes" }), "Retag");
 
 		expect(history.graph.entity("n1")?.tags).toEqual({
 			amenity: "bench",

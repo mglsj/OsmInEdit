@@ -3,6 +3,7 @@
  * drawings and PDF pages. Every plan ends up as a pyramid of ImageBitmaps cut into tiles, plus a
  * PNG or the original file to store and export.
  */
+import { MessageError, msg } from "#lib/i18n/messages.ts";
 import { type Tile, tiles } from "./tiling.ts";
 
 /** Longest side kept for a plan, in pixels; larger plans are scaled down on import. */
@@ -58,7 +59,7 @@ export function planName(file: File): string {
 /** Decodes a PNG, JPEG or WebP image. */
 export async function importRaster(file: Blob): Promise<PlanImage> {
 	const full = await createImageBitmap(file).catch(() => {
-		throw new Error("This image could not be read.");
+		throw new MessageError(msg("plan_import_image_unreadable"));
 	});
 	const scale = Math.min(1, MAX_IMAGE_SIZE / Math.max(full.width, full.height));
 	if (scale === 1) return fromBitmap(full, file);
@@ -81,7 +82,7 @@ export async function importSvg(file: Blob): Promise<PlanImage> {
 		const image = new Image();
 		image.src = url;
 		await image.decode().catch(() => {
-			throw new Error("This SVG drawing could not be read.");
+			throw new MessageError(msg("plan_import_svg_unreadable"));
 		});
 		const width = image.naturalWidth || SVG_SIZE;
 		const height = image.naturalHeight || SVG_SIZE;
@@ -116,7 +117,7 @@ export async function openPdf(file: Blob): Promise<PdfDocument> {
 		data: new Uint8Array(await file.arrayBuffer()),
 	});
 	const pdf = await task.promise.catch(() => {
-		throw new Error("This PDF could not be read.");
+		throw new MessageError(msg("plan_import_pdf_unreadable"));
 	});
 	const urls: string[] = [];
 
@@ -186,7 +187,7 @@ async function fromCanvas(canvas: HTMLCanvasElement): Promise<PlanImage> {
 	const blob = await new Promise<Blob | null>((resolve) =>
 		canvas.toBlob(resolve, "image/png"),
 	);
-	if (!blob) throw new Error("The plan could not be encoded.");
+	if (!blob) throw new MessageError(msg("plan_import_encode_failed"));
 	return fromBitmap(await createImageBitmap(canvas), blob);
 }
 

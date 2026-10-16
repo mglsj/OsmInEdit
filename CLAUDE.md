@@ -75,6 +75,11 @@ runs the same commands.
   Shortcuts use `edit/keys.ts` (`matches`, `formatCombo`, `isTyping`). Map layers insert
   before a slot from `map/layer-slots.ts` (`slotId("plans")`), never before another owner's
   layer.
+- Messages (R1.7): text shown to users is a `Message` made with `msg("key", {params})` from
+  `i18n/messages.ts` and rendered with `t()` in components; errors shown to users are
+  `MessageError`s. Add the English to `messages/en.json` (snake_case keys, `{param}`
+  placeholders), then `bun run messages` (it also runs on install) to update the typed
+  `i18n/generated/en.ts`.
 - Planned modules (see plan.md): `persist/autosave`. Pure modules (`osm`, `levels`,
   `actions`, `presets`, `validation`, `floorplans/georef`, `floorplans/plan-file`,
   `floorplans/tiling`) must not touch the DOM or Svelte.

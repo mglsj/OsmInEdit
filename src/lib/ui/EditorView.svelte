@@ -25,6 +25,7 @@
 	} from "#lib/edit/modes/floorplan.ts";
 	import { groundDistance, type LngLat } from "#lib/floorplans/georef.ts";
 	import { importRaster } from "#lib/floorplans/import.ts";
+	import type { Message } from "#lib/i18n/messages.ts";
 	import { setBackground } from "#lib/map/background.ts";
 	import {
 		FloorPlanLayers,
@@ -247,7 +248,7 @@
 	});
 
 	/** Message from the alignment tool about the last click. */
-	let toolMessage = $state<string | null>(null);
+	let toolMessage = $state.raw<Message | null>(null);
 	/** Where the pointer is on the map, while the measure line follows it. */
 	let pointer = $state.raw<LngLat | null>(null);
 

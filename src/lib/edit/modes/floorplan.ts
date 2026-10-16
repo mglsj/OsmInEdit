@@ -3,7 +3,9 @@
  * body, corners or rotation handle (previewed live, saved once on release); an alignment tool,
  * when one is on, takes the clicks instead (`floorPlanToolMode`).
  */
+
 import type { LngLat } from "#lib/floorplans/georef.ts";
+import type { Message } from "#lib/i18n/messages.ts";
 import type { Map as MapLibreMap } from "#lib/map/maplibre.ts";
 import type { FloorPlans } from "#lib/state/floorplans.svelte.ts";
 import type { Mode } from "../mode.ts";
@@ -56,7 +58,7 @@ export interface FloorPlanToolModeOptions {
 	/** A clicked position, moved onto a node near it. */
 	readonly snap: (point: { x: number; y: number }, lngLat: LngLat) => LngLat;
 	/** The tool's message about the last click. */
-	readonly onmessage: (message: string | null) => void;
+	readonly onmessage: (message: Message | null) => void;
 	/** Where the pointer is, while the measure line follows it (null: it doesn't). */
 	readonly onpointer: (at: LngLat | null) => void;
 }

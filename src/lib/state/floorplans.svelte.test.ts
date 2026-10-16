@@ -3,6 +3,7 @@ import { PLAN_COLORS } from "#lib/floorplans/colors.ts";
 import { place, translateTo } from "#lib/floorplans/georef.ts";
 import type { PlanImage } from "#lib/floorplans/import.ts";
 import { offset, RENNES } from "#lib/floorplans/test-geometry.ts";
+import { msg } from "#lib/i18n/messages.ts";
 import type {
 	PlanStore,
 	StoredBuildings,
@@ -26,6 +27,21 @@ function withPlan() {
 	floorplans.add(image, "plan", { center: RENNES, heightMetres: 25 }, "0");
 	return floorplans;
 }
+
+describe("FloorPlans.click", () => {
+	it("explains a click off the plan, for each tool", () => {
+		const floorplans = withPlan();
+		const offPlan = offset(RENNES, 500, 500);
+		floorplans.setTool("points");
+		expect(floorplans.click(offPlan)).toEqual(
+			msg("plan_tool_click_plan_first"),
+		);
+		floorplans.setTool("measure");
+		expect(floorplans.click(offPlan)).toEqual(msg("plan_tool_measure_on_plan"));
+		floorplans.setTool("rotate");
+		expect(floorplans.click(offPlan)).toEqual(msg("plan_tool_pivot_on_plan"));
+	});
+});
 
 describe("FloorPlans.clearPoints", () => {
 	it("removes every control point, leaving the plan where they put it", () => {

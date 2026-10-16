@@ -3,10 +3,13 @@
  * on every change. Tag edits made while typing fold into one step (iD's `_coalesceChanges`).
  */
 import { changeTags } from "#lib/actions/change-tags.ts";
+import { type Message, msg } from "#lib/i18n/messages.ts";
 import { type Entity, type EntityId, sameTags } from "#lib/osm/entity.ts";
 import type { Graph } from "#lib/osm/graph.ts";
 import { type Action, History } from "#lib/osm/history.ts";
 import type { Tags } from "#lib/osm/tags.ts";
+
+const CHANGE_TAGS = msg("undo_change_tags");
 
 export class EditHistory {
 	/** Current graph; replaced (never mutated) on every change. */
@@ -17,7 +20,7 @@ export class EditHistory {
 		return created.length + modified.length + deleted.length;
 	});
 
-	#history: History;
+	#history: History<Message>;
 	/**
 	 * The feature whose field is being typed in: its next tag change replaces the last step
 	 * instead of adding one.
@@ -25,7 +28,7 @@ export class EditHistory {
 	#typing: EntityId | null = null;
 
 	constructor(base: Graph) {
-		this.#history = new History(base);
+		this.#history = new History<Message>(base);
 		this.graph = $state.raw(base);
 	}
 
@@ -39,7 +42,8 @@ export class EditHistory {
 		return this.#history.canRedo;
 	}
 
-	perform(action: Action, annotation: string): void {
+	/** Applies an action as an undo step, labelled for the user. */
+	perform(action: Action, annotation: Message): void {
 		this.#typing = null;
 		this.graph = this.#history.perform(action, annotation);
 	}
@@ -77,8 +81,8 @@ export class EditHistory {
 			return;
 		}
 		this.graph = typing
-			? this.#history.replace(action)
-			: this.#history.perform(action, "Change tags");
+			? this.#history.replace(action, CHANGE_TAGS)
+			: this.#history.perform(action, CHANGE_TAGS);
 		this.#typing = live ? id : null;
 	}
 
@@ -92,7 +96,7 @@ export class EditHistory {
 		const entity = this.graph.entity(id);
 		const tags = entity && patch(entity.tags);
 		if (!tags) return;
-		this.graph = this.#history.replace(changeTags(id, tags));
+		this.graph = this.#history.replace(changeTags(id, tags), CHANGE_TAGS);
 	}
 
 	/** An entity's tags as downloaded, or undefined for a new feature (for a field's revert). */
@@ -109,7 +113,7 @@ export class EditHistory {
 	/** Starts a new history from `graph` (the server's state after an upload). */
 	reset(graph: Graph): void {
 		this.#typing = null;
-		this.#history = new History(graph);
+		this.#history = new History<Message>(graph);
 		this.graph = graph;
 	}
 }

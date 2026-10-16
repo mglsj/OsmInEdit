@@ -2,6 +2,7 @@
  * Floor plan files: IndoorID's own JSON export, and the `osminedit_floor_imagery.json` files
  * written by OsmInEdit 1.x. Images travel inside the file as data URLs.
  */
+import { MessageError, msg } from "#lib/i18n/messages.ts";
 import {
 	type ControlPoint,
 	fitPlan,
@@ -45,7 +46,7 @@ export interface PlanFile {
 	readonly buildings?: PlanFileBuildings;
 }
 
-export class PlanFileError extends Error {
+export class PlanFileError extends MessageError {
 	override name = "PlanFileError";
 }
 
@@ -74,7 +75,7 @@ export function parsePlanFile(text: string): PlanFile {
 	try {
 		data = JSON.parse(text);
 	} catch {
-		throw new PlanFileError("This file is not a floor plan file (not JSON).");
+		throw new PlanFileError(msg("plan_file_not_json"));
 	}
 	if (isRecord(data) && data.format === FORMAT && Array.isArray(data.plans)) {
 		const buildings = buildingsOf(data.buildings);
@@ -84,9 +85,7 @@ export function parsePlanFile(text: string): PlanFile {
 		};
 	}
 	if (Array.isArray(data)) return { plans: data.map(readLegacyPlan) };
-	throw new PlanFileError(
-		"This file is not an IndoorID or OsmInEdit floor plan file.",
-	);
+	throw new PlanFileError(msg("plan_file_unknown"));
 }
 
 /** The transform of a plan whose image is `width` × `height` pixels. */
@@ -184,7 +183,7 @@ function latLng(value: unknown): LngLat {
 function imageOf(value: unknown): string {
 	if (typeof value === "string" && value.startsWith("data:image/"))
 		return value;
-	throw new PlanFileError("A floor plan in this file has no image.");
+	throw new PlanFileError(msg("plan_file_no_image"));
 }
 
 function buildingsOf(value: unknown): PlanFileBuildings | undefined {
@@ -218,7 +217,5 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function invalid(): PlanFileError {
-	return new PlanFileError(
-		"A floor plan in this file is damaged or incomplete.",
-	);
+	return new PlanFileError(msg("plan_file_damaged"));
 }

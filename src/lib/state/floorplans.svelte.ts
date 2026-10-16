@@ -20,6 +20,7 @@ import {
 	unproject,
 } from "#lib/floorplans/georef.ts";
 import type { PlanImage } from "#lib/floorplans/import.ts";
+import { type Message, msg } from "#lib/i18n/messages.ts";
 import type { PlanStore, StoredPlan } from "#lib/persist/plan-store.ts";
 
 export interface FloorPlan {
@@ -91,7 +92,7 @@ export interface FloorPlansOptions {
 export class FloorPlans {
 	plans = $state.raw<readonly FloorPlan[]>([]);
 	/** Set when plans could not be saved or restored. */
-	storageError = $state<string | null>(null);
+	storageError = $state.raw<Message | null>(null);
 	/** The building outlines' entry in the layer stack: how many plans are drawn under them. */
 	buildings = $state.raw<BuildingsLayer>({ below: 0, visible: true });
 	/** The layer stack of floor plan mode, bottom first: the plans and the building outlines. */
@@ -177,7 +178,9 @@ export class FloorPlans {
 			};
 			for (const plan of recolored) this.#save(plan);
 		} catch (e) {
-			this.storageError = `Saved floor plans could not be restored: ${(e as Error).message}`;
+			this.storageError = msg("plan_storage_restore_failed", {
+				error: (e as Error).message,
+			});
 		}
 	}
 
@@ -326,7 +329,7 @@ export class FloorPlans {
 	 * A click on the map while a tool is active, at `position` (already snapped to an OSM node
 	 * when close to one). Returns a message when the click can't be used.
 	 */
-	click(position: LngLat): string | null {
+	click(position: LngLat): Message | null {
 		const plan = this.editing;
 		const tool = this.tool;
 		if (!plan || !tool) return null;
@@ -334,7 +337,7 @@ export class FloorPlans {
 		switch (tool.kind) {
 			case "points":
 				if (!tool.pending) {
-					if (!onPlan) return "Click a spot on the plan first.";
+					if (!onPlan) return msg("plan_tool_click_plan_first");
 					this.tool = { kind: "points", pending: onPlan };
 				} else {
 					this.#setControlPoints(plan, [
@@ -345,14 +348,14 @@ export class FloorPlans {
 				}
 				return null;
 			case "measure":
-				if (!onPlan) return "Click on the plan to measure.";
+				if (!onPlan) return msg("plan_tool_measure_on_plan");
 				this.tool = {
 					kind: "measure",
 					points: tool.points.length >= 2 ? [onPlan] : [...tool.points, onPlan],
 				};
 				return null;
 			case "rotate":
-				if (!onPlan) return "Click on the plan to pick the centre of rotation.";
+				if (!onPlan) return msg("plan_tool_pivot_on_plan");
 				this.tool = { kind: "rotate", pin: onPlan };
 				return null;
 		}
@@ -531,7 +534,7 @@ export class FloorPlans {
 	/** Reports a failed write: plans stay usable, but won't survive a reload. */
 	#persist(write: Promise<void> | undefined): void {
 		write?.catch((e: Error) => {
-			this.storageError = `Floor plans could not be saved in this browser: ${e.message}`;
+			this.storageError = msg("plan_storage_save_failed", { error: e.message });
 		});
 	}
 }

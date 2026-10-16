@@ -719,6 +719,12 @@ for the entities an edit affected: the changed ones, ways' nodes before and afte
 members). Components get it with `getEditor()` (Svelte `createContext`) instead of an `editor`
 prop; edits from the UI are plain functions in `state/commands.ts`. `MapLoader` keeps its
 defaults for options passed as undefined.
+R1.7: `i18n/messages.ts` (`Message` = `{key, params}`, `msg()` with each key's `{param}`
+names checked by TypeScript, `t()` rendering English, `MessageError`); the English text is in
+`messages/en.json` (inlang's format, for Paraglide in P6), compiled on install by
+`scripts/build-messages.ts` into the gitignored `i18n/generated/en.ts`. Issues and their fixes,
+undo labels (`History<A>` takes its annotation type), floor plan tool hints, storage errors and
+import or plan file errors carry messages; the UI renders them with `t()`.
 
 ### R2: Floor plan content model — M
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { changeTags } from "#lib/actions/change-tags.ts";
+import { msg } from "#lib/i18n/messages.ts";
 import type { EntityId } from "#lib/osm/entity.ts";
 import { node } from "#lib/osm/fixtures.ts";
 import { Graph } from "#lib/osm/graph.ts";
@@ -63,7 +64,10 @@ describe("EditHistory.setTags: one undo step per field edit, as iD's entity edit
 		history.setTags("n1", { amenity: "bench", name: "A" }, { live: true });
 		history.setTags("n2", { amenity: "bench", name: "B" }, { live: true });
 		// Another kind of edit (changing the type, a relation, a fix…).
-		history.perform(changeTags("n2", { amenity: "toilets" }), "Fix");
+		history.perform(
+			changeTags("n2", { amenity: "toilets" }),
+			msg("undo_change_tags"),
+		);
 		history.setTags("n2", { amenity: "toilets", name: "C" }, { live: true });
 		// Another feature selected.
 		history.endTyping();
@@ -88,8 +92,14 @@ describe("EditHistory", () => {
 	it("counts the features changed since the download, and keeps their downloaded tags", () => {
 		const history = benches();
 		expect(history.editCount).toBe(0);
-		history.perform(changeTags("n1", { amenity: "bench" }), "Change tags");
-		history.perform(changeTags("n2", { amenity: "toilets" }), "Change tags");
+		history.perform(
+			changeTags("n1", { amenity: "bench" }),
+			msg("undo_change_tags"),
+		);
+		history.perform(
+			changeTags("n2", { amenity: "toilets" }),
+			msg("undo_change_tags"),
+		);
 		expect(history.editCount).toBe(2);
 		expect(history.downloadedTags("n1")).toEqual({
 			amenity: "bench",
@@ -103,7 +113,10 @@ describe("EditHistory", () => {
 
 	it("amends the last step only while the graph is still the one it made", () => {
 		const history = benches();
-		history.perform(changeTags("n1", { wikidata: "Q1" }), "Change tags");
+		history.perform(
+			changeTags("n1", { wikidata: "Q1" }),
+			msg("undo_change_tags"),
+		);
 		const after = history.graph;
 		history.amend(after, "n1", (tags) => ({ ...tags, wikipedia: "en:One" }));
 		expect(tagsOf(history, "n1")).toEqual({
@@ -113,16 +126,25 @@ describe("EditHistory", () => {
 		expect(undoAll(history)).toBe(1);
 
 		// Something done since wins.
-		history.perform(changeTags("n1", { wikidata: "Q2" }), "Change tags");
+		history.perform(
+			changeTags("n1", { wikidata: "Q2" }),
+			msg("undo_change_tags"),
+		);
 		const stale = history.graph;
-		history.perform(changeTags("n1", { name: "Other" }), "Change tags");
+		history.perform(
+			changeTags("n1", { name: "Other" }),
+			msg("undo_change_tags"),
+		);
 		history.amend(stale, "n1", (tags) => ({ ...tags, wikipedia: "en:Two" }));
 		expect(tagsOf(history, "n1")).toEqual({ name: "Other" });
 	});
 
 	it("takes downloaded data under the edits, and starts again from an uploaded graph", () => {
 		const history = benches();
-		history.perform(changeTags("n1", { amenity: "bench" }), "Change tags");
+		history.perform(
+			changeTags("n1", { amenity: "bench" }),
+			msg("undo_change_tags"),
+		);
 		history.merge([node("n3", { amenity: "toilets" }, [2.35, 48.85])]);
 		expect(tagsOf(history, "n3")).toEqual({ amenity: "toilets" });
 		expect(tagsOf(history, "n1")).toEqual({ amenity: "bench" });

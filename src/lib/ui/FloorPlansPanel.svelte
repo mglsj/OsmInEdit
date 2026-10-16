@@ -41,6 +41,7 @@
 		parsePlanFile,
 		transformOf,
 	} from "#lib/floorplans/plan-file.ts";
+	import { type Message, MessageError, msg, t } from "#lib/i18n/messages.ts";
 	import { levelToShow } from "#lib/levels/levels.ts";
 	import {
 		BUILDINGS,
@@ -60,7 +61,7 @@
 		/** The level shown, which new plans are assigned to. */
 		level: number;
 		/** Why the alignment tool ignored the last map click, if it did. */
-		toolMessage?: string | null;
+		toolMessage?: Message | null;
 		/** Leaves floor plan mode. */
 		onclose: () => void;
 		/** Switches the map to a level, to show a plan on it. */
@@ -211,8 +212,7 @@
 					await importPlansFile(file);
 					break;
 				default:
-					error =
-						"IndoorID can import PNG, JPEG, WebP, SVG and PDF plans, and plan files (.json).";
+					error = t(msg("plan_import_unsupported"));
 			}
 		} catch (e) {
 			error = (e as Error).message;
@@ -224,7 +224,7 @@
 	/** Adds a plan in the middle of the view, on the level shown. */
 	function add(image: Parameters<FloorPlans["add"]>[0], name: string) {
 		const view = getView();
-		if (!view) throw new Error("The map is not ready yet.");
+		if (!view) throw new MessageError(msg("plan_import_map_not_ready"));
 		floorplans.add(image, name, view, String(level));
 	}
 
@@ -403,7 +403,7 @@
 			{#if floorplans.storageError}
 				<Alert.Root variant="destructive">
 					<CircleAlert />
-					<Alert.Description>{floorplans.storageError}</Alert.Description>
+					<Alert.Description>{t(floorplans.storageError)}</Alert.Description>
 				</Alert.Root>
 			{/if}
 
@@ -719,7 +719,7 @@
 					{#if toolMessage && tool}
 						<Alert.Root>
 							<Info />
-							<Alert.Description>{toolMessage}</Alert.Description>
+							<Alert.Description>{t(toolMessage)}</Alert.Description>
 						</Alert.Root>
 					{/if}
 

@@ -10,6 +10,7 @@ import {
 	moveMember as move,
 	removeMembers as remove,
 } from "#lib/actions/members.ts";
+import { msg } from "#lib/i18n/messages.ts";
 import { labelFor } from "#lib/map/classify.ts";
 import type {
 	Entity,
@@ -42,7 +43,7 @@ export function setPreset(
 		) ?? entity.tags;
 	editor.history.perform(
 		changeTags(entity.id, tags),
-		`Change to ${preset.name}`,
+		msg("undo_change_preset", { preset: preset.name }),
 	);
 	editor.catalog.recentPresets.add(preset.id, geometry);
 }
@@ -65,11 +66,17 @@ export function addToRelation(
 ): RelationId {
 	const member = { ref: id, role };
 	if (relationId) {
-		editor.history.perform(addMember(relationId, member), "Add to relation");
+		editor.history.perform(
+			addMember(relationId, member),
+			msg("undo_add_to_relation"),
+		);
 		return relationId;
 	}
 	const created = editor.graph.newId("relation");
-	editor.history.perform(addToNewRelation(created, member), "Add a relation");
+	editor.history.perform(
+		addToNewRelation(created, member),
+		msg("undo_add_relation"),
+	);
 	return created;
 }
 
@@ -79,7 +86,10 @@ export function changeMemberRoles(
 	indexes: readonly number[],
 	role: string,
 ): void {
-	editor.history.perform(changeRoles(relationId, indexes, role), "Change role");
+	editor.history.perform(
+		changeRoles(relationId, indexes, role),
+		msg("undo_change_role"),
+	);
 }
 
 /** Takes members out of a relation; a relation left empty is deleted. */
@@ -88,7 +98,10 @@ export function removeMembers(
 	relationId: RelationId,
 	indexes: readonly number[],
 ): void {
-	editor.history.perform(remove(relationId, indexes), "Remove from relation");
+	editor.history.perform(
+		remove(relationId, indexes),
+		msg("undo_remove_from_relation"),
+	);
 }
 
 export function moveMember(
@@ -98,5 +111,8 @@ export function moveMember(
 	to: number,
 ): void {
 	if (from === to) return;
-	editor.history.perform(move(relationId, from, to), "Reorder members");
+	editor.history.perform(
+		move(relationId, from, to),
+		msg("undo_reorder_members"),
+	);
 }

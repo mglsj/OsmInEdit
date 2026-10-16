@@ -206,10 +206,23 @@ describe("1.x plan files", () => {
 
 describe("other files", () => {
 	it.each([
-		["not JSON", "<svg/>"],
-		["JSON of something else", '{"type": "FeatureCollection"}'],
-		["a plan without an image", JSON.stringify([{ id: "a", label: "x" }])],
-	])("are refused with a message: %s", (_, text) => {
+		["not JSON", "<svg/>", "plan_file_not_json"],
+		[
+			"JSON of something else",
+			'{"type": "FeatureCollection"}',
+			"plan_file_unknown",
+		],
+		[
+			"a plan without corners or image",
+			JSON.stringify([{ id: "a", label: "x" }]),
+			"plan_file_damaged",
+		],
+	])("are refused with a message: %s", (_, text, key) => {
 		expect(() => parsePlansFile(text)).toThrow(PlanFileError);
+		try {
+			parsePlansFile(text);
+		} catch (e) {
+			expect((e as PlanFileError).msg.key).toBe(key);
+		}
 	});
 });

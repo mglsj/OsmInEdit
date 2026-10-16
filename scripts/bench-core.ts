@@ -79,6 +79,21 @@ const ways = entities.filter((e) => e.type === "way");
 report(
 	"Full feature build",
 	time(5, () => buildFeatures(graph, options)),
+	"before P5.2",
+);
+report(
+	"First build",
+	time(5, () => new FeatureStore().update(graph, options)),
+	"no slower than before",
+);
+const empty = Graph.fromEntities([]);
+report(
+	"Download into an empty editor",
+	time(5, () => {
+		const fresh = new FeatureStore();
+		fresh.update(empty, options);
+		fresh.update(empty.rebaseOnto(graph), options);
+	}),
 	"no slower than before",
 );
 
@@ -127,7 +142,7 @@ report(
 const click: Loc = [2.35 + 50.5 * SIZE, 48.85 + 50.5 * SIZE];
 const tolerance = SIZE * 0.2;
 report(
-	"Snap a click to a node",
+	"Snap a click, walking every node",
 	time(10, () => {
 		let best: Loc | null = null;
 		let bestDistance = tolerance;
@@ -140,6 +155,23 @@ report(
 			}
 		}
 		void best;
+	}),
+	"before P5.2",
+);
+
+const nodes = store.update(graph, options);
+report(
+	"Snap a click to a node",
+	time(10, () => {
+		nodes.nodesNear(
+			{
+				west: click[0] - tolerance,
+				south: click[1] - tolerance,
+				east: click[0] + tolerance,
+				north: click[1] + tolerance,
+			},
+			0,
+		);
 	}),
 	"< 1 ms",
 );

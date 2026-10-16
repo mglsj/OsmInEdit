@@ -267,12 +267,27 @@ async function expectPlanAt(
 	await expectPixel(page, midX, bottom + 5, BACKGROUND);
 }
 
-/** Two untagged OSM nodes (not drawn), to snap control points to. */
+/**
+ * OSM nodes to snap control points to: the ends of a wall on level 0 (snapping only goes to
+ * nodes drawn on the shown level; floor plan mode hides the wall itself).
+ */
 function nodesAt(...offsets: [number, number][]) {
-	return offsets.map(([dx, dy], i) => {
+	return nodesOnLevel("0", ...offsets);
+}
+
+function nodesOnLevel(level: string, ...offsets: [number, number][]) {
+	const nodes = offsets.map(([dx, dy], i) => {
 		const [lon, lat] = lngLatAt(dx, dy);
 		return { type: "node", id: 900 + i, lon, lat, version: 1 };
 	});
+	const wall = {
+		type: "way",
+		id: 950,
+		version: 1,
+		nodes: nodes.map((n) => n.id),
+		tags: { indoor: "wall", level },
+	};
+	return [...nodes, wall];
 }
 
 test("aligns a plan with control points snapped to OSM nodes", async ({
@@ -304,6 +319,32 @@ test("aligns a plan with control points snapped to OSM nodes", async ({
 		top: cy + A[1] - 20,
 		right: mx + A[0] + 380,
 		bottom: cy + A[1] + 280,
+	});
+});
+
+test("control points don't snap to nodes on another level", async ({
+	page,
+}) => {
+	const A: [number, number] = [-180, -130];
+	const B: [number, number] = [180, 130];
+	// The wall is on level 1; level 0 is shown.
+	await serveOsm(page, nodesOnLevel("1", A, B));
+	await importPlan(page, "plan.png");
+	await expect(page.getByTestId("load-status")).toBeHidden();
+	const { cx, cy, mx, scale } = await initialLayout(page, 300);
+
+	await page.getByRole("radio", { name: "Control points" }).click();
+	await page.mouse.click(cx + (20 - 200) * scale, cy + (20 - 150) * scale);
+	await page.mouse.click(mx + A[0] + 5, cy + A[1] - 5);
+	await page.mouse.click(mx + A[0] + 360 * scale, cy + A[1] + 260 * scale);
+	await page.mouse.click(mx + B[0] + 5, cy + B[1] - 5);
+
+	// Placed where clicked: 5 px right of and 5 px above the nodes.
+	await expectPlanAt(page, {
+		left: mx + A[0] - 20 + 5,
+		top: cy + A[1] - 20 - 5,
+		right: mx + A[0] + 380 + 5,
+		bottom: cy + A[1] + 280 - 5,
 	});
 });
 

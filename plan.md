@@ -473,10 +473,13 @@ Slices agreed with the user ✔: (1) ✅ `bun run bench` (`scripts/bench-core.ts
 rooms; targets: a tag edit to the map under 16 ms, deleting 1,000 rooms under 150 ms, a snap
 under 1 ms, the full build no slower); (2) ✅ incremental map updates (`map/feature-store.ts`,
 `Graph.changedSince`; a new level set redraws everything, as agreed); (3) ✅ batched graph
-edits (`Graph.update`, used by `History`); (4) rbush index per level, floor plan snapping to nodes on the shown level only ✔;
+edits (`Graph.update`, used by `History`); (4) ✅ rbush index of the drawn features' nodes (`StoredFeatures.nodesNear`, filtered by
+level, brought up to date on the first query after changes), floor plan snapping to nodes
+on the shown level only ✔;
 (5) live typing without the pause. The drag overlay source waits for P5.3. Measured under
-Bun: a tag edit 46 → 4.5 ms; deleting 1,000 rooms 1,296 → 9 ms (the local parent index was
-also copied on every lookup).
+Bun: a tag edit 46 → 3–5 ms; deleting 1,000 rooms 1,296 → 9–13 ms (the local parent index was
+also copied on every lookup); a snap 2.5–4 ms → under 0.1 ms; the first build and a download
+into an empty editor stay at the full build's 45–60 ms (big downloads are rebuilt whole).
 
 - **Incremental map updates** ✅ (then drop the 150 ms pause of live typing, `LIVE_DELAY`): every
   edit rebuilds all features and re-sends them to the map
@@ -488,8 +491,9 @@ also copied on every lookup).
 - **Batched graph edits** ✅: `replace`/`remove` copy all local edits and parent indexes are
   rebuilt per graph, so changing many entities is quadratic (deleting 1,000 rooms: 1.6 s).
   Add a batch API with a mutable draft frozen at the end.
-- **Spatial index**: snapping walks every node in the graph; use `rbush` per level for
-  snapping and hit-testing.
+- **Spatial index** ✅: snapping walks every node in the graph; use `rbush` per level for
+  snapping (hit-testing stays with MapLibre's `queryRenderedFeatures` until drawing needs
+  more in P5.3).
 - Then switch the feature editor to live typing.
 
 #### P5.3 Geometry editing

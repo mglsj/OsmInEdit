@@ -5,8 +5,11 @@
  * again, as in a full build.
  */
 import type { FeatureCollection, Geometry } from "geojson";
-import type { EntityId } from "#lib/osm/entity.ts";
+import RBush from "rbush";
+import { isOnLevel, type Levels } from "#lib/levels/levels.ts";
+import type { Entity, EntityId, Loc, NodeId } from "#lib/osm/entity.ts";
 import type { Graph } from "#lib/osm/graph.ts";
+import type { Extent } from "#lib/osm/relations.ts";
 import {
 	type BuildOptions,
 	draftOf,
@@ -24,6 +27,22 @@ export interface StoredFeatures {
 	readonly levels: number[];
 	/** All the features, for a full `setData`. */
 	readonly collection: FeatureCollection<Geometry, FeatureProperties>;
+	/**
+	 * The nodes of the features drawn on `level` (or without a level) inside `extent`, once
+	 * each: what a click can snap to.
+	 */
+	nodesNear(extent: Extent, level: number): { id: NodeId; loc: Loc }[];
+}
+
+/** A node of a drawn feature, in the spatial index. */
+interface IndexedNode {
+	readonly minX: number;
+	readonly minY: number;
+	readonly maxX: number;
+	readonly maxY: number;
+	readonly id: NodeId;
+	readonly loc: Loc;
+	readonly levels: Levels | null;
 }
 
 export class FeatureStore {
@@ -33,6 +52,14 @@ export class FeatureStore {
 	readonly #features = new Map<string, IndoorFeature>();
 	#levels: number[] = [];
 	#result: StoredFeatures | null = null;
+	/**
+	 * The nodes of every drawn feature, by position, with the feature's levels. Kept up to date
+	 * only when asked (a snap), not on every edit or download.
+	 */
+	readonly #index = new RBush<IndexedNode>();
+	readonly #indexed = new Map<EntityId, IndexedNode[]>();
+	/** Entities whose nodes the index holds as they were, or all of them (null). */
+	#unindexed: Set<EntityId> | null = null;
 
 	/** The features of `graph`, building again only what changed since the last call. */
 	update(graph: Graph, options: BuildOptions = {}): StoredFeatures {
@@ -43,17 +70,24 @@ export class FeatureStore {
 			options.icons !== this.#options.icons;
 		this.#graph = graph;
 		this.#options = options;
-		if (full) {
+		const changed = full ? null : graph.changedSince(previous);
+		if (changed?.size === 0 && this.#result) return this.#result;
+		// A download of most of the data is rebuilt whole: quicker than following each change.
+		const whole = !changed || changed.size > this.#drafts.size / 2;
+		if (whole) {
 			this.#drafts.clear();
-			for (const entity of graph.entities()) this.#redraft(entity.id);
+			this.#features.clear();
+			this.#unindexed = null;
+			// Encoded below, once the levels of the data are known.
+			for (const entity of graph.entities()) this.#redraft(entity.id, false);
 		} else {
-			const changed = graph.changedSince(previous);
-			if (changed.size === 0 && this.#result) return this.#result;
-			for (const id of affectedBy(changed, graph, previous)) this.#redraft(id);
+			for (const id of affectedBy(changed, graph, previous as Graph)) {
+				this.#redraft(id);
+			}
 		}
 
 		const levels = knownLevels([...this.#drafts.values()].map((d) => d.levels));
-		if (full || !sameNumbers(levels, this.#levels)) {
+		if (whole || !sameNumbers(levels, this.#levels)) {
 			this.#levels = levels;
 			this.#features.clear();
 			for (const [id, draft] of this.#drafts) {
@@ -61,7 +95,23 @@ export class FeatureStore {
 			}
 		}
 		const features = this.#features;
+		const index = () => this.#updatedIndex();
 		const result: StoredFeatures = {
+			nodesNear(extent, level) {
+				const found = new Map<NodeId, Loc>();
+				const hits = index().search({
+					minX: extent.west,
+					minY: extent.south,
+					maxX: extent.east,
+					maxY: extent.north,
+				});
+				for (const node of hits) {
+					if (!node.levels || isOnLevel(node.levels, level)) {
+						found.set(node.id, node.loc);
+					}
+				}
+				return [...found].map(([id, loc]) => ({ id, loc }));
+			},
 			byId: features,
 			levels: this.#levels,
 			get collection() {
@@ -75,18 +125,79 @@ export class FeatureStore {
 		return result;
 	}
 
-	/** Builds an entity's feature again, or drops it. */
-	#redraft(id: EntityId): void {
+	/** Builds an entity's feature again (encoded unless `encode` is false), or drops it. */
+	#redraft(id: EntityId, encode = true): void {
 		const graph = this.#graph as Graph;
 		const entity = graph.entity(id);
 		const draft = entity ? draftOf(graph, entity, this.#options) : null;
+		this.#unindexed?.add(id);
 		if (draft) {
 			this.#drafts.set(id, draft);
-			this.#features.set(id, encodeFeature(draft, this.#levels));
+			if (encode) this.#features.set(id, encodeFeature(draft, this.#levels));
 		} else {
 			this.#drafts.delete(id);
 			this.#features.delete(id);
 		}
+	}
+
+	/** The node index, brought up to date with the features. */
+	#updatedIndex(): RBush<IndexedNode> {
+		const unindexed = this.#unindexed;
+		if (!unindexed || unindexed.size > this.#drafts.size / 4) {
+			this.#index.clear();
+			this.#indexed.clear();
+			for (const id of this.#drafts.keys())
+				this.#indexed.set(id, this.#nodes(id));
+			this.#index.load([...this.#indexed.values()].flat());
+		} else {
+			for (const id of unindexed) {
+				for (const node of this.#indexed.get(id) ?? [])
+					this.#index.remove(node);
+				const nodes = this.#nodes(id);
+				if (nodes.length > 0) this.#indexed.set(id, nodes);
+				else this.#indexed.delete(id);
+				for (const node of nodes) this.#index.insert(node);
+			}
+		}
+		this.#unindexed = new Set();
+		return this.#index;
+	}
+
+	/** A drawn feature's nodes, for the index; none for an entity not drawn. */
+	#nodes(id: EntityId): IndexedNode[] {
+		const graph = this.#graph as Graph;
+		const entity = graph.entity(id);
+		const draft = this.#drafts.get(id);
+		if (!entity || !draft) return [];
+		return nodesOf(graph, entity).map(([node, loc]) => ({
+			minX: loc[0],
+			minY: loc[1],
+			maxX: loc[0],
+			maxY: loc[1],
+			id: node,
+			loc,
+			levels: draft.levels,
+		}));
+	}
+}
+
+/** The nodes a feature is drawn through: its own, its way's, its multipolygon's ways'. */
+function nodesOf(graph: Graph, entity: Entity): [NodeId, Loc][] {
+	const ofWay = (nodes: readonly NodeId[]) =>
+		nodes.flatMap((id): [NodeId, Loc][] => {
+			const node = graph.entity(id);
+			return node?.type === "node" ? [[id, node.loc]] : [];
+		});
+	switch (entity.type) {
+		case "node":
+			return [[entity.id, entity.loc]];
+		case "way":
+			return ofWay(entity.nodes);
+		case "relation":
+			return entity.members.flatMap((m) => {
+				const member = graph.entity(m.ref);
+				return member?.type === "way" ? ofWay(member.nodes) : [];
+			});
 	}
 }
 

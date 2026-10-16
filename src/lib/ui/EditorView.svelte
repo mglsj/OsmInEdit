@@ -244,21 +244,38 @@
 	let pointer = $state.raw<LngLat | null>(null);
 
 	/**
-	 * A clicked position, moved onto the OSM node drawn within 8 px of it, if any: control points
-	 * then sit exactly on the mapped walls and corners.
+	 * A clicked position, moved onto the nearest OSM node within 8 px of it among the features
+	 * drawn on the shown level: control points then sit exactly on the mapped walls and corners.
 	 */
 	function snap(point: { x: number; y: number }, lngLat: LngLatLike): LngLat {
 		const { lng, lat } = LngLatClass.convert(lngLat);
 		let best: LngLat = [lng, lat];
 		let bestDistance = SNAP_DISTANCE;
 		if (!map) return best;
-		for (const entity of editor.graph.entities()) {
-			if (entity.type !== "node") continue;
-			const screen = map.project(entity.loc as [number, number]);
+		// The square around the click, on the ground (all four corners: the map may be rotated).
+		const d = SNAP_DISTANCE;
+		const corners = [
+			[-d, -d],
+			[d, -d],
+			[d, d],
+			[-d, d],
+		].map(([dx, dy]) =>
+			LngLatClass.convert(
+				map?.unproject([point.x + (dx ?? 0), point.y + (dy ?? 0)]) ?? lngLat,
+			),
+		);
+		const area = {
+			west: Math.min(...corners.map((c) => c.lng)),
+			south: Math.min(...corners.map((c) => c.lat)),
+			east: Math.max(...corners.map((c) => c.lng)),
+			north: Math.max(...corners.map((c) => c.lat)),
+		};
+		for (const node of editor.features.nodesNear(area, level)) {
+			const screen = map.project(node.loc as [number, number]);
 			const distance = Math.hypot(screen.x - point.x, screen.y - point.y);
 			if (distance < bestDistance) {
 				bestDistance = distance;
-				best = [entity.loc[0], entity.loc[1]];
+				best = [node.loc[0], node.loc[1]];
 			}
 		}
 		return best;

@@ -41,7 +41,10 @@ runs the same commands.
   `map/feature-store.ts` (P5.2: features rebuilt only for changed entities, sent to the map
   with `updateData`; an rbush index of drawn nodes, `nodesNear`, for snapping),
   `map/classify.ts` (all tag → drawing rules), `map/style/layers.ts`, `map/indoor-map.ts` (source
-  and layers on the map), `api/map-loader.ts`, `state/editor.svelte.ts` (`Editor`), and
+  and layers on the map), `api/map-loader.ts`, `state/editor.svelte.ts` (`Editor`: `history`
+  (`EditHistory`), `selection`, `sync` (`DataSync`), `catalog` (presets, upgrades, web
+  services); components read it with `getEditor()`, never as a prop; UI edits are functions in
+  `state/commands.ts`; issues come from `validation/validator.ts`, cached per entity), and
   `ui/EditorView.svelte` (the page's map UI). Change how a tag is drawn in `classify.ts`, not
   in the style.
 - Tagging and upload (P3): `presets/` (`PresetIndex`: match, search, fields, `listFor`,

@@ -167,4 +167,23 @@ describe("MapLoader", () => {
 
 		expect(batches).toEqual([["n1", "n2"]]);
 	});
+
+	it("keeps its defaults for options passed as undefined", async () => {
+		const { download, calls, maxInFlight } = controlledDownload();
+		const loader = new MapLoader({
+			download,
+			onData: () => {},
+			concurrency: undefined,
+			schedule: undefined,
+		});
+
+		const loading = loader.load(area(100, 200, 102, 201));
+		for (let i = 0; i < 6; i++) {
+			await flush();
+			for (const call of calls) call.resolve([]);
+		}
+		await loading;
+
+		expect(maxInFlight()).toBe(4);
+	});
 });

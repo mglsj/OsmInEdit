@@ -1,94 +1,104 @@
 import { describe, expect, it } from "vitest";
-import { changeTags } from "#lib/actions/change-tags.ts";
-import type { Entity, EntityId } from "#lib/osm/entity.ts";
-import { node } from "#lib/osm/fixtures.ts";
+import type { Entity } from "#lib/osm/entity.ts";
+import { node, way } from "#lib/osm/fixtures.ts";
+import type { PresetIndex } from "#lib/presets/presets.ts";
+import { Catalog } from "./catalog.svelte.ts";
+import { addToRelation, fix, moveMember, relationLabel } from "./commands.ts";
 import { Editor } from "./editor.svelte.ts";
 
-/** An editor with two benches loaded. */
-async function loaded() {
-	const entities: Entity[] = [
-		node("n1", { amenity: "bench", name: "Old" }, [2.35, 48.85]),
-		node("n2", { amenity: "bench" }, [2.35, 48.85]),
-	];
+const NO_STORAGE = { getItem: () => null, setItem: () => {} };
+
+/** An editor holding `entities`, with local upgrades only and no presets. */
+function editorWith(entities: Entity[]) {
 	const editor = new Editor({
 		api: {
-			loadMap: async () => entities,
+			loadMap: async () => [],
 			loadRelation: async () => [],
 			upload: async () => {
 				throw new Error("no upload");
 			},
 		},
 		minZoom: 16,
+		catalog: new Catalog({
+			storage: NO_STORAGE,
+			load: {
+				presets: () => new Promise<PresetIndex>(() => {}),
+				upgrades: async () => [],
+				discardedKeys: async () => [],
+			},
+		}),
 	});
-	await editor.loadView(
-		{ west: 2.349, south: 48.849, east: 2.351, north: 48.851 },
-		18,
-	);
+	editor.history.merge(entities);
 	return editor;
 }
 
-const tagsOf = (editor: Editor, id: EntityId) => editor.graph.entity(id)?.tags;
+const benches = () =>
+	editorWith([
+		node("n1", { amenity: "bench", name: "Old" }),
+		node("n2", { amenity: "bench" }),
+	]);
 
-/** Undoes every step, returning how many there were. */
-function undoAll(editor: Editor): number {
-	let steps = 0;
-	while (editor.canUndo) {
-		editor.undo();
-		steps++;
-	}
-	return steps;
-}
-
-describe("Editor.setTags: one undo step per field edit, as iD's entity editor", () => {
-	it("folds the changes made while typing into one step, which leaving the field closes", async () => {
-		const editor = await loaded();
-		editor.setTags("n1", { amenity: "bench", name: "N" }, { live: true });
-		editor.setTags("n1", { amenity: "bench", name: "New " }, { live: true });
-		// Kept as typed while typing.
-		expect(tagsOf(editor, "n1")?.name).toBe("New ");
-		editor.setTags("n1", { amenity: "bench", name: "New " });
-		expect(tagsOf(editor, "n1")?.name).toBe("New");
-
-		// Another edit afterwards is a step of its own.
-		editor.setTags("n1", { amenity: "bench", name: "Newer" }, { live: true });
-		editor.setTags("n1", { amenity: "bench", name: "Newer" });
-		expect(undoAll(editor)).toBe(2);
-		expect(tagsOf(editor, "n1")?.name).toBe("Old");
+describe("Editor", () => {
+	it("edits one feature in the Inspector, when a single one is selected", () => {
+		const editor = benches();
+		expect(editor.selected).toBeNull();
+		editor.select("n1");
+		expect(editor.selected?.id).toBe("n1");
+		editor.select(["n1", "n2"]);
+		expect(editor.selected).toBeNull();
 	});
 
-	it("makes no step for tags left as they were", async () => {
-		const editor = await loaded();
-		editor.setTags("n1", { amenity: "bench", name: " Old " });
-		expect(editor.canUndo).toBe(false);
+	it("ends the typing step when another feature is selected", () => {
+		const editor = benches();
+		editor.select("n1");
+		editor.history.setTags("n1", { name: "A" }, { live: true });
+		editor.select("n2");
+		editor.select("n1");
+		editor.history.setTags("n1", { name: "AB" }, { live: true });
+		editor.history.undo();
+		expect(editor.graph.entity("n1")?.tags).toEqual({ name: "A" });
 	});
 
-	it("closes the step when leaving the field changed nothing more", async () => {
-		const editor = await loaded();
-		editor.setTags("n1", { amenity: "bench", name: "New" }, { live: true });
-		editor.setTags("n1", { amenity: "bench", name: "New" });
-		editor.setTags("n1", { amenity: "bench", name: "Newer" }, { live: true });
-		expect(undoAll(editor)).toBe(2);
+	it("gives the issues of a feature and of the edits, with their fixes", () => {
+		const editor = editorWith([
+			node("n1", { door: "yes" }),
+			node("n2", { room: "stairs", indoor: "room" }),
+		]);
+		expect(editor.issuesOf("n1").map((i) => i.rule)).toEqual([
+			"door-not-on-wall",
+		]);
+		// Nothing edited yet.
+		expect(editor.editIssues).toEqual([]);
+		const [outdated] = editor.issuesOf("n2");
+		if (!outdated) throw new Error("no issue");
+		fix(editor, outdated);
+		expect(editor.issuesOf("n2")).toEqual([]);
+		expect(editor.history.editCount).toBe(1);
 	});
+});
 
-	it("starts a new step for another feature, or after another edit", async () => {
-		const editor = await loaded();
-		editor.setTags("n1", { amenity: "bench", name: "A" }, { live: true });
-		editor.setTags("n2", { amenity: "bench", name: "B" }, { live: true });
-		// Another kind of edit (changing the type, a relation, a fix…).
-		editor.perform(changeTags("n2", { amenity: "toilets" }), "Fix");
-		editor.setTags("n2", { amenity: "toilets", name: "C" }, { live: true });
-		expect(undoAll(editor)).toBe(4);
-		expect(tagsOf(editor, "n1")).toEqual({ amenity: "bench", name: "Old" });
-	});
+describe("commands", () => {
+	const roomAndDoor = () =>
+		editorWith([
+			node("n1", { door: "yes" }),
+			node("n2"),
+			way("w1", ["n1", "n2"], { indoor: "wall" }),
+		]);
 
-	it("starts a new step after an undo, leaving the undone edit to redo", async () => {
-		const editor = await loaded();
-		editor.setTags("n1", { amenity: "bench", name: "A" });
-		editor.setTags("n1", { amenity: "bench", name: "AB" }, { live: true });
-		editor.undo();
-		editor.setTags("n1", { amenity: "bench", name: "AC" }, { live: true });
-		expect(tagsOf(editor, "n1")?.name).toBe("AC");
-		editor.undo();
-		expect(tagsOf(editor, "n1")?.name).toBe("A");
+	it("adds a feature to a new relation, then to that one, in steps of their own", () => {
+		const editor = roomAndDoor();
+		const created = addToRelation(editor, "w1", null, "outer");
+		expect(addToRelation(editor, "n1", created, "entrance")).toBe(created);
+		const relation = editor.graph.entity(created);
+		expect(relation?.type === "relation" && relation.members).toEqual([
+			{ ref: "w1", role: "outer" },
+			{ ref: "n1", role: "entrance" },
+		]);
+		expect(relationLabel(editor, relation as never)).toBe("Relation ");
+		// A member moved onto itself makes no step.
+		moveMember(editor, created, 0, 0);
+		editor.history.undo();
+		editor.history.undo();
+		expect(editor.graph.entity(created)).toBeUndefined();
 	});
 });

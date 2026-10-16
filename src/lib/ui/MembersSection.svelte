@@ -10,21 +10,26 @@
 	import { type MemberRow, memberRows } from "#lib/osm/relations.ts";
 	import type { PresetGeometry } from "#lib/presets/presets.ts";
 	import { cleanValue } from "#lib/presets/text.ts";
-	import type { Editor } from "#lib/state/editor.svelte.ts";
+	import {
+		changeMemberRoles,
+		moveMember,
+		removeMembers,
+	} from "#lib/state/commands.ts";
+	import { getEditor } from "#lib/state/editor.svelte.ts";
 	import ComboField from "#lib/ui/ComboField.svelte";
 	import { fieldInputId } from "#lib/ui/field-context.ts";
 	import InspectorSection from "#lib/ui/InspectorSection.svelte";
 	import { roleContext, roleField } from "#lib/ui/role-field.ts";
 
 	interface Props {
-		editor: Editor;
 		relation: Relation;
 		/** Selects a member (and shows it, when out of view). */
 		onshow?: (id: EntityId) => void;
 		onzoom?: (id: EntityId) => void;
 	}
 
-	let { editor, relation, onshow, onzoom }: Props = $props();
+	let { relation, onshow, onzoom }: Props = $props();
+	const editor = getEditor();
 
 	const TYPE_NAMES = { node: "Node", way: "Way", relation: "Relation" };
 
@@ -54,9 +59,9 @@
 	}
 
 	const roles = (row: MemberRow) =>
-		editor.taginfo
+		editor.catalog.services.taginfo
 			? (query: string) =>
-					editor.taginfo?.roles({
+					editor.catalog.services.taginfo?.roles({
 						type: relation.tags.type ?? "",
 						query,
 						geometry: geometryOf(row),
@@ -68,13 +73,13 @@
 	function changeRole(row: MemberRow, typed?: string) {
 		const role = cleanValue(typed ?? "");
 		if (role !== row.role) {
-			editor.changeMemberRoles(relation.id, [row.index], role);
+			changeMemberRoles(editor, relation.id, [row.index], role);
 		}
 	}
 
 	async function move(from: number, to: number, key: string) {
 		if (to < 0 || to >= rows.length || from === to) return;
-		editor.moveMember(relation.id, from, to);
+		moveMember(editor, relation.id, from, to);
 		await tick();
 		document.getElementById(fieldInputId(roleField(roleId(key))))?.focus();
 	}
@@ -160,7 +165,7 @@
 							size="icon-xs"
 							aria-label="Download the members"
 							title="Download the members"
-							onclick={() => editor.loadRelation(relation.id)}
+							onclick={() => editor.sync.loadRelation(relation.id)}
 						>
 							<Download />
 						</Button>
@@ -171,7 +176,7 @@
 						aria-label={`Remove ${text}`}
 						title="Remove"
 						class="text-muted-foreground hover:text-destructive"
-						onclick={() => editor.removeMembers(relation.id, [row.index])}
+						onclick={() => removeMembers(editor, relation.id, [row.index])}
 					>
 						<Trash2 />
 					</Button>

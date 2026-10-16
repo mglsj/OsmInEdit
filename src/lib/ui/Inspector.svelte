@@ -14,7 +14,8 @@
 	import type { Preset } from "#lib/presets/presets.ts";
 	import { keySuggestions, valueSuggestions } from "#lib/presets/tag-table.ts";
 	import { presetReference } from "#lib/presets/wiki.ts";
-	import type { Editor } from "#lib/state/editor.svelte.ts";
+	import { fix, setPreset } from "#lib/state/commands.ts";
+	import { type Editor, getEditor } from "#lib/state/editor.svelte.ts";
 	import FieldsSection from "#lib/ui/FieldsSection.svelte";
 	import InfoButton from "#lib/ui/InfoButton.svelte";
 	import InspectorSection from "#lib/ui/InspectorSection.svelte";
@@ -27,7 +28,6 @@
 	import { timeAgo } from "#lib/ui/time-ago.ts";
 
 	interface Props {
-		editor: Editor;
 		/**
 		 * The selected entity (the panel is only shown with one). The panel is made anew for each
 		 * selection: what it shows first, and its ✓, are about the feature as selected.
@@ -43,8 +43,8 @@
 		onshow?: (id: EntityId) => void;
 	}
 
-	let { editor, entity, websiteUrl, viewExtent, onzoom, onshow }: Props =
-		$props();
+	let { entity, websiteUrl, viewExtent, onzoom, onshow }: Props = $props();
+	const editor = getEditor();
 
 	/** The feature as selected: closing turns into a ✓ once it was changed. */
 	const selectedAs = untrack(() => entity);
@@ -62,13 +62,13 @@
 	const presetDocs = $derived.by(() => {
 		const reference = preset && presetReference(preset);
 		return showPresetDocs && reference
-			? editor.wikibase?.docs(reference)
+			? editor.catalog.services.wikibase?.docs(reference)
 			: undefined;
 	});
 	const issues = $derived(editor.issuesOf(entity.id));
 	/** Features without a matching type show their tags, the only way to edit them. */
 	const isFallback = $derived(
-		preset !== undefined && editor.presets?.isFallback(preset) === true,
+		preset !== undefined && editor.catalog.presets?.isFallback(preset) === true,
 	);
 	const tagCount = $derived(Object.keys(entity.tags).length);
 	const osmUrl = $derived(
@@ -78,7 +78,7 @@
 		entity.timestamp ? timeAgo(entity.timestamp) : null,
 	);
 	function choose(next: Preset) {
-		editor.setPreset(entity, next);
+		setPreset(editor, entity, next);
 		choosing = false;
 	}
 </script>
@@ -118,17 +118,18 @@
 		</Button>
 	</header>
 
-	{#if choosing && editor.presets}
+	{#if choosing && editor.catalog.presets}
 		<PresetList
-			presets={editor.presets}
+			presets={editor.catalog.presets}
 			{geometry}
 			current={preset}
-			recent={editor.recentPresets.list(geometry)}
+			recent={editor.catalog.recentPresets.list(geometry)}
 			onchoose={choose}
 			oncancel={() => (choosing = false)}
-			docs={editor.wikibase
+			docs={editor.catalog.services.wikibase
 				? (reference) =>
-						editor.wikibase?.docs(reference) ?? Promise.resolve(null)
+						editor.catalog.services.wikibase?.docs(reference) ??
+						Promise.resolve(null)
 				: undefined}
 		/>
 	{:else}
@@ -152,7 +153,9 @@
 						</span>
 						<ChevronRight class="size-4 shrink-0 text-muted-foreground" />
 					</button>
-					{#if editor.wikibase && preset && presetReference(preset)}
+					{#if editor.catalog.services.wikibase &&
+						preset &&
+						presetReference(preset)}
 						<InfoButton
 							label={preset?.name ?? "Feature"}
 							expanded={showPresetDocs}
@@ -177,7 +180,7 @@
 										<Button
 											variant="outline"
 											size="xs"
-											onclick={() => editor.fix(issue)}
+											onclick={() => fix(editor, issue)}
 										>
 											{issue.fix.label}
 										</Button>
@@ -192,7 +195,7 @@
 			<InspectorSection id="fields" title="Fields">
 				{#if preset}
 					{#key preset.id}
-						<FieldsSection {editor} {entity} {preset} />
+						<FieldsSection {entity} {preset} />
 					{/key}
 				{/if}
 			</InspectorSection>
@@ -205,43 +208,43 @@
 			>
 				<TagEditor
 					tags={entity.tags}
-					onchange={(tags) => editor.setTags(entity.id, tags)}
-					suggestKeys={editor.taginfo
+					onchange={(tags) => editor.history.setTags(entity.id, tags)}
+					suggestKeys={editor.catalog.services.taginfo
 						? (query) =>
-								editor.taginfo
+								editor.catalog.services.taginfo
 									?.keys({ query, geometry })
 									.then((found) =>
 										keySuggestions(
 											found,
 											query,
 											entity.tags,
-											editor.discardedKeys,
+											editor.catalog.discardedKeys,
 										),
 									) ?? Promise.resolve([])
 						: undefined}
-					suggestValues={editor.taginfo
+					suggestValues={editor.catalog.services.taginfo
 						? (key, query) =>
-								editor.taginfo
+								editor.catalog.services.taginfo
 									?.values({ key, query, geometry })
 									.then((found) => valueSuggestions(found, query)) ??
 								Promise.resolve([])
 						: undefined}
-					docs={editor.wikibase
+					docs={editor.catalog.services.wikibase
 						? (reference) =>
-								editor.wikibase?.docs(reference) ?? Promise.resolve(null)
+								editor.catalog.services.wikibase?.docs(reference) ??
+								Promise.resolve(null)
 						: undefined}
 				/>
 			</InspectorSection>
 
 			{#if entity.type === "relation"}
 				<MembersSection
-					{editor}
 					relation={entity}
 					onshow={onshow ?? ((id) => editor.select(id))}
 					{onzoom}
 				/>
 			{/if}
-			<RelationsSection {editor} {entity} {viewExtent} {onzoom} />
+			<RelationsSection {entity} {viewExtent} {onzoom} />
 		</ScrollArea>
 
 		{#if !isNewId(entity.id)}

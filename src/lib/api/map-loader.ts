@@ -41,11 +41,12 @@ export class MapLoader {
 
 	constructor(options: MapLoaderOptions) {
 		this.#options = {
-			zoom: 16,
-			concurrency: 4,
-			maxTiles: 64,
-			schedule: nextFrame,
 			...options,
+			// Options given as undefined keep their default.
+			zoom: options.zoom ?? 16,
+			concurrency: options.concurrency ?? 4,
+			maxTiles: options.maxTiles ?? 64,
+			schedule: options.schedule ?? nextFrame,
 		};
 	}
 

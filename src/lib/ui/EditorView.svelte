@@ -51,7 +51,7 @@
 		extentsIntersect,
 	} from "#lib/osm/relations.ts";
 	import { IndexedDbPlanStore } from "#lib/persist/plan-store.ts";
-	import { Editor } from "#lib/state/editor.svelte.ts";
+	import { Editor, setEditor } from "#lib/state/editor.svelte.ts";
 	import {
 		FloorPlans,
 		type View as PlanView,
@@ -99,14 +99,21 @@
 		const editor = new Editor({
 			api,
 			minZoom: config.data_min_zoom,
-			taginfo: new Taginfo({ baseUrl: config.taginfo_url }),
-			wikibase: new OsmWikibase({ baseUrl: config.osm_wiki_api_url }),
-			wikidata: new Wikidata({ baseUrl: config.wikidata_api_url }),
-			searchWikipedia: (lang, query) =>
-				searchWikipedia(lang, query, { template: config.wikipedia_api_url }),
+			catalog: {
+				services: {
+					taginfo: new Taginfo({ baseUrl: config.taginfo_url }),
+					wikibase: new OsmWikibase({ baseUrl: config.osm_wiki_api_url }),
+					wikidata: new Wikidata({ baseUrl: config.wikidata_api_url }),
+					searchWikipedia: (lang, query) =>
+						searchWikipedia(lang, query, {
+							template: config.wikipedia_api_url,
+						}),
+				},
+			},
 		});
 		return { session, editor, websiteUrl };
 	});
+	setEditor(editor);
 	let saving = $state(false);
 	// Plans saved in earlier visits come back once their images are decoded.
 	/**
@@ -373,7 +380,7 @@
 	function onMove(next: Omit<View, "level">) {
 		camera = next;
 		const area = visibleArea();
-		if (area) void editor.loadView(area, next.zoom);
+		if (area) void editor.sync.loadView(area, next.zoom);
 	}
 
 	function showPlace(place: Place) {
@@ -403,9 +410,9 @@
 	const mac = isMac();
 	/** Shortcuts that apply in every mode but floor plan mode (OSM edits can't be seen there). */
 	const SHORTCUTS = [
-		{ combo: "Mod+Z", run: () => editor.undo() },
-		{ combo: "Mod+Shift+Z", run: () => editor.redo() },
-		{ combo: "Mod+Y", run: () => editor.redo() },
+		{ combo: "Mod+Z", run: () => editor.history.undo() },
+		{ combo: "Mod+Shift+Z", run: () => editor.history.redo() },
+		{ combo: "Mod+Y", run: () => editor.history.redo() },
 	];
 
 	/** The map's keys: the mode's first (Escape…), then undo and redo; none while typing. */
@@ -421,13 +428,13 @@
 	}
 
 	const statusMessage = $derived.by(() => {
-		switch (editor.status.kind) {
+		switch (editor.sync.status.kind) {
 			case "loading":
 				return "Loading OpenStreetMap data…";
 			case "zoom-in":
 				return "Zoom in to load indoor data here";
 			case "error":
-				return `Some data could not be loaded (${editor.status.failed} area${editor.status.failed > 1 ? "s" : ""}). Move the map to retry.`;
+				return `Some data could not be loaded (${editor.sync.status.failed} area${editor.sync.status.failed > 1 ? "s" : ""}). Move the map to retry.`;
 			default:
 				return null;
 		}
@@ -485,7 +492,6 @@
 		{#if editor.selected}
 			{#key editor.selection.ids.join(",")}
 				<Inspector
-					{editor}
 					entity={editor.selected}
 					{websiteUrl}
 					viewExtent={visibleExtent}
@@ -532,25 +538,25 @@
 					"Undo",
 					`Undo (${formatCombo("Mod+Z", mac)})`,
 					Undo2,
-					!editor.canUndo,
-					() => editor.undo(),
+					!editor.history.canUndo,
+					() => editor.history.undo(),
 				)}
 				{@render iconButton(
 					"Redo",
 					`Redo (${formatCombo("Mod+Shift+Z", mac)})`,
 					Redo2,
-					!editor.canRedo,
-					() => editor.redo(),
+					!editor.history.canRedo,
+					() => editor.history.redo(),
 				)}
 				<Button
 					variant="outline"
-					disabled={editor.editCount === 0}
+					disabled={editor.history.editCount === 0}
 					onclick={() => (saving = true)}
 				>
 					<Upload data-icon="inline-start" />
 					Save
 					<Badge class="tabular-nums" data-testid="edit-count"
-						>{editor.editCount}</Badge
+						>{editor.history.editCount}</Badge
 					>
 					<span class="sr-only">edits</span>
 				</Button>
@@ -585,7 +591,7 @@
 		data-testid="load-status"
 		class={[
 			"absolute bottom-10 left-1/2 z-10 -translate-x-1/2 rounded-full bg-popover px-4 py-1.5 text-sm shadow-md ring-1 ring-foreground/10",
-			editor.status.kind === "error"
+			editor.sync.status.kind === "error"
 				? "text-destructive"
 				: "text-popover-foreground",
 		]}
@@ -596,7 +602,6 @@
 
 {#if saving}
 	<SaveDialog
-		{editor}
 		{session}
 		imagery={imageryUsed}
 		{websiteUrl}

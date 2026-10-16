@@ -711,6 +711,14 @@ R1.5: `state/selection.svelte.ts` (`Selection`: `ids`, `single`, `hover`, `selec
 selected; `IndoorMap.setSelected(ids)` and `setHover(id)` set feature-state, the hovered
 feature outlined at 45% of the selection colour; browse mode hovers from its hit test and
 clears it on leaving the map; the Inspector is keyed on the selection.
+R1.6: the `Editor` is now the composition root of `EditHistory` (graph, steps, typing
+coalescing, amend, merge, reset), `Selection`, `DataSync` (load status, view and relation
+downloads, upload), `Catalog` (presets, upgrades, discarded keys, recent presets, the web
+services) and `validation/validator.ts` (`Validator`: issues cached per entity, checked again
+for the entities an edit affected: the changed ones, ways' nodes before and after, parents and
+members). Components get it with `getEditor()` (Svelte `createContext`) instead of an `editor`
+prop; edits from the UI are plain functions in `state/commands.ts`. `MapLoader` keeps its
+defaults for options passed as undefined.
 
 ### R2: Floor plan content model — M
 

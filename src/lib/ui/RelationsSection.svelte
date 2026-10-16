@@ -16,21 +16,27 @@
 		nearbyRelations,
 	} from "#lib/osm/relations.ts";
 	import { cleanValue } from "#lib/presets/text.ts";
-	import type { Editor } from "#lib/state/editor.svelte.ts";
+	import {
+		addToRelation,
+		changeMemberRoles,
+		relationLabel,
+		removeMembers,
+	} from "#lib/state/commands.ts";
+	import { getEditor } from "#lib/state/editor.svelte.ts";
 	import ComboField from "#lib/ui/ComboField.svelte";
 	import InspectorSection from "#lib/ui/InspectorSection.svelte";
 	import { roleContext, roleField } from "#lib/ui/role-field.ts";
 	import SearchCombo, { type SearchItem } from "#lib/ui/SearchCombo.svelte";
 
 	interface Props {
-		editor: Editor;
 		entity: Entity;
 		/** The part of the map in view: relations there are offered. */
 		viewExtent?: () => Extent | undefined;
 		onzoom?: (relation: RelationId) => void;
 	}
 
-	let { editor, entity, viewExtent, onzoom }: Props = $props();
+	let { entity, viewExtent, onzoom }: Props = $props();
+	const editor = getEditor();
 
 	/** Relations the feature was added to since the panel opened: listed last (as iD). */
 	let recentlyAdded = $state<RelationId[]>([]);
@@ -39,7 +45,7 @@
 	/** The role typed in that row. */
 	let addedRole = $state("");
 
-	const label = (relation: Relation) => editor.relationLabel(relation);
+	const label = (relation: Relation) => relationLabel(editor, relation);
 	const rows = $derived(
 		memberships(editor.graph, entity.id, label, recentlyAdded),
 	);
@@ -48,9 +54,9 @@
 
 	/** Roles taginfo knows for members of this geometry in relations of the type. */
 	const roles = (relation: Relation | null) =>
-		editor.taginfo
+		editor.catalog.services.taginfo
 			? (query: string) =>
-					editor.taginfo?.roles({
+					editor.catalog.services.taginfo?.roles({
 						type: relation?.tags.type ?? "",
 						query,
 						geometry,
@@ -92,18 +98,18 @@
 		addedRole = "";
 		if (item.key === NEW_RELATION) {
 			// Selected at once, its type to choose (iD's `newFeature`).
-			editor.select(editor.addToRelation(entity.id, null, role));
+			editor.select(addToRelation(editor, entity.id, null, role));
 			return;
 		}
 		const id = item.key as RelationId;
-		editor.addToRelation(entity.id, id, role);
+		addToRelation(editor, entity.id, id, role);
 		recentlyAdded = [...recentlyAdded.filter((r) => r !== id), id];
 	}
 
 	function changeRole(relation: Relation, index: number, typed?: string) {
 		const role = cleanValue(typed ?? "");
 		if (role !== relation.members[index]?.role) {
-			editor.changeMemberRoles(relation.id, [index], role);
+			changeMemberRoles(editor, relation.id, [index], role);
 		}
 	}
 </script>
@@ -135,7 +141,7 @@
 								size="icon-xs"
 								aria-label={`Download the members of ${text}`}
 								title="Download the members"
-								onclick={() => editor.loadRelation(relation.id)}
+								onclick={() => editor.sync.loadRelation(relation.id)}
 							>
 								<Download />
 							</Button>
@@ -157,7 +163,7 @@
 							aria-label={`Remove from ${text}`}
 							title="Remove"
 							class="text-muted-foreground hover:text-destructive"
-							onclick={() => editor.removeMembers(relation.id, [index])}
+							onclick={() => removeMembers(editor, relation.id, [index])}
 						>
 							<Trash2 />
 						</Button>

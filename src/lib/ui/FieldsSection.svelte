@@ -21,7 +21,7 @@
 	} from "#lib/presets/field-list.ts";
 	import type { Preset, Field as PresetField } from "#lib/presets/presets.ts";
 	import type { TagReference } from "#lib/presets/wiki.ts";
-	import type { Editor } from "#lib/state/editor.svelte.ts";
+	import { type Editor, getEditor } from "#lib/state/editor.svelte.ts";
 	import FieldInput from "#lib/ui/FieldInput.svelte";
 	import {
 		type FieldContext,
@@ -30,13 +30,13 @@
 	} from "#lib/ui/field-context.ts";
 
 	interface Props {
-		editor: Editor;
 		entity: NonNullable<Editor["selected"]>;
 		/** The feature's type; the section is made anew when it changes, as in iD. */
 		preset: Preset;
 	}
 
-	let { editor, entity, preset }: Props = $props();
+	let { entity, preset }: Props = $props();
+	const editor = getEditor();
 
 	/** Fields added from "Add field", or emptied here: they stay until the feature is left. */
 	const added = new SvelteSet<string>();
@@ -44,9 +44,9 @@
 	let query = $state("");
 
 	const list = $derived(
-		editor.presets
+		editor.catalog.presets
 			? fieldList(
-					editor.presets,
+					editor.catalog.presets,
 					preset,
 					entity.tags,
 					editor.geometryOf(entity),
@@ -54,7 +54,7 @@
 				)
 			: { shown: [], addable: [] },
 	);
-	const downloaded = $derived(editor.downloadedTags(entity.id));
+	const downloaded = $derived(editor.history.downloadedTags(entity.id));
 	const found = $derived(
 		query.trim()
 			? list.addable.filter((f) => matchesField(f, query))
@@ -70,7 +70,7 @@
 
 	const context: FieldContext = {
 		get suggest() {
-			const taginfo = editor.taginfo;
+			const taginfo = editor.catalog.services.taginfo;
 			if (!taginfo) return undefined;
 			return (field: PresetField, query: string) => {
 				const geometry = editor.geometryOf(entity);
@@ -79,21 +79,23 @@
 					: taginfo.values({ key: field.key ?? "", query, geometry });
 			};
 		},
-		deprecated: (key) => editor.deprecatedValues.get(key) ?? [],
-		field: (id) => editor.presets?.field(id),
+		deprecated: (key) => editor.catalog.deprecatedValues.get(key) ?? [],
+		field: (id) => editor.catalog.presets?.field(id),
 		amend: (work) => {
 			const after = editor.graph;
 			const id = entity.id;
-			work.then((patch) => editor.amendTags(after, id, patch)).catch(() => {});
+			work
+				.then((patch) => editor.history.amend(after, id, patch))
+				.catch(() => {});
 		},
 		get wikidata() {
-			return editor.wikidata;
+			return editor.catalog.services.wikidata;
 		},
 		get searchWikipedia() {
-			return editor.searchWikipedia;
+			return editor.catalog.services.searchWikipedia;
 		},
 		get docs() {
-			const wikibase = editor.wikibase;
+			const wikibase = editor.catalog.services.wikibase;
 			return wikibase
 				? (reference: TagReference) => wikibase.docs(reference)
 				: undefined;
@@ -113,12 +115,12 @@
 			if (value === undefined) delete tags[key];
 			else tags[key] = value;
 		}
-		editor.setTags(entity.id, tags, { live });
+		editor.history.setTags(entity.id, tags, { live });
 	}
 
 	function remove(field: PresetField) {
 		added.add(field.id);
-		editor.setTags(entity.id, removeField(field, entity.tags));
+		editor.history.setTags(entity.id, removeField(field, entity.tags));
 	}
 
 	async function add(field: PresetField) {
@@ -126,7 +128,7 @@
 		query = "";
 		added.add(field.id);
 		const tags = addField(field, entity.tags);
-		if (tags !== entity.tags) editor.setTags(entity.id, tags);
+		if (tags !== entity.tags) editor.history.setTags(entity.id, tags);
 		await tick();
 		document.getElementById(fieldInputId(field))?.focus();
 	}
@@ -150,7 +152,7 @@
 						aria-label={`Revert ${field.label}`}
 						title="Revert to the downloaded value"
 						onclick={() =>
-							editor.setTags(
+							editor.history.setTags(
 								entity.id,
 								revertField(field, downloaded, entity.tags),
 							)}

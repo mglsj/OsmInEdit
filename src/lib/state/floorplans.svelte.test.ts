@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { PLAN_COLORS } from "#lib/floorplans/colors.ts";
-import { place, translateTo } from "#lib/floorplans/georef.ts";
+import { rasterContent } from "#lib/floorplans/content.ts";
+import {
+	place,
+	project,
+	type Transform,
+	translateTo,
+} from "#lib/floorplans/georef.ts";
 import type { PlanImage } from "#lib/floorplans/import.ts";
-import { offset, RENNES } from "#lib/floorplans/test-geometry.ts";
+import { distance, offset, RENNES } from "#lib/floorplans/test-geometry.ts";
 import { msg } from "#lib/i18n/messages.ts";
 import type {
 	PlanStore,
@@ -11,12 +17,14 @@ import type {
 } from "#lib/persist/plan-store.ts";
 import { type FloorPlan, FloorPlans } from "./floorplans.svelte.ts";
 
-const image: PlanImage = {
+const pixels: PlanImage = {
 	width: 400,
 	height: 300,
 	blob: new Blob(),
 	levels: [],
 };
+/** A 400 × 300 px photo: measured in its pixels. */
+const image = rasterContent(pixels);
 
 /**
  * A 400 × 300 px plan added in a 25 m tall view centred on RENNES: north up, 15 m tall, so 5 cm
@@ -27,6 +35,28 @@ function withPlan() {
 	floorplans.add(image, "plan", { center: RENNES, heightMetres: 25 }, "0");
 	return floorplans;
 }
+
+describe("FloorPlans: plans and their content", () => {
+	it("gives a plan its size in plan units, its content kept apart", () => {
+		const floorplans = new FloorPlans();
+		const content = rasterContent(pixels, { width: 200, height: 150 });
+		floorplans.add(content, "plan", { center: RENNES, heightMetres: 25 }, "0");
+		const plan = floorplans.plans[0];
+		expect(plan?.size).toEqual({ width: 200, height: 150 });
+		expect(plan && "image" in plan).toBe(false);
+		expect(floorplans.contents.get(plan?.id ?? "")).toBe(content);
+		// Still 15 m tall, now 10 cm per plan unit.
+		expect(
+			distance(
+				project(plan?.transform as Transform, [0, 0]),
+				project(plan?.transform as Transform, [0, 150]),
+			),
+		).toBeCloseTo(15, 1);
+
+		floorplans.remove(plan?.id ?? "");
+		expect(floorplans.contents.size).toBe(0);
+	});
+});
 
 describe("FloorPlans.click", () => {
 	it("explains a click off the plan, for each tool", () => {
@@ -104,7 +134,7 @@ describe("plan colours", () => {
 		const floorplans = new FloorPlans();
 		const fields = {
 			name: "plan",
-			image,
+			size: { width: 400, height: 300 },
 			transform: place(
 				{ center: RENNES, metresPerPixel: 0.05, bearing: 0 },
 				400,
@@ -116,8 +146,8 @@ describe("plan colours", () => {
 			level: "0",
 			visible: true,
 		};
-		floorplans.insert({ ...fields, color: "#16a34a" });
-		floorplans.insert(fields);
+		floorplans.insert({ ...fields, color: "#16a34a" }, image);
+		floorplans.insert(fields, image);
 		const [kept, given] = floorplans.plans;
 		expect(kept?.color).toBe("#16a34a");
 		expect(given?.color).not.toBe("#16a34a");
@@ -150,7 +180,7 @@ describe("plan colours", () => {
 				saveBuildings: async () => {},
 				saveStack: async () => {},
 			},
-			decode: async () => image,
+			decode: async () => pixels,
 		});
 		await floorplans.restore();
 		expect(PLAN_COLORS.map((p) => p.value)).toContain(
@@ -440,7 +470,7 @@ describe("layer stack", () => {
 
 	it("brings back the stack, and hidden buildings, after a reload", async () => {
 		const { store } = lastingStore();
-		const before = new FloorPlans({ store, decode: async () => image });
+		const before = new FloorPlans({ store, decode: async () => pixels });
 		for (const name of ["a", "b", "c"]) before.add(image, name, view, "0");
 		before.done();
 		before.move("buildings", 1);
@@ -449,7 +479,7 @@ describe("layer stack", () => {
 		expect(stack(before)).toEqual(["c", "a", "buildings", "b"]);
 		await settled();
 
-		const after = new FloorPlans({ store, decode: async () => image });
+		const after = new FloorPlans({ store, decode: async () => pixels });
 		await after.restore();
 
 		expect(stack(after)).toEqual(["c", "a", "buildings", "b"]);
@@ -458,13 +488,13 @@ describe("layer stack", () => {
 
 	it("puts the buildings on top of plans saved before they were in the list", async () => {
 		const { store } = lastingStore();
-		const before = new FloorPlans({ store, decode: async () => image });
+		const before = new FloorPlans({ store, decode: async () => pixels });
 		for (const name of ["a", "b"]) before.add(image, name, view, "0");
 		await settled();
 		// No buildings record: as saved before P4.1.
 		const after = new FloorPlans({
 			store: { ...store, loadBuildings: async () => undefined },
-			decode: async () => image,
+			decode: async () => pixels,
 		});
 		await after.restore();
 

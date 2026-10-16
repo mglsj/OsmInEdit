@@ -4,6 +4,7 @@
  * PNG or the original file to store and export.
  */
 import { MessageError, msg } from "#lib/i18n/messages.ts";
+import { type PlanContent, rasterContent } from "./content.ts";
 import { type Tile, tiles } from "./tiling.ts";
 
 /** Longest side kept for a plan, in pixels; larger plans are scaled down on import. */
@@ -56,23 +57,38 @@ export function planName(file: File): string {
 	return file.name.replace(/\.[^.]+$/, "") || "Floor plan";
 }
 
-/** Decodes a PNG, JPEG or WebP image. */
-export async function importRaster(file: Blob): Promise<PlanImage> {
+/** A PNG, JPEG or WebP plan, measured in its pixels (a large one is drawn smaller). */
+export async function importRaster(file: Blob): Promise<PlanContent> {
+	const { image, width, height } = await decodeImage(file);
+	return rasterContent(image, { width, height });
+}
+
+/** Decodes a PNG, JPEG or WebP image, at most `MAX_IMAGE_SIZE` pixels wide or tall. */
+export async function decodeRaster(file: Blob): Promise<PlanImage> {
+	return (await decodeImage(file)).image;
+}
+
+/** The decoded image, and the size of the file's own (before any downscaling). */
+async function decodeImage(
+	file: Blob,
+): Promise<{ image: PlanImage; width: number; height: number }> {
 	const full = await createImageBitmap(file).catch(() => {
 		throw new MessageError(msg("plan_import_image_unreadable"));
 	});
-	const scale = Math.min(1, MAX_IMAGE_SIZE / Math.max(full.width, full.height));
-	if (scale === 1) return fromBitmap(full, file);
+	const { width, height } = full;
+	const scale = Math.min(1, MAX_IMAGE_SIZE / Math.max(width, height));
+	if (scale === 1)
+		return { image: await fromBitmap(full, file), width, height };
 	const canvas = drawScaled(full, scale);
 	full.close();
-	return fromCanvas(canvas);
+	return { image: await fromCanvas(canvas), width, height };
 }
 
 /**
  * Renders an SVG drawing through an `<img>`: images never run the scripts or load the
  * resources an SVG may contain.
  */
-export async function importSvg(file: Blob): Promise<PlanImage> {
+export async function importSvg(file: Blob): Promise<PlanContent> {
 	const url = URL.createObjectURL(
 		file.type === "image/svg+xml"
 			? file
@@ -84,10 +100,14 @@ export async function importSvg(file: Blob): Promise<PlanImage> {
 		await image.decode().catch(() => {
 			throw new MessageError(msg("plan_import_svg_unreadable"));
 		});
+		// Measured in the drawing's own units (CSS pixels of its intrinsic size).
 		const width = image.naturalWidth || SVG_SIZE;
 		const height = image.naturalHeight || SVG_SIZE;
 		const scale = SVG_SIZE / Math.max(width, height);
-		return fromCanvas(drawScaled(image, scale, width, height));
+		return rasterContent(
+			await fromCanvas(drawScaled(image, scale, width, height)),
+			{ width, height },
+		);
 	} finally {
 		URL.revokeObjectURL(url);
 	}
@@ -99,8 +119,8 @@ export interface PdfDocument {
 	pageSize(page: number): Promise<{ width: number; height: number }>;
 	/** A small PNG of the page, as an object URL (revoked by `close`). */
 	thumbnail(page: number): Promise<string>;
-	/** Renders a page (from 1) at `dpi` dots per inch. */
-	render(page: number, dpi: number): Promise<PlanImage>;
+	/** Renders a page (from 1) at `dpi` dots per inch, measured in points. */
+	render(page: number, dpi: number): Promise<PlanContent>;
 	close(): void;
 }
 
@@ -158,7 +178,10 @@ export async function openPdf(file: Blob): Promise<PdfDocument> {
 				dpi / 72,
 				MAX_IMAGE_SIZE / Math.max(width, height),
 			);
-			return fromCanvas(await draw(page, scale));
+			return rasterContent(await fromCanvas(await draw(page, scale)), {
+				width,
+				height,
+			});
 		},
 		close() {
 			for (const url of urls) URL.revokeObjectURL(url);

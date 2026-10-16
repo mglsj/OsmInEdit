@@ -60,7 +60,7 @@ export function grabAt(
 	if (handle)
 		return { kind: "corner", corner: Number(handle.properties.corner) };
 	const [u, v] = unproject(plan.transform, at.lngLat);
-	const { width, height } = plan.image;
+	const { width, height } = plan.size;
 	return u >= 0 && v >= 0 && u <= width && v <= height
 		? { kind: "body", pixel: [u, v] }
 		: null;
@@ -72,7 +72,7 @@ export function grabAt(
  */
 export function dragTo(plan: FloorPlan, grab: Grab, at: MapPoint): Transform {
 	const target: LngLat = at.lngLat;
-	const { width, height } = plan.image;
+	const { width, height } = plan.size;
 	switch (grab.kind) {
 		case "body":
 			return translateTo(plan.transform, grab.pixel, target);

@@ -3,7 +3,14 @@
  * they are shown. Plans are replaced, never mutated, so the map layers can tell what changed.
  */
 
+import { SvelteMap } from "svelte/reactivity";
 import { pickColor } from "#lib/floorplans/colors.ts";
+import {
+	closeContent,
+	type PlanContent,
+	type PlanSize,
+	rasterContent,
+} from "#lib/floorplans/content.ts";
 import {
 	type ControlPoint,
 	type Fit,
@@ -26,7 +33,8 @@ import type { PlanStore, StoredPlan } from "#lib/persist/plan-store.ts";
 export interface FloorPlan {
 	readonly id: string;
 	readonly name: string;
-	readonly image: PlanImage;
+	/** Its size in plan units (the transform's units); its content is in `FloorPlans.contents`. */
+	readonly size: PlanSize;
 	readonly transform: Transform;
 	readonly controlPoints: readonly ControlPoint[];
 	/** Transform fitted to the control points, once there are enough of them. */
@@ -91,6 +99,8 @@ export interface FloorPlansOptions {
 
 export class FloorPlans {
 	plans = $state.raw<readonly FloorPlan[]>([]);
+	/** Each plan's content, by id: large, so kept out of the plans (values aren't proxied). */
+	readonly contents = new SvelteMap<string, PlanContent>();
 	/** Set when plans could not be saved or restored. */
 	storageError = $state.raw<Message | null>(null);
 	/** The building outlines' entry in the layer stack: how many plans are drawn under them. */
@@ -147,12 +157,16 @@ export class FloorPlans {
 				this.#store.load(),
 				this.#store.loadBuildings(),
 			]);
+			const contents = new Map<string, PlanContent>();
 			const decoded = await Promise.all(
-				saved.map(async ({ plan: { order: _order, ...plan }, image }) => ({
-					...plan,
-					image: await decode(image),
-				})),
+				saved.map(async ({ plan: { order: _order, size, ...plan }, image }) => {
+					// Plans saved before plan units are measured in their pixels.
+					const content = rasterContent(await decode(image), size);
+					contents.set(plan.id, content);
+					return { ...plan, size: content.size };
+				}),
 			);
+			for (const [id, content] of contents) this.contents.set(id, content);
 			// Plans saved before they had colours get one, kept from then on.
 			const used = [...this.plans, ...decoded].flatMap((p) =>
 				p.color ? [p.color] : [],
@@ -185,26 +199,35 @@ export class FloorPlans {
 	}
 
 	/** Adds a plan north up in the middle of the view, 60% of its height tall, in Edit. */
-	add(image: PlanImage, name: string, view: View, level: string | null): void {
+	add(
+		content: PlanContent,
+		name: string,
+		view: View,
+		level: string | null,
+	): void {
+		const { width, height } = content.size;
 		const transform = place(
 			{
 				center: view.center,
-				metresPerPixel: (view.heightMetres * INITIAL_HEIGHT) / image.height,
+				metresPerPixel: (view.heightMetres * INITIAL_HEIGHT) / height,
 				bearing: 0,
 			},
-			image.width,
-			image.height,
+			width,
+			height,
 		);
-		this.insert({
-			name,
-			image,
-			transform,
-			controlPoints: [],
-			fitKind: "similarity",
-			opacity: DEFAULT_OPACITY,
-			level,
-			visible: true,
-		});
+		this.insert(
+			{
+				name,
+				size: content.size,
+				transform,
+				controlPoints: [],
+				fitKind: "similarity",
+				opacity: DEFAULT_OPACITY,
+				level,
+				visible: true,
+			},
+			content,
+		);
 	}
 
 	/**
@@ -213,6 +236,7 @@ export class FloorPlans {
 	 */
 	insert(
 		fields: Omit<FloorPlan, "id" | "color"> & { readonly color?: string },
+		content: PlanContent,
 	): void {
 		const plan: FloorPlan = {
 			id: crypto.randomUUID(),
@@ -226,7 +250,9 @@ export class FloorPlans {
 			this.buildings = { ...this.buildings, below: this.plans.length };
 			this.#saveBuildings();
 		}
-		this.#persist(this.#store?.saveImage(plan.id, plan.image.blob));
+		this.contents.set(plan.id, content);
+		const image = content.raster?.image.blob;
+		if (image) this.#persist(this.#store?.saveImage(plan.id, image));
 		this.#save(plan);
 		this.edit(plan.id);
 	}
@@ -464,16 +490,14 @@ export class FloorPlans {
 
 	remove(id: string): void {
 		const index = this.plans.findIndex((p) => p.id === id);
-		const plan = this.plans[index];
 		this.plans = this.plans.filter((p) => p.id !== id);
 		if (index >= 0 && index < this.buildings.below) {
 			// Saved places keep their order: nothing to save.
 			this.buildings = { ...this.buildings, below: this.buildings.below - 1 };
 		}
 		if (this.editingId === id) this.#endEdit();
-		for (const level of plan?.image.levels ?? []) {
-			for (const { bitmap } of level.tiles) bitmap.close();
-		}
+		closeContent(this.contents.get(id));
+		this.contents.delete(id);
 		this.#persist(this.#store?.delete(id));
 	}
 
@@ -522,11 +546,10 @@ export class FloorPlans {
 
 	/** A plan's settings as stored: everything but its image, and its place in the stack. */
 	#stored(plan: FloorPlan): StoredPlan {
-		const { image: _, ...settings } = plan;
 		const index = this.plans.findIndex((p) => p.id === plan.id);
 		// The outlines take a place in the stack too.
 		return {
-			...settings,
+			...plan,
 			order: index + (index >= this.buildings.below ? 1 : 0),
 		};
 	}
@@ -550,7 +573,7 @@ function usableKind(plan: FloorPlan): TransformKind {
 function pixelOn(plan: FloorPlan, position: LngLat): Pixel | null {
 	try {
 		const [u, v] = unproject(plan.transform, position);
-		const { width, height } = plan.image;
+		const { width, height } = plan.size;
 		return u >= 0 && v >= 0 && u <= width && v <= height ? [u, v] : null;
 	} catch (e) {
 		if (e instanceof GeorefError) return null;

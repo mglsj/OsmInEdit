@@ -72,7 +72,9 @@ runs the same commands.
   Presets come from `@openstreetmap/id-tagging-schema` plus `presets/overlay.json`, built by
   `scripts/build-presets.ts` on install into the gitignored `presets/generated/`; run
   `bun run presets` after changing the overlay or the schema version.
-- Floor plans (P4): `floorplans/` (`georef.ts` transforms fitted in Web Mercator, `plan-file.ts`
+- Floor plans (P4, R2): `floorplans/` (`content.ts`: a plan's size in plan units (PDF points, SVG
+  units, photo pixels) and its content, kept in `FloorPlans.contents`, out of the reactive plans;
+  transforms map plan units; `georef.ts` transforms fitted in Web Mercator, `plan-file.ts`
   JSON and 1.x files, `tiling.ts`, `import.ts` raster/SVG/PDF), `map/floorplan-layers.ts`,
   `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),
   `persist/plan-store.ts` (IndexedDB), `ui/FloorPlansPanel.svelte`. Import pdf.js only from its

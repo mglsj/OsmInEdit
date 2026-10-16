@@ -4,6 +4,7 @@
  * leaves the user's browser.
  */
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
+import type { PlanSize } from "#lib/floorplans/content.ts";
 import type {
 	ControlPoint,
 	Transform,
@@ -20,6 +21,8 @@ export interface StoredPlan {
 	readonly opacity: number;
 	readonly level: string | null;
 	readonly visible: boolean;
+	/** Size in plan units; plans saved before plan units have none (their image's pixels). */
+	readonly size?: PlanSize;
 	/** `#rrggbb`; plans saved before colours existed have none. */
 	readonly color?: string;
 	/** Place in the layer stack, the building outlines included: lowest first. */

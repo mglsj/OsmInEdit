@@ -82,3 +82,18 @@ describe("pyramidLevel", () => {
 		expect(pyramidLevel(2 ** 3.5, 4, 1)).toBe(3);
 	});
 });
+
+describe("tileCorners in plan units", () => {
+	it("places a raster's pixels at `unit` plan units each", () => {
+		const transform = place(
+			{ center: RENNES, metresPerPixel: 0.05, bearing: 0 },
+			5000,
+			3000,
+		);
+		const tile = { x: 2048, y: 0, width: 2048, height: 2048 };
+		// Half a plan unit per pixel: the tile covers plan units 1024 to 2048.
+		expect(tileCorners(transform, tile, 0.5)).toEqual(
+			tileCorners(transform, { x: 1024, y: 0, width: 1024, height: 1024 }),
+		);
+	});
+});

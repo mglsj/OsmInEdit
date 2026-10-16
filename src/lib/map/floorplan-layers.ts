@@ -4,6 +4,7 @@
  * changed is updated: moving a plan sets new coordinates, it never re-uploads the image.
  */
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
+import type { PlanContent, RasterContent } from "#lib/floorplans/content.ts";
 import {
 	corners,
 	groundDistance,
@@ -33,6 +34,8 @@ export const FLOORPLAN_PREFIX = "floorplan-";
 
 interface Shown {
 	readonly plan: FloorPlan;
+	/** The content drawn (its raster's tiles at `level`). */
+	readonly raster: RasterContent;
 	readonly ids: readonly string[];
 	/** Index of the pyramid level drawn. */
 	readonly level: number;
@@ -45,6 +48,7 @@ export class FloorPlanLayers {
 	#removed = false;
 	#layers: readonly LayerEntry[] = [];
 	#plans: readonly FloorPlan[] = [];
+	#contents: ReadonlyMap<string, PlanContent> = new Map();
 	#level = 0;
 	readonly #shown = new Map<string, Shown>();
 	/** The map layers in stack order last time, to reorder only when it changes. */
@@ -70,6 +74,12 @@ export class FloorPlanLayers {
 		if (this.#ready) this.#sync();
 	}
 
+	/** The plans' content, by id: a plan without any yet isn't drawn. */
+	setContents(contents: ReadonlyMap<string, PlanContent>): void {
+		this.#contents = contents;
+		if (this.#ready) this.#sync();
+	}
+
 	/** Shows only the plans of this level, and those not assigned to any. */
 	setLevel(level: number): void {
 		this.#level = level;
@@ -86,12 +96,23 @@ export class FloorPlanLayers {
 
 	#sync(): void {
 		const wanted = this.#plans.filter(
-			(p) => p.visible && isPlanOnLevel(p, this.#level),
+			(p) =>
+				p.visible &&
+				isPlanOnLevel(p, this.#level) &&
+				this.#contents.get(p.id)?.raster,
 		);
-		const levels = new Map(wanted.map((p) => [p.id, this.#pyramidLevel(p)]));
+		const levels = new Map(
+			wanted.map((p) => [
+				p.id,
+				this.#pyramidLevel(
+					p,
+					this.#contents.get(p.id)?.raster as RasterContent,
+				),
+			]),
+		);
 		for (const [id, shown] of this.#shown) {
 			if (
-				shown.plan.image !== this.#find(id)?.image ||
+				shown.raster !== this.#contents.get(id)?.raster ||
 				shown.level !== levels.get(id)
 			) {
 				this.#hide(id);
@@ -100,10 +121,11 @@ export class FloorPlanLayers {
 		let added = false;
 		for (const plan of wanted) {
 			const shown = this.#shown.get(plan.id);
-			if (!shown) {
-				this.#show(plan, levels.get(plan.id) ?? 0);
+			const raster = this.#contents.get(plan.id)?.raster;
+			if (!shown && raster) {
+				this.#show(plan, raster, levels.get(plan.id) ?? 0);
 				added = true;
-			} else if (shown.plan !== plan) this.#update(shown, plan);
+			} else if (shown && shown.plan !== plan) this.#update(shown, plan);
 		}
 		const order = stackLayerIds(
 			this.#layers,
@@ -123,16 +145,19 @@ export class FloorPlanLayers {
 	 * pixel, so the GPU never shrinks a level by much more than half (`pyramidLevel` keeps the
 	 * one drawn a little past its range while zooming).
 	 */
-	#pyramidLevel(plan: FloorPlan): number {
-		const { width, height, levels } = plan.image;
+	#pyramidLevel(plan: FloorPlan, raster: RasterContent): number {
+		const { width, height } = plan.size;
 		const centre: Pixel = [width / 2, height / 2];
 		const step = Math.min(100, width / 2);
 		const at = project(plan.transform, centre);
+		// A raster pixel spans `unit` plan units.
 		const metresPerImagePixel =
-			groundDistance(
+			(groundDistance(
 				at,
 				project(plan.transform, [centre[0] + step, centre[1]]),
-			) / step;
+			) /
+				step) *
+			raster.unit;
 		// Ground size of a device pixel: the 512 px world at this zoom, at this latitude.
 		const metresPerDevicePixel =
 			(2 * Math.PI * EARTH_RADIUS * Math.cos((at[1] * Math.PI) / 180)) /
@@ -140,22 +165,18 @@ export class FloorPlanLayers {
 			(window.devicePixelRatio || 1);
 		return pyramidLevel(
 			metresPerDevicePixel / metresPerImagePixel,
-			levels.length,
+			raster.image.levels.length,
 			this.#shown.get(plan.id)?.level,
 		);
 	}
 
-	#find(id: string): FloorPlan | undefined {
-		return this.#plans.find((p) => p.id === id);
-	}
-
-	#show(plan: FloorPlan, level: number): void {
-		const tiles = plan.image.levels[level]?.tiles ?? [];
+	#show(plan: FloorPlan, raster: RasterContent, level: number): void {
+		const tiles = raster.image.levels[level]?.tiles ?? [];
 		const ids = tiles.map(({ tile, bitmap }, i) => {
 			const id = `${FLOORPLAN_PREFIX}${plan.id}-${i}`;
 			this.#map.addSource(id, {
 				type: "image",
-				coordinates: tileCorners(plan.transform, tile),
+				coordinates: tileCorners(plan.transform, tile, raster.unit),
 			});
 			const source = this.#map.getSource<ImageSource>(id);
 			source?.setWarp("perspective");
@@ -171,17 +192,18 @@ export class FloorPlanLayers {
 			);
 			return id;
 		});
-		this.#shown.set(plan.id, { plan, ids, level });
+		this.#shown.set(plan.id, { plan, raster, ids, level });
 	}
 
 	#update(shown: Shown, plan: FloorPlan): void {
 		if (plan.transform !== shown.plan.transform) {
-			plan.image.levels[shown.level]?.tiles.forEach(({ tile }, i) => {
+			const { image, unit } = shown.raster;
+			image.levels[shown.level]?.tiles.forEach(({ tile }, i) => {
 				const id = shown.ids[i];
 				if (!id) return;
 				this.#map
 					.getSource<ImageSource>(id)
-					?.setCoordinates(tileCorners(plan.transform, tile));
+					?.setCoordinates(tileCorners(plan.transform, tile, unit));
 			});
 		}
 		if (plan.opacity !== shown.plan.opacity) {
@@ -245,8 +267,8 @@ export function planFrames(
 			.map((plan) => {
 				const frame = corners(
 					plan.transform,
-					plan.image.width,
-					plan.image.height,
+					plan.size.width,
+					plan.size.height,
 				);
 				return {
 					type: "Feature",
@@ -290,7 +312,7 @@ export function toolFeatures(
 		});
 	const at = (pixel: Pixel) => project(plan.transform, pixel);
 	if (handles) {
-		const { width, height } = plan.image;
+		const { width, height } = plan.size;
 		for (const [i, corner] of corners(
 			plan.transform,
 			width,

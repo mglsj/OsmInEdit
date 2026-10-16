@@ -26,6 +26,7 @@
 	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
 	import * as ToggleGroup from "#lib/components/shadcn/toggle-group/index.ts";
 	import { BUILDING_COLOR, PLAN_COLORS } from "#lib/floorplans/colors.ts";
+	import { rasterContent } from "#lib/floorplans/content.ts";
 	import type { TransformKind } from "#lib/floorplans/georef.ts";
 	import {
 		ACCEPTED_FILES,
@@ -250,24 +251,35 @@
 		const existing = floorplans.plans.length;
 		for (const entry of plans) {
 			const blob = await (await fetch(entry.image)).blob();
-			const image =
+			const decoded =
 				blob.type === "image/svg+xml"
 					? await importSvg(blob)
 					: await importRaster(blob);
-			floorplans.insert({
-				name: entry.name,
-				image,
-				transform: transformOf(entry, image.width, image.height),
-				controlPoints: entry.controlPoints,
-				fitKind:
-					"transform" in entry.placement
-						? entry.placement.transform.kind
-						: "projective",
-				opacity: entry.opacity,
-				level: entry.level,
-				visible: entry.visible,
-				...(entry.color ? { color: entry.color } : {}),
-			});
+			// Measured as saved: files from before plan units give the image's pixels.
+			const size =
+				entry.width && entry.height
+					? { width: entry.width, height: entry.height }
+					: decoded.size;
+			const content = decoded.raster
+				? rasterContent(decoded.raster.image, size)
+				: decoded;
+			floorplans.insert(
+				{
+					name: entry.name,
+					size,
+					transform: transformOf(entry, size.width, size.height),
+					controlPoints: entry.controlPoints,
+					fitKind:
+						"transform" in entry.placement
+							? entry.placement.transform.kind
+							: "projective",
+					opacity: entry.opacity,
+					level: entry.level,
+					visible: entry.visible,
+					...(entry.color ? { color: entry.color } : {}),
+				},
+				content,
+			);
 		}
 		// The outlines go where the file had them among its plans.
 		if (buildings) {
@@ -279,21 +291,34 @@
 		}
 	}
 
+	/** A plan's size as the list shows it: its raster's pixels, else its plan units. */
+	function sizeLabel(plan: FloorPlan): string {
+		const image = floorplans.contents.get(plan.id)?.raster?.image;
+		const { width, height } = image ?? plan.size;
+		return `${Math.round(width)} × ${Math.round(height)}${image ? " px" : ""}`;
+	}
+
 	/** Downloads every plan, images included, as an IndoorID plan file. */
 	async function exportFile() {
 		const entries = await Promise.all(
-			floorplans.plans.map(async (plan) => ({
-				name: plan.name,
-				image: await dataUrl(plan.image.blob),
-				width: plan.image.width,
-				height: plan.image.height,
-				level: plan.level,
-				opacity: plan.opacity,
-				visible: plan.visible,
-				color: plan.color,
-				placement: { transform: plan.transform },
-				controlPoints: plan.controlPoints,
-			})),
+			floorplans.plans
+				.flatMap((plan) => {
+					const image = floorplans.contents.get(plan.id)?.raster?.image.blob;
+					return image ? [{ plan, image }] : [];
+				})
+				.map(async ({ plan, image }) => ({
+					name: plan.name,
+					image: await dataUrl(image),
+					// Plan units: the transform's.
+					width: plan.size.width,
+					height: plan.size.height,
+					level: plan.level,
+					opacity: plan.opacity,
+					visible: plan.visible,
+					color: plan.color,
+					placement: { transform: plan.transform },
+					controlPoints: plan.controlPoints,
+				})),
 		);
 		const url = URL.createObjectURL(
 			new Blob([exportPlans(entries, floorplans.buildings)], {
@@ -322,8 +347,9 @@
 	}
 
 	/** Shows a plan's image, through an object URL freed with the element. */
-	function thumbnail(blob: Blob): Attachment<HTMLImageElement> {
+	function thumbnail(blob: Blob | undefined): Attachment<HTMLImageElement> {
 		return (img) => {
+			if (!blob) return;
 			const url = URL.createObjectURL(blob);
 			img.src = url;
 			return () => URL.revokeObjectURL(url);
@@ -542,7 +568,9 @@
 							{/if}
 							{#if editing}
 								<img
-									{@attach thumbnail(plan.image.blob)}
+									{@attach thumbnail(
+										floorplans.contents.get(plan.id)?.raster?.image.blob,
+									)}
 									alt=""
 									class="size-10 shrink-0 rounded-sm border object-contain"
 								>
@@ -560,8 +588,7 @@
 									/>
 									<span
 										class="mt-0.5 block truncate text-xs text-muted-foreground"
-										>{plan.image.width}
-										× {plan.image.height} px</span
+										>{sizeLabel(plan)}</span
 									>
 								</span>
 							{:else}
@@ -573,7 +600,9 @@
 									onclick={() => showLevelOf(plan)}
 								>
 									<img
-										{@attach thumbnail(plan.image.blob)}
+										{@attach thumbnail(
+											floorplans.contents.get(plan.id)?.raster?.image.blob,
+										)}
 										alt=""
 										class="size-10 shrink-0 rounded-sm border object-contain"
 									>
@@ -581,8 +610,7 @@
 										<span class="block truncate font-medium">{plan.name}</span>
 										{" "}
 										<span class="block truncate text-xs text-muted-foreground"
-											>{plan.image.width}
-											× {plan.image.height} px</span
+											>{sizeLabel(plan)}</span
 										>
 									</span>
 								</button>

@@ -28,7 +28,7 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P5.0–2 | Quick fixes, feature editor, fast core    | Done        |
 | R0    | Fixes and fast feedback (review)           | Done        |
 | R1    | Foundations for editing (review)           | Done        |
-| R2    | Floor plan content model (review)          | Next        |
+| R2    | Floor plan content model (review)          | In progress |
 | P4.2  | Vector and light raster floor plans        | Not started |
 | P5.3  | Geometry editing                           | Not started |
 | P5.4  | Autosave and conflicts                     | Not started |
@@ -778,6 +778,18 @@ are shared down the chain (links only added, lookups check them). After: 0.33 s,
 4. Plan file format 2 (raster, vector or original file; size required; version checked); the
    v1 and 1.x readers stay.
 5. The panel split into a plan list and the alignment tools; 128 px thumbnails.
+
+Decided ✔: plans saved before R2 keep their pixels as plan units (migrated as rasters, placed
+where they were); content (tiles in memory, GPU textures) is loaded for the shown level only,
+plus the plan in Edit and the list's thumbnails; plan file format 2 carries the original
+file; R2.2's store is tested on fake-indexeddb, R2.3's worker in browser mode.
+
+Done ✅: R2.1 (`floorplans/content.ts`: `PlanSize`, `PlanContent { size, raster? }`,
+`RasterContent { unit, image }`, `rasterContent`, `closeContent`; `FloorPlan.size` in plan units
+replaces `image`, content in `FloorPlans.contents` (a `SvelteMap`, values not proxied), given to
+`FloorPlanLayers.setContents`; tiles placed at `unit` plan units per pixel (`tileCorners`);
+importers return content: photos in their own pixels (even when drawn smaller), SVG in user
+units, PDF pages in points; restore uses the stored `size`, else the image's pixels).
 
 ### P4.2: Vector and light raster plans — M–L
 

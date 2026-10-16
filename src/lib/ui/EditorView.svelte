@@ -24,7 +24,7 @@
 		floorPlanToolMode,
 	} from "#lib/edit/modes/floorplan.ts";
 	import { groundDistance, type LngLat } from "#lib/floorplans/georef.ts";
-	import { importRaster } from "#lib/floorplans/import.ts";
+	import { decodeRaster } from "#lib/floorplans/import.ts";
 	import type { Message } from "#lib/i18n/messages.ts";
 	import { setBackground } from "#lib/map/background.ts";
 	import {
@@ -134,7 +134,7 @@
 
 	const floorplans = new FloorPlans({
 		store: new IndexedDbPlanStore(),
-		decode: importRaster,
+		decode: decodeRaster,
 	});
 	void floorplans.restore();
 	/** The side panel's width, as the user left it, kept within the window. */
@@ -186,6 +186,8 @@
 		const layers = new FloorPlanLayers(instance);
 		const marks = new PlanToolLayer(instance);
 		$effect(() => layers.setLayers(floorplans.layers));
+		// A copy: reading every entry follows content added or dropped.
+		$effect(() => layers.setContents(new Map(floorplans.contents)));
 		$effect(() => layers.setLevel(level));
 		// Frames tell the plans apart in floor plan mode; tool marks show whenever a tool is on.
 		$effect(() => {

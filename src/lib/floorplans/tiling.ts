@@ -36,16 +36,24 @@ export function tiles(
 	return result;
 }
 
-/** Map positions of a tile's corners, clockwise from the top left. */
+/**
+ * Map positions of a tile's corners, clockwise from the top left. The tile is in pixels, each
+ * `unit` plan units (the transform's units).
+ */
 export function tileCorners(
 	transform: Transform,
-	{ x, y, width, height }: Tile,
+	tile: Tile,
+	unit = 1,
 ): [LngLat, LngLat, LngLat, LngLat] {
+	const x = tile.x * unit;
+	const y = tile.y * unit;
+	const right = (tile.x + tile.width) * unit;
+	const bottom = (tile.y + tile.height) * unit;
 	return [
 		project(transform, [x, y]),
-		project(transform, [x + width, y]),
-		project(transform, [x + width, y + height]),
-		project(transform, [x, y + height]),
+		project(transform, [right, y]),
+		project(transform, [right, bottom]),
+		project(transform, [x, bottom]),
 	];
 }
 

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
+	import { tick } from "svelte";
 	import * as Popover from "#lib/components/shadcn/popover/index.ts";
 	import {
 		type ComboSuggestion,
@@ -10,7 +11,6 @@
 	} from "#lib/presets/combo.ts";
 	import type { Field } from "#lib/presets/presets.ts";
 	import { type FieldContext, fieldInputId } from "#lib/ui/field-context.ts";
-	import { liveText } from "#lib/ui/live-text.ts";
 	import { cn } from "#lib/utils.ts";
 
 	interface Props {
@@ -147,21 +147,21 @@
 
 	/** Whether text was applied while typing since the field got focus. */
 	let appliedLive = false;
-	const live = liveText(() => {
-		if (!onlive || !input || adding) return;
-		appliedLive = true;
-		onlive(typed());
-	});
 
-	function oninput(event: Event) {
+	async function oninput(event: Event) {
 		if (!input) return;
 		dirty = true;
 		const text = input.value;
-		live.typed(text);
 		query = text;
 		highlighted = -1;
 		open = text !== "";
 		fetchValues(text);
+		if (onlive && !adding) {
+			appliedLive = true;
+			onlive(text);
+			// Once the value applied is drawn back into the input, which drops a completion.
+			await tick();
+		}
 		const { inputType, isComposing } = event as InputEvent;
 		if (!inputType?.startsWith("delete") && !isComposing) autocomplete();
 	}
@@ -173,7 +173,6 @@
 	}
 
 	function commit() {
-		live.cancel();
 		if (!input || !dirty) return;
 		dirty = false;
 		const closesLive = appliedLive;

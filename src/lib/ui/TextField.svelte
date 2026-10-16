@@ -22,7 +22,6 @@
 	} from "#lib/presets/text.ts";
 	import { fieldInputId, type TagPatch } from "#lib/ui/field-context.ts";
 	import LengthIndicator from "#lib/ui/LengthIndicator.svelte";
-	import { liveText } from "#lib/ui/live-text.ts";
 
 	interface Props {
 		/** text, tel, email, url, identifier, schedule, date, colour, number or integer. */
@@ -49,17 +48,17 @@
 	let input = $state<HTMLInputElement | null>(null);
 	let picker = $state<HTMLInputElement>();
 
-	/** Text applied as it is typed, as iD; an emptied field waits until it is left. */
-	const live = liveText((text) => {
-		if (locked || current.mixed || !cleanValue(text)) return;
-		appliedLive = true;
-		onchange(textPatch(field, tags, text), true);
-	});
 	/** Whether text was applied while typing: leaving the field then ends that undo step. */
 	let appliedLive = false;
 
+	/** Each keystroke applied as typed, as iD; an emptied field waits until it is left. */
+	function applyTyped(text: string) {
+		if (locked || current.mixed || !cleanValue(text)) return;
+		appliedLive = true;
+		onchange(textPatch(field, tags, text), true);
+	}
+
 	function commit(text: string) {
-		live.cancel();
 		appliedLive = false;
 		let value = cleanValue(text);
 		if (isNumber) value = numberValue(field, value);
@@ -71,11 +70,6 @@
 		// no step for tags left as they were).
 		onchange(textPatch(field, tags, value));
 	}
-
-	// Typed text isn't lost when the field goes (another feature selected with the keyboard).
-	$effect(() => () => {
-		if (live.cancel() && input) commit(input.value);
-	});
 
 	/** The link button's name: where it goes. */
 	const linkLabel = $derived.by(() => {
@@ -138,12 +132,12 @@
 		readonly={locked}
 		oninput={(event) => {
 			typed = event.currentTarget.value;
-			live.typed(typed);
+			applyTyped(typed);
 		}}
 		onchange={(event) => commit(event.currentTarget.value)}
 		onblur={(event) => {
 			// No change event for text typed back as it was: still the end of the edit.
-			if (live.cancel() || appliedLive) commit(event.currentTarget.value);
+			if (appliedLive) commit(event.currentTarget.value);
 		}}
 	/>
 	<InputGroup.Addon align="inline-end">

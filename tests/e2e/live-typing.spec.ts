@@ -103,3 +103,45 @@ test("an address part is applied while it is typed, and text typed back as it wa
 	await expect(number).toHaveValue("");
 	await expect(page.getByTestId("edit-count")).toHaveText("0");
 });
+
+test("each keystroke is applied at once, as iD", async ({ page }) => {
+	const editor = await selectRoom(page);
+	const name = editor.getByRole("textbox", { name: "Name", exact: true });
+	await name.click();
+	// No timer runs from here: nothing waits for a pause in typing.
+	await page.clock.install();
+	await page.clock.pauseAt(Date.now() + 60_000);
+	await name.press("A");
+	await expect(page.getByTestId("edit-count")).toHaveText("1");
+	await expect(await nameTag(page)).toHaveValue("A");
+});
+
+test("an address keeps its completion while each keystroke is applied", async ({
+	page,
+}) => {
+	const street = [
+		{ type: "node", id: 1, lon: LON - 0.001, lat: LAT + 0.0005, version: 1 },
+		{ type: "node", id: 2, lon: LON + 0.001, lat: LAT + 0.0005, version: 1 },
+		{
+			type: "way",
+			id: 3,
+			version: 1,
+			nodes: [1, 2],
+			tags: { highway: "residential", name: "Rue de la Gare" },
+		},
+	];
+	const editor = await selectRoom(page, { amenity: "cafe" }, [
+		...street,
+		...room(100, LON, LAT, "0"),
+	]);
+	const streetInput = editor.getByRole("combobox", { name: "Street" });
+	await streetInput.click();
+	await streetInput.pressSequentially("Rue");
+	await expect(streetInput).toHaveValue("Rue de la Gare");
+	await expect(page.getByTestId("edit-count")).toHaveText("1");
+	await streetInput.press("Enter");
+	await expect(streetInput).toHaveValue("Rue de la Gare");
+	await page.getByRole("button", { name: "Undo" }).click();
+	await expect(streetInput).toHaveValue("");
+	await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+});

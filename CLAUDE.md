@@ -15,6 +15,7 @@ bun run check        # svelte-check (types)
 bun run lint         # Biome: format + lint (bun run format to fix)
 bun run test:unit    # Vitest, *.test.ts next to the code
 bun run test:e2e     # builds, then Playwright from tests/e2e
+bun run bench        # times the core on 10,000 synthetic rooms (scripts/bench-core.ts)
 ```
 
 Before pushing, run `lint`, `check`, `test:unit` and `test:e2e`. CI (`.github/workflows/ci.yml`)
@@ -34,7 +35,11 @@ runs the same commands.
 - Data model (P1): `osm/` (entities, immutable `Graph`, `History`, osmChange), `actions/`
   (pure `graph => graph` functions), `levels/` (level values as ranges), `api/` (`OsmApi`).
   Get ids for new entities from `graph.newId(type)`; never mutate entities or graphs.
+  `History` runs each action on one copy (`Graph.update`, iD's unfrozen graph), so an action
+  may call `replace`/`remove` thousands of times; outside it, wrap big changes the same way.
 - Viewer (P2): `map/features.ts` (graph → GeoJSON with `@lv`, `@kind`, `@icon`, `@label`),
+  `map/feature-store.ts` (P5.2: features rebuilt only for changed entities, sent to the map
+  with `updateData`; an rbush index of drawn nodes, `nodesNear`, for snapping),
   `map/classify.ts` (all tag → drawing rules), `map/style/layers.ts`, `map/indoor-map.ts` (source
   and layers on the map), `api/map-loader.ts`, `state/editor.svelte.ts` (`Editor`), and
   `ui/EditorView.svelte` (the page's map UI). Change how a tag is drawn in `classify.ts`, not

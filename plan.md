@@ -369,7 +369,7 @@ localized, address and access fields (`presets/text.ts`, `localized.ts`, `addres
 table (`ui/TagEditor.svelte`, `osm/tag-rows.ts`, `presets/tag-table.ts`); (9) ✅ relations and
 members (`actions/members.ts`, `osm/relations.ts`, `ui/RelationsSection.svelte`,
 `ui/MembersSection.svelte`); (10) ✅ one undo step per field edit, text applied as it is
-typed (`Editor.setTags(…, { live })`, `ui/live-text.ts`). Hover preview and
+typed (`Editor.setTags(…, { live })`). Hover preview and
 multi-selection come with P5.3.
 
 The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`,
@@ -463,11 +463,11 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
   field waiting until it is left), folded into one step that leaving the field (change or
   blur) cleans and closes; a change of another feature, any other edit, undo, redo or a new
   selection starts a new step, and tags left as they were make none. Combos, chips and the
-  other fields apply once chosen, translation rows when left (as iD). Typed text is applied
-  after a 150 ms pause rather than on each keystroke, since every edit still redraws all
-  features: P5.2 can drop the pause.
+  other fields apply once chosen, translation rows when left (as iD). Each keystroke is
+  applied at once since P5.2 (a 150 ms pause before); a combo applying as it is typed (address
+  parts) completes again once the value applied is drawn back into its input.
 
-#### P5.2 Fast core (before anything is dragged) — in progress
+#### P5.2 Fast core (before anything is dragged) — done
 
 Slices agreed with the user ✔: (1) ✅ `bun run bench` (`scripts/bench-core.ts`, 10,000 synthetic
 rooms; targets: a tag edit to the map under 16 ms, deleting 1,000 rooms under 150 ms, a snap
@@ -476,12 +476,12 @@ under 1 ms, the full build no slower); (2) ✅ incremental map updates (`map/fea
 edits (`Graph.update`, used by `History`); (4) ✅ rbush index of the drawn features' nodes (`StoredFeatures.nodesNear`, filtered by
 level, brought up to date on the first query after changes), floor plan snapping to nodes
 on the shown level only ✔;
-(5) live typing without the pause. The drag overlay source waits for P5.3. Measured under
+(5) ✅ live typing without the pause. The drag overlay source waits for P5.3. Measured under
 Bun: a tag edit 46 → 3–5 ms; deleting 1,000 rooms 1,296 → 9–13 ms (the local parent index was
 also copied on every lookup); a snap 2.5–4 ms → under 0.1 ms; the first build and a download
 into an empty editor stay at the full build's 45–60 ms (big downloads are rebuilt whole).
 
-- **Incremental map updates** ✅ (then drop the 150 ms pause of live typing, `LIVE_DELAY`): every
+- **Incremental map updates** ✅ (and the 150 ms pause of live typing dropped ✅): every
   edit rebuilds all features and re-sends them to the map
   (about 120 ms per edit on 10,000 rooms, so dragging would run at ~8 fps). Cache each
   feature by entity identity, work out the changed ids (plus ways and relations using
@@ -494,7 +494,7 @@ into an empty editor stay at the full build's 45–60 ms (big downloads are rebu
 - **Spatial index** ✅: snapping walks every node in the graph; use `rbush` per level for
   snapping (hit-testing stays with MapLibre's `queryRenderedFeatures` until drawing needs
   more in P5.3).
-- Then switch the feature editor to live typing.
+- Then switch the feature editor to live typing ✅ (each keystroke, as iD).
 
 #### P5.3 Geometry editing
 

@@ -66,7 +66,13 @@ runs the same commands.
   `persist/plan-store.ts` (IndexedDB), `ui/FloorPlansPanel.svelte`. Import pdf.js only from its
   legacy build, lazily. E2E tests that reload after saving a plan wait for IndexedDB first
   (`untilSaved` in `floorplans.spec.ts`): a reload can cut a write short.
-- Planned modules (see plan.md): `edit`, `persist/autosave`. Pure modules (`osm`, `levels`,
+- Editing (R1): `edit/mode-manager.ts` is the only listener on the map's mouse events; it hands
+  hover (cursor), click, press (a `Drag`) and keys to one `Mode` (`edit/mode.ts`,
+  `edit/modes/*`). Add map interactions as a mode, not as `map.on(...)` in a component.
+  Shortcuts use `edit/keys.ts` (`matches`, `formatCombo`, `isTyping`). Map layers insert
+  before a slot from `map/layer-slots.ts` (`slotId("plans")`), never before another owner's
+  layer.
+- Planned modules (see plan.md): `persist/autosave`. Pure modules (`osm`, `levels`,
   `actions`, `presets`, `validation`, `floorplans/georef`, `floorplans/plan-file`,
   `floorplans/tiling`) must not touch the DOM or Svelte.
 

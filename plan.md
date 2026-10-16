@@ -27,7 +27,7 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P4.1  | Floor plan layers, edit sessions, align UX | Done        |
 | P5.0–2 | Quick fixes, feature editor, fast core    | Done        |
 | R0    | Fixes and fast feedback (review)           | Done        |
-| R1    | Foundations for editing (review)           | Next        |
+| R1    | Foundations for editing (review)           | In progress |
 | R2    | Floor plan content model (review)          | Not started |
 | P4.2  | Vector and light raster floor plans        | Not started |
 | P5.3  | Geometry editing                           | Not started |
@@ -693,6 +693,19 @@ clear errors, `editor_name` and two unused shadcn components removed).
     table and mixed values, so the Inspector work doesn't wait on the e2e run.
 12. **Measure history at scale**: a bench of 10,000 local edits; structural sharing in `Graph`
     only if an edit there costs more than a frame.
+
+Done ✅: R1.1 (`map/layer-slots.ts`: imagery, indoor-fill, plans, indoor-lines below the
+basemap's labels; indoor-top, edit, tools above; background, indoor and plan layers insert
+before their slot). R1.2–R1.4: `edit/mode-manager.ts` owns the map's mouse events and hands
+them to one `Mode` (`edit/mode.ts`: hover → cursor, click, press → `Drag`, leave, key, which
+MapLibre gestures stay on); the drag lives there instead of a separate `edit/drag.ts` (3 px,
+one move per frame, release off the map through `window`, the click after it swallowed, Escape
+cancels); modes `browse`, `floorplan` (move and corner handles, on `edit/plan-drag.ts`) and
+`floorplan-tool`; `edit/keys.ts` (`matches`, `formatCombo` with ⌘ on Mac, `isTyping`);
+`IndoorMap.hitTest` replaces its click handler. Also fixed: the hover cursor is dropped when
+the pointer leaves the map, and bits-ui popovers that reopen while closing no longer open under
+the side panel (`[data-bits-floating-content-wrapper]` gets `z-50` in `app.css`; the
+relations test flaked on it).
 
 ### R2: Floor plan content model — M
 

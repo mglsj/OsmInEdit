@@ -16,6 +16,13 @@
 	import * as ButtonGroup from "#lib/components/shadcn/button-group/index.ts";
 	import * as Tooltip from "#lib/components/shadcn/tooltip/index.ts";
 	import type { EditorConfig } from "#lib/config.ts";
+	import { formatCombo, isMac, isTyping, matches } from "#lib/edit/keys.ts";
+	import { ModeManager } from "#lib/edit/mode-manager.ts";
+	import { browseMode } from "#lib/edit/modes/browse.ts";
+	import {
+		floorPlanMode,
+		floorPlanToolMode,
+	} from "#lib/edit/modes/floorplan.ts";
 	import { groundDistance, type LngLat } from "#lib/floorplans/georef.ts";
 	import { importRaster } from "#lib/floorplans/import.ts";
 	import { setBackground } from "#lib/map/background.ts";
@@ -36,9 +43,7 @@
 		LngLat as LngLatClass,
 		type LngLatLike,
 		type Map as MapLibreMap,
-		type MapMouseEvent,
 	} from "#lib/map/maplibre.ts";
-	import { PlanDragging } from "#lib/map/plan-dragging.ts";
 	import type { EntityId } from "#lib/osm/entity.ts";
 	import {
 		type Extent,
@@ -154,31 +159,24 @@
 		if (map) void setBackground(map, entry);
 	}
 
-	// The indoor layers live as long as the map, and follow the data and the selected level.
+	/** What the map's clicks, drags and keys do now (see `edit/modes`). */
+	const modeKind = $derived(
+		!planMode ? "browse" : floorplans.tool ? "floorplan-tool" : "floorplan",
+	);
+	let modes = $state.raw<ModeManager>();
+
+	// The indoor layers, floor plans and editing modes live as long as the map.
 	$effect(() => {
-		if (!map) return;
-		const indoor = new IndoorMap(map);
+		const instance = map;
+		if (!instance) return;
+		const indoor = new IndoorMap(instance);
 		$effect(() => indoor.setFeatures(editor.features));
 		$effect(() => indoor.setLevel(level));
 		$effect(() => indoor.setSelected(editor.selectedId));
 		$effect(() => indoor.setPlanMode(planMode));
 		$effect(() => indoor.setBuildingsVisible(floorplans.buildings.visible));
-		const stopClicks = indoor.onClick((id) => {
-			// While aligning a floor plan, clicks go to the alignment tool.
-			if (!planMode) editor.select(id as EntityId | null);
-		});
 		const stopDrawn = indoor.onDrawn((count) => (drawn = count));
-		return () => {
-			stopClicks();
-			stopDrawn();
-			indoor.remove();
-		};
-	});
 
-	// Floor plans are drawn as long as the map lives.
-	$effect(() => {
-		const instance = map;
-		if (!instance) return;
 		const layers = new FloorPlanLayers(instance);
 		const marks = new PlanToolLayer(instance);
 		$effect(() => layers.setLayers(floorplans.layers));
@@ -199,44 +197,43 @@
 				features: [...frames, ...tools],
 			});
 		});
-		// In floor plan mode, the selected plan can be dragged (unless a tool takes the clicks).
-		const dragging = new PlanDragging(instance, {
-			plan: () =>
-				planMode && !floorplans.tool && floorplans.editing?.visible
-					? floorplans.editing
-					: null,
-			onmove: (id, transform) => floorplans.preview(id, transform),
-			onend: (id) => floorplans.commitPlacement(id),
-		});
-		const onClick = (event: MapMouseEvent) => {
-			if (!floorplans.tool) return;
-			toolMessage = floorplans.click(snap(event.point, event.lngLat));
-		};
-		// The measure line follows the pointer from the first spot.
-		const onPointer = (event: MapMouseEvent) => {
-			const tool = floorplans.tool;
-			const following = tool?.kind === "measure" && tool.points.length === 1;
-			if (following) pointer = [event.lngLat.lng, event.lngLat.lat];
-			else if (pointer) pointer = null;
-		};
-		const onLeave = () => (pointer = null);
-		instance.on("click", onClick);
-		instance.on("mousemove", onPointer);
-		instance.on("mouseout", onLeave);
-		// On the canvas itself: MapLibre's own cursor rule on its container wins over a class.
-		// Reset whenever what can be dragged changes: plan dragging sets it again on the next move.
+
+		const manager = new ModeManager(instance);
+		modes = manager;
 		$effect(() => {
-			const tool = floorplans.tool;
-			void [floorplans.editingId, planMode];
-			instance.getCanvas().style.cursor = tool ? "crosshair" : "";
+			switch (modeKind) {
+				case "browse":
+					manager.setMode(
+						browseMode({
+							hitTest: (point) => indoor.hitTest(point),
+							select: (id) => editor.select(id as EntityId | null),
+						}),
+					);
+					break;
+				case "floorplan":
+					manager.setMode(
+						floorPlanMode({ map: instance, floorplans, close: closePlanMode }),
+					);
+					break;
+				case "floorplan-tool":
+					manager.setMode(
+						floorPlanToolMode({
+							floorplans,
+							snap,
+							onmessage: (message) => (toolMessage = message),
+							onpointer: (at) => (pointer = at),
+						}),
+					);
+					break;
+			}
 		});
 		return () => {
-			instance.off("click", onClick);
-			instance.off("mousemove", onPointer);
-			instance.off("mouseout", onLeave);
-			dragging.remove();
+			modes = undefined;
+			manager.remove();
+			stopDrawn();
 			marks.remove();
 			layers.remove();
+			indoor.remove();
 		};
 	});
 
@@ -401,28 +398,24 @@
 		map?.jumpTo({ center: [view.lon, view.lat], zoom: view.zoom });
 	}
 
-	/** Undo/redo shortcuts, except while typing in a field (which has its own undo). */
+	const mac = isMac();
+	/** Shortcuts that apply in every mode but floor plan mode (OSM edits can't be seen there). */
+	const SHORTCUTS = [
+		{ combo: "Mod+Z", run: () => editor.undo() },
+		{ combo: "Mod+Shift+Z", run: () => editor.redo() },
+		{ combo: "Mod+Y", run: () => editor.redo() },
+	];
+
+	/** The map's keys: the mode's first (Escape…), then undo and redo; none while typing. */
 	function onKeydown(event: KeyboardEvent) {
-		const target = event.target as HTMLElement | null;
-		const typing = target?.closest("input, textarea, select") !== null;
-		// The unsaved changes dialog handles its own keys.
-		if (floorplans.confirming) return;
-		if (event.key === "Escape" && !typing) {
-			if (floorplans.tool) floorplans.setTool(null);
-			else if (planMode) closePlanMode();
-			else editor.select(null);
-			return;
-		}
-		// OSM edits can't be seen in floor plan mode: don't undo them blindly.
-		if (typing || planMode || !(event.ctrlKey || event.metaKey)) return;
-		const key = event.key.toLowerCase();
-		if (key === "z" && !event.shiftKey) {
-			event.preventDefault();
-			editor.undo();
-		} else if ((key === "z" && event.shiftKey) || key === "y") {
-			event.preventDefault();
-			editor.redo();
-		}
+		// The unsaved changes dialog handles its own keys; fields have their own undo.
+		if (floorplans.confirming || isTyping(event.target)) return;
+		if (modes?.key(event)) return;
+		if (planMode) return;
+		const shortcut = SHORTCUTS.find((s) => matches(event, s.combo, mac));
+		if (!shortcut) return;
+		event.preventDefault();
+		shortcut.run();
 	}
 
 	const statusMessage = $derived.by(() => {
@@ -535,14 +528,14 @@
 			<ButtonGroup.Root aria-label="Edit history">
 				{@render iconButton(
 					"Undo",
-					"Undo (Ctrl+Z)",
+					`Undo (${formatCombo("Mod+Z", mac)})`,
 					Undo2,
 					!editor.canUndo,
 					() => editor.undo(),
 				)}
 				{@render iconButton(
 					"Redo",
-					"Redo (Ctrl+Shift+Z)",
+					`Redo (${formatCombo("Mod+Shift+Z", mac)})`,
 					Redo2,
 					!editor.canRedo,
 					() => editor.redo(),

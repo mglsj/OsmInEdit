@@ -154,39 +154,18 @@ export class IndoorMap {
 		return () => this.#map.off("idle", onIdle);
 	}
 
-	/**
-	 * Calls `handler` with the `@id` of the clicked feature, topmost first, or null for a click
-	 * on empty space. Returns a function removing the handler.
-	 */
-	onClick(handler: (id: string | null) => void): () => void {
-		const map = this.#map;
-		const listener = ({ point }: { point: { x: number; y: number } }) => {
-			const features = this.#ready
-				? map.queryRenderedFeatures(
-						[
-							[point.x - CLICK_TOLERANCE, point.y - CLICK_TOLERANCE],
-							[point.x + CLICK_TOLERANCE, point.y + CLICK_TOLERANCE],
-						],
-						{ layers: SELECTABLE_LAYER_IDS },
-					)
-				: [];
-			const id = features[0]?.properties["@id"];
-			handler(typeof id === "string" ? id : null);
-		};
-		const pointer = () => (map.getCanvas().style.cursor = "pointer");
-		const reset = () => (map.getCanvas().style.cursor = "");
-		map.on("click", listener);
-		for (const layer of SELECTABLE_LAYER_IDS) {
-			map.on("mouseenter", layer, pointer);
-			map.on("mouseleave", layer, reset);
-		}
-		return () => {
-			map.off("click", listener);
-			for (const layer of SELECTABLE_LAYER_IDS) {
-				map.off("mouseenter", layer, pointer);
-				map.off("mouseleave", layer, reset);
-			}
-		};
+	/** The `@id` of the feature drawn at a screen point, topmost first, or null. */
+	hitTest(point: { x: number; y: number }): string | null {
+		if (!this.#ready) return null;
+		const features = this.#map.queryRenderedFeatures(
+			[
+				[point.x - CLICK_TOLERANCE, point.y - CLICK_TOLERANCE],
+				[point.x + CLICK_TOLERANCE, point.y + CLICK_TOLERANCE],
+			],
+			{ layers: SELECTABLE_LAYER_IDS },
+		);
+		const id = features[0]?.properties["@id"];
+		return typeof id === "string" ? id : null;
 	}
 
 	remove(): void {

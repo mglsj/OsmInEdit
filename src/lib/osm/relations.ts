@@ -6,11 +6,13 @@
 import {
 	type Entity,
 	type EntityId,
+	type Loc,
 	makeId,
 	osmId,
 	type Relation,
 	type RelationId,
 } from "./entity.ts";
+import { type Extent, extentOf } from "./geometry.ts";
 import type { Graph } from "./graph.ts";
 
 /** One membership of a feature: the relation, and where and how the feature is in it. */
@@ -161,34 +163,18 @@ function connectedRelations(graph: Graph, id: EntityId): Set<RelationId> {
 	return relations;
 }
 
-export interface Extent {
-	readonly west: number;
-	readonly south: number;
-	readonly east: number;
-	readonly north: number;
-}
-
 /** The extent of what is loaded of an entity (members of members included), or null. */
 export function entityExtent(graph: Graph, id: EntityId): Extent | null {
-	let extent: Extent | null = null;
+	const locs: Loc[] = [];
 	const seen = new Set<EntityId>();
 	const visit = (ref: EntityId) => {
 		if (seen.has(ref)) return;
 		seen.add(ref);
 		const entity = graph.entity(ref);
 		switch (entity?.type) {
-			case "node": {
-				const [x, y] = entity.loc;
-				extent = extent
-					? {
-							west: Math.min(extent.west, x),
-							south: Math.min(extent.south, y),
-							east: Math.max(extent.east, x),
-							north: Math.max(extent.north, y),
-						}
-					: { west: x, south: y, east: x, north: y };
+			case "node":
+				locs.push(entity.loc);
 				break;
-			}
 			case "way":
 				for (const node of entity.nodes) visit(node);
 				break;
@@ -198,14 +184,5 @@ export function entityExtent(graph: Graph, id: EntityId): Extent | null {
 		}
 	};
 	visit(id);
-	return extent;
-}
-
-export function extentsIntersect(a: Extent, b: Extent): boolean {
-	return (
-		a.west <= b.east &&
-		b.west <= a.east &&
-		a.south <= b.north &&
-		b.south <= a.north
-	);
+	return extentOf(locs);
 }

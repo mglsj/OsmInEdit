@@ -6,6 +6,7 @@
  *
  * Image pixels are `[u, v]` with `v` pointing down, as in the image file.
  */
+import { fromMercator, toMercator } from "#lib/osm/geometry.ts";
 
 /** `[longitude, latitude]` in degrees, as MapLibre takes them. */
 export type LngLat = [number, number];
@@ -47,23 +48,6 @@ export interface Fit {
 
 export class GeorefError extends Error {
 	override name = "GeorefError";
-}
-
-const EARTH_RADIUS = 6378137;
-
-function toMercator([lon, lat]: LngLat): [number, number] {
-	const phi = (lat * Math.PI) / 180;
-	return [
-		(EARTH_RADIUS * lon * Math.PI) / 180,
-		EARTH_RADIUS * Math.log(Math.tan(Math.PI / 4 + phi / 2)),
-	];
-}
-
-function fromMercator([x, y]: [number, number]): LngLat {
-	return [
-		(x / EARTH_RADIUS) * (180 / Math.PI),
-		(2 * Math.atan(Math.exp(y / EARTH_RADIUS)) - Math.PI / 2) * (180 / Math.PI),
-	];
 }
 
 /** The map position of an image pixel. */

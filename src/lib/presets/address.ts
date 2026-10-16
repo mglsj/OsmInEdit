@@ -4,6 +4,13 @@
  * building it is in).
  */
 import type { Entity, EntityId, Loc } from "#lib/osm/entity.ts";
+import {
+	distanceToLine,
+	extentOf,
+	isClosedRing,
+	pointInRing,
+	wayLocs,
+} from "#lib/osm/geometry.ts";
 import type { Graph } from "#lib/osm/graph.ts";
 
 /** iD's default address format, used everywhere (IndoorID doesn't know the country). */
@@ -29,77 +36,12 @@ export interface AddressSuggestion {
 /** Points of an entity (a way's nodes), or none for a relation or a missing node. */
 function points(graph: Graph, entity: Entity): Loc[] {
 	if (entity.type === "node") return [entity.loc];
-	if (entity.type === "way") {
-		return entity.nodes.flatMap((id) => {
-			const n = graph.entity(id);
-			return n?.type === "node" ? [n.loc] : [];
-		});
-	}
+	if (entity.type === "way") return wayLocs(graph, entity);
 	return [];
 }
 
-function bounds(locs: readonly Loc[]): [Loc, Loc] | undefined {
-	if (locs.length === 0) return undefined;
-	let [w, s] = locs[0] as Loc;
-	let [e, n] = locs[0] as Loc;
-	for (const [x, y] of locs) {
-		w = Math.min(w, x);
-		e = Math.max(e, x);
-		s = Math.min(s, y);
-		n = Math.max(n, y);
-	}
-	return [
-		[w, s],
-		[e, n],
-	];
-}
-
-const EARTH = 6_371_008.8;
-const toRad = Math.PI / 180;
-
-/** Metres east and north of `origin`, flat around it (fine within a few hundred metres). */
-function local(origin: Loc, [lon, lat]: Loc): [number, number] {
-	return [
-		(lon - origin[0]) * toRad * EARTH * Math.cos(origin[1] * toRad),
-		(lat - origin[1]) * toRad * EARTH,
-	];
-}
-
-/** Metres from `origin` to the nearest point of a point or line. */
-function distanceTo(origin: Loc, locs: readonly Loc[]): number {
-	const xy = locs.map((loc) => local(origin, loc));
-	if (xy.length === 1) return Math.hypot(...(xy[0] as [number, number]));
-	let best = Number.POSITIVE_INFINITY;
-	for (let i = 1; i < xy.length; i++) {
-		const [ax, ay] = xy[i - 1] as [number, number];
-		const [bx, by] = xy[i] as [number, number];
-		const dx = bx - ax;
-		const dy = by - ay;
-		const length2 = dx * dx + dy * dy;
-		const t = length2
-			? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / length2))
-			: 0;
-		best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
-	}
-	return best;
-}
-
-function contains(ring: readonly Loc[], [x, y]: Loc): boolean {
-	let inside = false;
-	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-		const [xi, yi] = ring[i] as Loc;
-		const [xj, yj] = ring[j] as Loc;
-		if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-			inside = !inside;
-		}
-	}
-	return inside;
-}
-
 const isClosedWay = (entity: Entity) =>
-	entity.type === "way" &&
-	entity.nodes.length > 3 &&
-	entity.nodes[0] === entity.nodes.at(-1);
+	entity.type === "way" && isClosedRing(entity);
 
 /**
  * Values for a part of the address (`street`, `place`, `city`, `postcode`, `housenumber`…) taken
@@ -112,12 +54,9 @@ export function addressSuggestions(
 	key = "addr",
 ): AddressSuggestion[] {
 	const entity = graph.entity(id);
-	const box = entity && bounds(points(graph, entity));
+	const box = entity && extentOf(points(graph, entity));
 	if (!entity || !box) return [];
-	const center: Loc = [
-		(box[0][0] + box[1][0]) / 2,
-		(box[0][1] + box[1][1]) / 2,
-	];
+	const center: Loc = [(box.west + box.east) / 2, (box.south + box.north) / 2];
 	const tagKey = `${key}:${part}`;
 	const others = [...graph.entities()].filter((e) => e.id !== id);
 
@@ -131,7 +70,7 @@ export function addressSuggestions(
 			const v = test(e) ? value(e) : undefined;
 			const locs = v ? points(graph, e) : [];
 			if (!v || locs.length === 0) return [];
-			const distance = distanceTo(center, locs);
+			const distance = distanceToLine(center, locs);
 			return distance <= radius ? [{ value: v, distance }] : [];
 		});
 
@@ -140,15 +79,15 @@ export function addressSuggestions(
 		others.filter((e) => {
 			if (!test(e) || !isClosedWay(e)) return false;
 			const ring = points(graph, e);
-			const [[w, s], [east, n]] = box;
+			const { west, south, east, north } = box;
 			return (
 				[
-					[w, s],
-					[east, s],
-					[east, n],
-					[w, n],
+					[west, south],
+					[east, south],
+					[east, north],
+					[west, north],
 				] as Loc[]
-			).every((corner) => contains(ring, corner));
+			).every((corner) => pointInRing(corner, ring));
 		});
 
 	let found: AddressSuggestion[];
@@ -210,7 +149,7 @@ export function addressSuggestions(
 					e.type === "node" &&
 					!!e.tags[tagKey] &&
 					buildings.some(
-						(ring) => contains(ring, e.loc) || ring.includes(e.loc),
+						(ring) => pointInRing(e.loc, ring) || ring.includes(e.loc),
 					),
 				(e) => e.tags[tagKey],
 				100,

@@ -1,4 +1,5 @@
 import type { EntityId, NodeId, Way } from "#lib/osm/entity.ts";
+import { isClosed } from "#lib/osm/geometry.ts";
 import type { Graph } from "#lib/osm/graph.ts";
 import type { Action } from "#lib/osm/history.ts";
 import { hasInterestingTags } from "#lib/osm/tags.ts";
@@ -96,10 +97,6 @@ function removeNodeFromWay(
 	return nodes.length < 2
 		? deleteEntity(graph, wayId)
 		: graph.replace({ ...way, nodes });
-}
-
-function isClosed(way: Way): boolean {
-	return way.nodes.length > 2 && way.nodes[0] === way.nodes.at(-1);
 }
 
 function removeConsecutiveDuplicates(nodes: readonly NodeId[]): NodeId[] {

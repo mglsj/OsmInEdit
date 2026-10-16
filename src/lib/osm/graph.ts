@@ -4,6 +4,7 @@ import {
 	type EntityType,
 	isNewId,
 	makeId,
+	type Node,
 	type NodeId,
 	osmId,
 	type Relation,
@@ -79,6 +80,16 @@ export class Graph {
 		const local = this.#local.get(id);
 		if (local !== undefined) return local ?? undefined;
 		return this.#base.entities.get(id);
+	}
+
+	/** A way's nodes in order, leaving out those not downloaded. */
+	childNodes(way: Way): Node[] {
+		const nodes: Node[] = [];
+		for (const id of way.nodes) {
+			const node = this.entity(id);
+			if (node?.type === "node") nodes.push(node);
+		}
+		return nodes;
 	}
 
 	/** Every entity currently in the graph. */

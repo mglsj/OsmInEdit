@@ -13,8 +13,9 @@ import type {
 } from "geojson";
 import { featureLevels } from "#lib/levels/feature-levels.ts";
 import { isOnLevel, type Levels } from "#lib/levels/levels.ts";
-import { entityGeometry, isArea, isClosed } from "#lib/osm/area.ts";
+import { entityGeometry, isArea } from "#lib/osm/area.ts";
 import type { Entity, NodeId, Relation, Way } from "#lib/osm/entity.ts";
+import { isClosedRing, pointInRing } from "#lib/osm/geometry.ts";
 import type { Graph } from "#lib/osm/graph.ts";
 import { hasInterestingTags, type Tags } from "#lib/osm/tags.ts";
 import type { Preset, PresetIndex } from "#lib/presets/presets.ts";
@@ -26,7 +27,6 @@ import {
 	isRestricted,
 	labelFor,
 } from "./classify.ts";
-import { pointInRing } from "./geometry.ts";
 import type { FilterSpecification } from "./maplibre.ts";
 
 export type FeatureProperties = Tags & { "@id": string; "@lv": string };
@@ -170,7 +170,7 @@ function geometryOf(graph: Graph, entity: Entity): Geometry | null {
 		case "way": {
 			const coordinates = coordinatesOf(graph, entity.nodes);
 			if (!coordinates || coordinates.length < 2) return null;
-			return isClosed(entity) && isArea(entity.tags)
+			return isClosedRing(entity) && isArea(entity.tags)
 				? { type: "Polygon", coordinates: [coordinates] }
 				: { type: "LineString", coordinates };
 		}

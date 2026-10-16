@@ -7,10 +7,9 @@
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import { labelFor } from "#lib/map/classify.ts";
 	import type { Entity, Relation, RelationId } from "#lib/osm/entity.ts";
+	import { type Extent, extentsIntersect } from "#lib/osm/geometry.ts";
 	import {
-		type Extent,
 		entityExtent,
-		extentsIntersect,
 		isComplete,
 		memberships,
 		nearbyRelations,

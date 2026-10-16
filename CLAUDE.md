@@ -35,6 +35,8 @@ runs the same commands.
 - Data model (P1): `osm/` (entities, immutable `Graph`, `History`, osmChange), `actions/`
   (pure `graph => graph` functions), `levels/` (level values as ranges), `api/` (`OsmApi`).
   Get ids for new entities from `graph.newId(type)`; never mutate entities or graphs.
+  Geometry (closed ways, point in polygon, extents, Web Mercator, midpoints, distances) lives
+  in `osm/geometry.ts`, a way's nodes come from `graph.childNodes(way)`: don't write another copy.
   `History` runs each action on one copy (`Graph.update`, iD's unfrozen graph), so an action
   may call `replace`/`remove` thousands of times; outside it, wrap big changes the same way.
 - Viewer (P2): `map/features.ts` (graph → GeoJSON with `@lv`, `@kind`, `@icon`, `@label`),

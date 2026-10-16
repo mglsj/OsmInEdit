@@ -4,7 +4,6 @@ import { node, relation, way } from "./fixtures.ts";
 import { Graph } from "./graph.ts";
 import {
 	entityExtent,
-	extentsIntersect,
 	isComplete,
 	memberRows,
 	memberships,
@@ -187,15 +186,5 @@ describe("entityExtent", () => {
 
 	it("is null when nothing of it is loaded", () => {
 		expect(entityExtent(graph, "w9")).toBeNull();
-	});
-
-	it("tells whether two extents meet", () => {
-		const a = { west: 0, south: 0, east: 2, north: 2 };
-		expect(extentsIntersect(a, { west: 2, south: 2, east: 3, north: 3 })).toBe(
-			true,
-		);
-		expect(extentsIntersect(a, { west: 3, south: 0, east: 4, north: 2 })).toBe(
-			false,
-		);
 	});
 });

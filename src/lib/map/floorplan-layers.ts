@@ -13,6 +13,7 @@ import {
 } from "#lib/floorplans/georef.ts";
 import { pyramidLevel, tileCorners } from "#lib/floorplans/tiling.ts";
 import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
+import { EARTH_RADIUS } from "#lib/osm/geometry.ts";
 import type {
 	FloorPlan,
 	LayerEntry,
@@ -26,8 +27,6 @@ import type {
 	ImageSource,
 	Map as MapLibreMap,
 } from "./maplibre.ts";
-
-const EARTH_RADIUS = 6378137;
 
 /** Prefix of the floor plan source and layer ids. */
 export const FLOORPLAN_PREFIX = "floorplan-";

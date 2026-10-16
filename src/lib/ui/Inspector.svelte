@@ -11,7 +11,7 @@
 	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
 	import { t } from "#lib/i18n/messages.ts";
 	import { type EntityId, isNewId, osmId } from "#lib/osm/entity.ts";
-	import type { Extent } from "#lib/osm/relations.ts";
+	import type { Extent } from "#lib/osm/geometry.ts";
 	import type { Preset } from "#lib/presets/presets.ts";
 	import { keySuggestions, valueSuggestions } from "#lib/presets/tag-table.ts";
 	import { presetReference } from "#lib/presets/wiki.ts";

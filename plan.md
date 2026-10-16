@@ -725,6 +725,13 @@ names checked by TypeScript, `t()` rendering English, `MessageError`); the Engli
 `scripts/build-messages.ts` into the gitignored `i18n/generated/en.ts`. Issues and their fixes,
 undo labels (`History<A>` takes its annotation type), floor plan tool hints, storage errors and
 import or plan file errors carry messages; the UI renders them with `t()`.
+R1.8: `osm/geometry.ts` holds the geometry: `isClosed` (first node = last) and `isClosedRing`
+(and 4+ nodes, a polygon), `wayLocs`, `pointInRing`/`pointInPolygon`, `Extent`, `extentOf`,
+`extentsIntersect`, `EARTH_RADIUS`, `toMercator`/`fromMercator`, `midpoint` (in Web
+Mercator, as drawn), `distanceToSegment`/`distanceToLine` (metres); `graph.childNodes(way)`
+gives the nodes downloaded. The copies in `map/geometry.ts` (removed), `area.ts`, `delete.ts`,
+`address.ts`, `relations.ts`, `imagery.ts`, `georef.ts` and `floorplan-layers.ts` use it, with
+no change in behaviour. Slippy-tile maths stays in `map/tiles.ts`.
 
 ### R2: Floor plan content model — M
 

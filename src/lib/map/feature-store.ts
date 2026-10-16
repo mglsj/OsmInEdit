@@ -7,9 +7,9 @@
 import type { FeatureCollection, Geometry } from "geojson";
 import RBush from "rbush";
 import { isOnLevel, type Levels } from "#lib/levels/levels.ts";
-import type { Entity, EntityId, Loc, NodeId } from "#lib/osm/entity.ts";
+import type { Entity, EntityId, Loc, NodeId, Way } from "#lib/osm/entity.ts";
+import type { Extent } from "#lib/osm/geometry.ts";
 import type { Graph } from "#lib/osm/graph.ts";
-import type { Extent } from "#lib/osm/relations.ts";
 import {
 	type BuildOptions,
 	draftOf,
@@ -183,20 +183,17 @@ export class FeatureStore {
 
 /** The nodes a feature is drawn through: its own, its way's, its multipolygon's ways'. */
 function nodesOf(graph: Graph, entity: Entity): [NodeId, Loc][] {
-	const ofWay = (nodes: readonly NodeId[]) =>
-		nodes.flatMap((id): [NodeId, Loc][] => {
-			const node = graph.entity(id);
-			return node?.type === "node" ? [[id, node.loc]] : [];
-		});
+	const ofWay = (way: Way) =>
+		graph.childNodes(way).map((node): [NodeId, Loc] => [node.id, node.loc]);
 	switch (entity.type) {
 		case "node":
 			return [[entity.id, entity.loc]];
 		case "way":
-			return ofWay(entity.nodes);
+			return ofWay(entity);
 		case "relation":
 			return entity.members.flatMap((m) => {
 				const member = graph.entity(m.ref);
-				return member?.type === "way" ? ofWay(member.nodes) : [];
+				return member?.type === "way" ? ofWay(member) : [];
 			});
 	}
 }

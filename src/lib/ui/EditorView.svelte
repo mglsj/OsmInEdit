@@ -46,11 +46,8 @@
 		type Map as MapLibreMap,
 	} from "#lib/map/maplibre.ts";
 	import type { EntityId } from "#lib/osm/entity.ts";
-	import {
-		type Extent,
-		entityExtent,
-		extentsIntersect,
-	} from "#lib/osm/relations.ts";
+	import { type Extent, extentsIntersect } from "#lib/osm/geometry.ts";
+	import { entityExtent } from "#lib/osm/relations.ts";
 	import { IndexedDbPlanStore } from "#lib/persist/plan-store.ts";
 	import { Editor, setEditor } from "#lib/state/editor.svelte.ts";
 	import {

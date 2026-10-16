@@ -156,3 +156,47 @@ describe("EditHistory", () => {
 		expect(tagsOf(history, "n2")).toBeUndefined();
 	});
 });
+
+describe("EditHistory.patchTags: a field's change over every selected feature", () => {
+	it("changes each feature in one undo step, keeping their other tags", () => {
+		const history = benches();
+		history.patchTags(["n1", "n2"], { backrest: "yes", name: undefined });
+		expect(tagsOf(history, "n1")).toEqual({
+			amenity: "bench",
+			backrest: "yes",
+		});
+		expect(tagsOf(history, "n2")).toEqual({
+			amenity: "bench",
+			backrest: "yes",
+		});
+		expect(undoAll(history)).toBe(1);
+	});
+
+	it("takes a patch made from each feature's own tags", () => {
+		const history = benches();
+		history.patchTags(["n1", "n2"], (tags) => ({
+			description: tags.name ? `Named ${tags.name}` : "Unnamed",
+		}));
+		expect(tagsOf(history, "n1")?.description).toBe("Named Old");
+		expect(tagsOf(history, "n2")?.description).toBe("Unnamed");
+	});
+
+	it("folds typing into one step, closed by the change leaving the field", () => {
+		const history = benches();
+		history.patchTags(["n1", "n2"], { name: "P" }, { live: true });
+		history.patchTags(["n1", "n2"], { name: "Park " }, { live: true });
+		expect(tagsOf(history, "n2")?.name).toBe("Park ");
+		history.patchTags(["n1", "n2"], { name: "Park " });
+		expect(tagsOf(history, "n2")?.name).toBe("Park");
+		// Typing in the same field of other features is a step of its own.
+		history.patchTags(["n2"], { name: "Parks" }, { live: true });
+		expect(undoAll(history)).toBe(2);
+	});
+
+	it("makes no step when no feature changes", () => {
+		const history = benches();
+		history.patchTags(["n1", "n2"], { amenity: "bench" });
+		history.patchTags(["n9"], { amenity: "bench" });
+		expect(history.canUndo).toBe(false);
+	});
+});

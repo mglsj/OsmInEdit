@@ -8,6 +8,7 @@ import { type Entity, type EntityId, sameTags } from "#lib/osm/entity.ts";
 import type { Graph } from "#lib/osm/graph.ts";
 import { type Action, History } from "#lib/osm/history.ts";
 import type { Tags } from "#lib/osm/tags.ts";
+import type { TagPatch } from "#lib/presets/combo.ts";
 
 const CHANGE_TAGS = msg("undo_change_tags");
 
@@ -22,10 +23,10 @@ export class EditHistory {
 
 	#history: History<Message>;
 	/**
-	 * The feature whose field is being typed in: its next tag change replaces the last step
-	 * instead of adding one.
+	 * The features whose field is being typed in (their ids, joined): their next tag change
+	 * replaces the last step instead of adding one.
 	 */
-	#typing: EntityId | null = null;
+	#typing: string | null = null;
 
 	constructor(base: Graph) {
 		this.#history = new History<Message>(base);
@@ -75,15 +76,54 @@ export class EditHistory {
 		if (!entity) return;
 		const action = changeTags(id, tags, { clean: !live });
 		const changed = action(this.graph).entity(id);
-		const typing = this.#typing === id;
 		if (changed && sameTags(changed.tags, entity.tags)) {
 			if (!live) this.#typing = null;
 			return;
 		}
-		this.graph = typing
-			? this.#history.replace(action, CHANGE_TAGS)
-			: this.#history.perform(action, CHANGE_TAGS);
-		this.#typing = live ? id : null;
+		this.#apply(action, id, live);
+	}
+
+	/**
+	 * Applies a field's change to several features in one undo step: `patch` (or the patch it
+	 * makes from each feature's tags) sets keys, or removes those given as undefined. Typing
+	 * folds as with `setTags`; features that don't change are left alone.
+	 */
+	patchTags(
+		ids: readonly EntityId[],
+		patch: TagPatch | ((tags: Tags) => TagPatch),
+		{ live = false } = {},
+	): void {
+		const actions: Action[] = [];
+		for (const id of ids) {
+			const entity = this.graph.entity(id);
+			if (!entity) continue;
+			const changes = typeof patch === "function" ? patch(entity.tags) : patch;
+			const tags: Record<string, string> = { ...entity.tags };
+			for (const [key, value] of Object.entries(changes)) {
+				if (value === undefined) delete tags[key];
+				else tags[key] = value;
+			}
+			const action = changeTags(id, tags, { clean: !live });
+			const changed = action(this.graph).entity(id);
+			if (!changed || !sameTags(changed.tags, entity.tags))
+				actions.push(action);
+		}
+		if (actions.length === 0) {
+			if (!live) this.#typing = null;
+			return;
+		}
+		const all: Action = (graph) =>
+			actions.reduce((next, action) => action(next), graph);
+		this.#apply(all, ids.join(" "), live);
+	}
+
+	/** Applies a tag change, folded into the last step while the same features are typed in. */
+	#apply(action: Action, features: string, live: boolean): void {
+		this.graph =
+			this.#typing === features
+				? this.#history.replace(action, CHANGE_TAGS)
+				: this.#history.perform(action, CHANGE_TAGS);
+		this.#typing = live ? features : null;
 	}
 
 	/**

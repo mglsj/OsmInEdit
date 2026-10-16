@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Entity } from "./entity.ts";
 import { node, relation, way } from "./fixtures.ts";
 import { Graph } from "./graph.ts";
 
@@ -78,5 +79,34 @@ describe("Graph", () => {
 
 		// Ids are not reused after the entity is removed.
 		expect(graph.remove(first).newId("node")).toBe("n-2");
+	});
+});
+
+describe("Graph.changedSince", () => {
+	const base = Graph.fromEntities([node("n1"), node("n2"), node("n3")]);
+
+	it("lists the entities added, changed or removed since another graph", () => {
+		const after = base
+			.replace(node("n1", { door: "yes" }))
+			.remove("n2")
+			.replace(node("n-1"));
+		expect([...after.changedSince(base)].sort()).toEqual(["n-1", "n1", "n2"]);
+		expect([...base.changedSince(after)].sort()).toEqual(["n-1", "n1", "n2"]);
+	});
+
+	it("leaves out entities put back as they were (the same object)", () => {
+		const edited = base.replace(node("n1", { door: "yes" }));
+		const back = edited.replace(base.entity("n1") as Entity);
+		expect([...back.changedSince(base)]).toEqual([]);
+		expect([...base.changedSince(base)]).toEqual([]);
+	});
+
+	it("compares the server data too, when more was downloaded", () => {
+		const edited = base.replace(node("n1", { door: "yes" }));
+		// Local edits kept on the new server data, as History.merge does.
+		const loaded = edited.rebaseOnto(
+			edited.withBaseEntities([node("n4"), { ...node("n3"), version: 2 }]),
+		);
+		expect([...loaded.changedSince(edited)].sort()).toEqual(["n3", "n4"]);
 	});
 });

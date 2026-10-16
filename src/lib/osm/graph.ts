@@ -159,6 +159,25 @@ export class Graph {
 		);
 	}
 
+	/**
+	 * The entities added, changed or removed since `other` (by identity: an entity put back as
+	 * it was isn't listed). Cheap between graphs of one history; after a download (another
+	 * server data) every entity is compared.
+	 */
+	changedSince(other: Graph): Set<EntityId> {
+		const changed = new Set<EntityId>();
+		const check = (id: EntityId) => {
+			if (this.entity(id) !== other.entity(id)) changed.add(id);
+		};
+		if (this.#base !== other.#base) {
+			for (const id of this.#base.entities.keys()) check(id);
+			for (const id of other.#base.entities.keys()) check(id);
+		}
+		for (const id of this.#local.keys()) check(id);
+		for (const id of other.#local.keys()) check(id);
+		return changed;
+	}
+
 	/** Local edits compared to the server data. */
 	changes(): Changes {
 		const created: Entity[] = [];

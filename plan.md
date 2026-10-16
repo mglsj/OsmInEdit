@@ -467,9 +467,17 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
   after a 150 ms pause rather than on each keystroke, since every edit still redraws all
   features: P5.2 can drop the pause.
 
-#### P5.2 Fast core (before anything is dragged)
+#### P5.2 Fast core (before anything is dragged) — in progress
 
-- **Incremental map updates** (then drop the 150 ms pause of live typing, `LIVE_DELAY`): every
+Slices agreed with the user ✔: (1) ✅ `bun run bench` (`scripts/bench-core.ts`, 10,000 synthetic
+rooms; targets: a tag edit to the map under 16 ms, deleting 1,000 rooms under 150 ms, a snap
+under 1 ms, the full build no slower); (2) ✅ incremental map updates (`map/feature-store.ts`,
+`Graph.changedSince`; a new level set redraws everything, as agreed); (3) batched graph
+edits; (4) rbush index per level, floor plan snapping to nodes on the shown level only ✔;
+(5) live typing without the pause. The drag overlay source waits for P5.3. Measured under
+Bun: a tag edit 46 → 4.5 ms.
+
+- **Incremental map updates** ✅ (then drop the 150 ms pause of live typing, `LIVE_DELAY`): every
   edit rebuilds all features and re-sends them to the map
   (about 120 ms per edit on 10,000 rooms, so dragging would run at ~8 fps). Cache each
   feature by entity identity, work out the changed ids (plus ways and relations using

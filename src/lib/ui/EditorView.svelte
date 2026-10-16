@@ -158,7 +158,7 @@
 	$effect(() => {
 		if (!map) return;
 		const indoor = new IndoorMap(map);
-		$effect(() => indoor.setData(editor.features.collection));
+		$effect(() => indoor.setFeatures(editor.features));
 		$effect(() => indoor.setLevel(level));
 		$effect(() => indoor.setSelected(editor.selectedId));
 		$effect(() => indoor.setPlanMode(planMode));

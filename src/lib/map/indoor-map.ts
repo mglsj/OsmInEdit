@@ -2,9 +2,9 @@
  * Owns the indoor source and layers on a MapLibre map. Data and level can be set before the
  * basemap style has loaded; they are applied once it is ready.
  */
-import type { FeatureCollection, Geometry } from "geojson";
 import { BUILDING_COLOR } from "#lib/floorplans/colors.ts";
-import type { FeatureProperties } from "./features.ts";
+import { diffFeatures, type StoredFeatures } from "./feature-store.ts";
+import type { IndoorFeature } from "./features.ts";
 import type {
 	FilterSpecification,
 	GeoJSONSource,
@@ -16,8 +16,6 @@ import {
 	indoorLayers,
 	SELECTABLE_LAYER_IDS,
 } from "./style/layers.ts";
-
-type Collection = FeatureCollection<Geometry, FeatureProperties>;
 
 /** Layers drawn above the basemap's labels; the others go below them. */
 const ABOVE_LABELS = new Set([
@@ -38,7 +36,9 @@ const CLICK_TOLERANCE = 4;
 export class IndoorMap {
 	readonly #map: MapLibreMap;
 	#ready = false;
-	#data: Collection = { type: "FeatureCollection", features: [] };
+	/** The features last given, and those the source holds (by entity id). */
+	#features: StoredFeatures | null = null;
+	#sent = new Map<string, IndoorFeature>();
 	#level = 0;
 	#selected: string | null = null;
 	#planMode = false;
@@ -51,9 +51,26 @@ export class IndoorMap {
 		else map.once("load", () => this.#install());
 	}
 
-	setData(data: Collection): void {
-		this.#data = data;
-		if (this.#ready) this.#source()?.setData(data);
+	/**
+	 * Shows these features, sending the source only the features that changed since the last
+	 * call (`updateData`), or all of them when most changed (new levels encode them all again).
+	 */
+	setFeatures(features: StoredFeatures): void {
+		this.#features = features;
+		if (!this.#ready) return;
+		const source = this.#source();
+		if (!source) return;
+		const { add, remove } = diffFeatures(this.#sent, features.byId);
+		if (add.length + remove.length === 0) return;
+		if (add.length + remove.length > features.byId.size / 2) {
+			void source.setData(features.collection);
+			this.#sent = new Map(features.byId);
+			return;
+		}
+		void source.updateData({ add, remove });
+		for (const id of remove) this.#sent.delete(id);
+		for (const feature of add)
+			this.#sent.set(feature.properties["@id"], feature);
 	}
 
 	/** Shows another level: only the layers' filters change, the data stays. */
@@ -170,9 +187,13 @@ export class IndoorMap {
 			.layers.find((l) => l.type === "symbol")?.id;
 		map.addSource(INDOOR_SOURCE, {
 			type: "geojson",
-			data: this.#data,
+			data: this.#features?.collection ?? {
+				type: "FeatureCollection",
+				features: [],
+			},
 			promoteId: "@id",
 		});
+		this.#sent = new Map(this.#features?.byId ?? []);
 		for (const layer of indoorLayers(this.#level)) {
 			map.addLayer(layer, ABOVE_LABELS.has(layer.id) ? undefined : firstLabel);
 		}

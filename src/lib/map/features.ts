@@ -49,48 +49,67 @@ export function buildFeatures(
 	graph: Graph,
 	options: BuildOptions = {},
 ): IndoorFeatures {
-	const icons = options.icons ?? new Set<string>();
-	const { presets } = options;
-	const presetOf = (entity: Entity) =>
-		presets && hasInterestingTags(entity.tags)
-			? presets.match(entity.tags, entityGeometry(graph, entity))
-			: undefined;
-	const drafts: {
-		entity: Entity;
-		geometry: Geometry;
-		levels: Levels | null;
-	}[] = [];
+	const drafts: FeatureDraft[] = [];
 	for (const entity of graph.entities()) {
-		const geometry = geometryOf(graph, entity);
-		if (!geometry) continue;
-		drafts.push({
-			entity,
-			geometry,
-			levels: featureLevels(entity.tags, () =>
-				graph.parentRelations(entity.id).map((r) => r.tags),
-			),
-		});
+		const draft = draftOf(graph, entity, options);
+		if (draft) drafts.push(draft);
 	}
-
 	const levels = knownLevels(drafts.map((d) => d.levels));
-	const features = drafts.map(
-		({ entity, geometry, levels: own }): IndoorFeature => ({
-			type: "Feature",
-			geometry,
-			properties: {
-				...entity.tags,
-				...drawingProperties(
-					entity.tags,
-					geometry.type as GeometryType,
-					icons,
-					presetOf(entity),
-				),
-				"@id": entity.id,
-				"@lv": encodeLevels(own, levels),
-			},
-		}),
-	);
+	const features = drafts.map((draft) => encodeFeature(draft, levels));
 	return { collection: { type: "FeatureCollection", features }, levels };
+}
+
+/** A feature before its `@lv`, which depends on the levels of the whole data. */
+export interface FeatureDraft {
+	readonly id: string;
+	readonly geometry: Geometry;
+	readonly properties: Tags;
+	readonly levels: Levels | null;
+}
+
+/** An entity's feature without its `@lv`, or null when it isn't drawn. */
+export function draftOf(
+	graph: Graph,
+	entity: Entity,
+	{ icons = NO_ICONS, presets }: BuildOptions,
+): FeatureDraft | null {
+	const geometry = geometryOf(graph, entity);
+	if (!geometry) return null;
+	const preset = presets?.match(entity.tags, entityGeometry(graph, entity));
+	return {
+		id: entity.id,
+		geometry,
+		properties: {
+			...entity.tags,
+			...drawingProperties(
+				entity.tags,
+				geometry.type as GeometryType,
+				icons,
+				preset,
+			),
+		},
+		levels: featureLevels(entity.tags, () =>
+			graph.parentRelations(entity.id).map((r) => r.tags),
+		),
+	};
+}
+
+const NO_ICONS: ReadonlySet<string> = new Set();
+
+/** The feature drawn, its levels among the `known` levels of the data. */
+export function encodeFeature(
+	{ id, geometry, properties, levels }: FeatureDraft,
+	known: readonly number[],
+): IndoorFeature {
+	return {
+		type: "Feature",
+		geometry,
+		properties: {
+			...properties,
+			"@id": id,
+			"@lv": encodeLevels(levels, known),
+		},
+	};
 }
 
 /**
@@ -131,7 +150,7 @@ function encodeLevels(levels: Levels | null, known: readonly number[]): string {
 }
 
 /** Single levels and range ends, plus whole levels inside ranges. */
-function knownLevels(all: readonly (Levels | null)[]): number[] {
+export function knownLevels(all: readonly (Levels | null)[]): number[] {
 	const set = new Set<number>();
 	for (const levels of all) {
 		for (const { min, max } of levels ?? []) {

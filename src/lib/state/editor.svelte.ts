@@ -16,7 +16,7 @@ import type { OsmWikibase } from "#lib/api/osm-wikibase.ts";
 import type { Taginfo } from "#lib/api/taginfo.ts";
 import type { Wikidata } from "#lib/api/wikidata.ts";
 import { labelFor } from "#lib/map/classify.ts";
-import { buildFeatures } from "#lib/map/features.ts";
+import { FeatureStore } from "#lib/map/feature-store.ts";
 import { AVAILABLE_ICONS } from "#lib/map/style/icons.ts";
 import { entityGeometry } from "#lib/osm/area.ts";
 import {
@@ -71,8 +71,10 @@ export class Editor {
 	status = $state.raw<LoadStatus>({ kind: "idle" });
 	/** Presets, loaded in the background. */
 	presets = $state.raw<PresetIndex | null>(null);
+	/** The map's features, built again only for what each change touched. */
+	readonly #featureStore = new FeatureStore();
 	readonly features = $derived(
-		buildFeatures(this.graph, {
+		this.#featureStore.update(this.graph, {
 			icons: AVAILABLE_ICONS,
 			presets: this.presets ?? undefined,
 		}),

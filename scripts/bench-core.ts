@@ -8,6 +8,7 @@
  */
 import { changeTags } from "#lib/actions/change-tags.ts";
 import { deleteEntities } from "#lib/actions/delete.ts";
+import { diffFeatures, FeatureStore } from "#lib/map/feature-store.ts";
 import { buildFeatures } from "#lib/map/features.ts";
 import type { Entity, Loc, NodeId, WayId } from "#lib/osm/entity.ts";
 import { Graph } from "#lib/osm/graph.ts";
@@ -84,12 +85,28 @@ report(
 const room = ways[5000] as Entity;
 let n = 0;
 report(
-	"One tag edit → map features",
+	"One tag edit → full rebuild",
 	time(10, () => {
 		const edited = changeTags(room.id, { ...room.tags, name: `Edit ${n++}` })(
 			graph,
 		);
 		buildFeatures(edited, options);
+	}),
+	"before P5.2",
+);
+
+// As the editor does: the store updates, and the map is sent what changed.
+const store = new FeatureStore();
+const sent = new Map(store.update(graph, options).byId);
+report(
+	"One tag edit → map features",
+	time(10, () => {
+		const edited = changeTags(room.id, { ...room.tags, name: `Edit ${n++}` })(
+			graph,
+		);
+		const { byId } = store.update(edited, options);
+		const { add } = diffFeatures(sent, byId);
+		for (const f of add) sent.set(f.properties["@id"], f);
 	}),
 	"< 16 ms",
 );

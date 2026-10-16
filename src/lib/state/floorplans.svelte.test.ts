@@ -597,6 +597,34 @@ describe("FloorPlans: content kept for the level shown", () => {
 		expect(writes).toEqual(["mall", "mall"]);
 	});
 
+	it("keeps a new plan's content off the level shown until it is saved, then loads it back", async () => {
+		const { store, contents } = memoryStore();
+		const floorplans = new FloorPlans({ store, codec: fakeCodec });
+		floorplans.showLevel(0);
+		let finish = (_: EncodedImage) => {};
+		const content = rasterContent({
+			...fakeImage(),
+			encoded: new Promise((resolve) => {
+				finish = resolve;
+			}),
+		});
+		floorplans.add(content, "a", view, "1", photo());
+		const a = idOf(floorplans, "a");
+		floorplans.done();
+		await settled();
+		// Not on level 0, but not saved yet: dropping it would lose it.
+		expect(floorplans.contents.get(a)).toBe(content);
+
+		finish(await fakeImage().encoded);
+		await settled();
+		expect(contents.has(a)).toBe(true);
+		expect(floorplans.contents.has(a)).toBe(false);
+
+		floorplans.showLevel(1);
+		await settled();
+		expect(floorplans.contents.get(a)?.raster?.image.width).toBe(400);
+	});
+
 	it("shows a new plan at once, saving its content once its tiles are encoded", async () => {
 		const { store, contents } = memoryStore();
 		const floorplans = new FloorPlans({ store, codec: fakeCodec });

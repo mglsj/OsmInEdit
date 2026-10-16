@@ -28,7 +28,7 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P5.0–2 | Quick fixes, feature editor, fast core    | Done        |
 | R0    | Fixes and fast feedback (review)           | Done        |
 | R1    | Foundations for editing (review)           | Done        |
-| R2    | Floor plan content model (review)          | In progress |
+| R2    | Floor plan content model (review)          | Done        |
 | P4.2  | Vector and light raster floor plans        | Not started |
 | P5.3  | Geometry editing                           | Not started |
 | P5.4  | Autosave and conflicts                     | Not started |
@@ -823,6 +823,20 @@ required, `fitKind` kept) and `files/n.ext` stored uncompressed; a version above
 `readPlans` (archive or JSON) draws each plan again from its file, a PDF opened once with its
 pages rendered at their DPI, files given new ids; `writePlanFile` gives a `.zip` Blob; `pdfPage`
 names and sources a picked page. E2E: exported archive read back, the PDF stored once.
+R2.5 (decided ✔: a code split only, the tools stay in the side panel; thumbnails stored at
+128 px, shown at 40 px): `FloorPlansPanel` is the shell of `PlanFiles` (import, export, the PDF
+page dialog), `PlanList` (the layers, removal) and `PlanTools` (the plan in Edit: level,
+opacity, alignment tools, Done/Cancel), each with component tests in Chromium.
+
+**R2 done** ✅.
+
+### R2.6: Precise placement — S
+
+Asked for after R2.5. In the plan in Edit's tools: the centre's latitude and longitude, the
+rotation (bearing of the plan's top edge, 0–360° clockwise from north) and the real width in
+metres, typed exactly; dragging, turning or resizing the plan updates them. Typing one moves,
+turns or scales the plan around its centre, keeping its shape, and drops its control points (as
+dragging does), whatever its fit.
 
 ### P4.2: Vector and light raster plans — M–L
 

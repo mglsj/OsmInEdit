@@ -158,6 +158,8 @@ export class FloorPlans {
 	#shownLevel: number | null = null;
 	/** Plans whose content is loading. */
 	readonly #loading = new Set<string>();
+	/** Plans whose content isn't saved yet: it is kept, whatever level is shown. */
+	readonly #unsaved = new Set<string>();
 	/** Plans removed: content still being encoded for one is not saved. */
 	readonly #removed = new Set<string>();
 	/** Files saved (or being saved) by id: the pages of a PDF save it once. */
@@ -359,7 +361,7 @@ export class FloorPlans {
 			this.plans.filter((p) => this.#wanted(p)).map((p) => p.id),
 		);
 		for (const id of [...this.contents.keys()]) {
-			if (wanted.has(id)) continue;
+			if (wanted.has(id) || this.#unsaved.has(id)) continue;
 			closeContent(this.contents.get(id));
 			this.contents.delete(id);
 		}
@@ -450,7 +452,10 @@ export class FloorPlans {
 	async #saveContent(id: string, content: PlanContent): Promise<void> {
 		const store = this.#store;
 		const raster = content.raster;
-		if (!store || !raster) return;
+		if (!raster) return;
+		// Kept until saved: without a store, for as long as the plan lasts.
+		this.#unsaved.add(id);
+		if (!store) return;
 		const { image, unit } = raster;
 		const { levels, thumbnail } = await image.encoded;
 		// Removed while its tiles were encoded: nothing to save.
@@ -461,6 +466,8 @@ export class FloorPlans {
 			raster: { unit, width: image.width, height: image.height, levels },
 			...(thumbnail ? { thumbnail } : {}),
 		});
+		this.#unsaved.delete(id);
+		this.#syncContent();
 	}
 
 	/**
@@ -700,6 +707,7 @@ export class FloorPlans {
 
 	remove(id: string): void {
 		this.#removed.add(id);
+		this.#unsaved.delete(id);
 		const index = this.plans.findIndex((p) => p.id === id);
 		const file = this.plans[index]?.source.file;
 		this.plans = this.plans.filter((p) => p.id !== id);

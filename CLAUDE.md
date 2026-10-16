@@ -81,7 +81,8 @@ runs the same commands.
   `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),
   `persist/plan-store.ts` (IndexedDB schema 3: settings, tiles, files, thumbnails; tested on
   fake-indexeddb; content loads for the shown level only, `FloorPlans.showLevel`; tests use
-  `state/testing/plan-store.ts`), `ui/FloorPlansPanel.svelte`. Pixels go through a `PlanCodec`
+  `state/testing/plan-store.ts`), `ui/FloorPlansPanel.svelte` (`PlanFiles`, `PlanList`,
+  `PlanTools`). Pixels go through a `PlanCodec`
   (`codec.ts`; `workerCodec()` runs `plan-worker.ts`: `pyramid.ts` cuts, then `tile-codec.ts`
   encodes lossless JPEG XL (`jxl.ts`, WASM, where the browser reads it), WebP or PNG
   (`tile-format.ts`)); a plan shows once cut, its `encoded` tiles are saved after. Import and

@@ -5,12 +5,12 @@
 import { BUILDING_COLOR } from "#lib/floorplans/colors.ts";
 import { diffFeatures, type StoredFeatures } from "./feature-store.ts";
 import type { IndoorFeature } from "./features.ts";
+import { type Slot, slotId, slotsReady } from "./layer-slots.ts";
 import type {
 	FilterSpecification,
 	GeoJSONSource,
 	Map as MapLibreMap,
 } from "./maplibre.ts";
-import { styleReady } from "./ready.ts";
 import { loadIconsOnDemand } from "./style/icons.ts";
 import {
 	INDOOR_SOURCE,
@@ -18,13 +18,13 @@ import {
 	SELECTABLE_LAYER_IDS,
 } from "./style/layers.ts";
 
-/** Layers drawn above the basemap's labels; the others go below them. */
-const ABOVE_LABELS = new Set([
-	"indoor-doors",
-	"indoor-labels",
-	"indoor-selection-line",
-	"indoor-selection-point",
-]);
+/** The slot of each indoor layer: fills under floor plans, outlines and lines over them,
+ * doors, labels and the selection over the basemap's labels. */
+const SLOTS: Record<string, Slot> = {
+	"indoor-fill": "indoor-fill",
+	"indoor-outline": "indoor-lines",
+	"indoor-lines": "indoor-lines",
+};
 
 /** Outlines of the buildings, drawn only in floor plan mode to place plans against. */
 export const BUILDINGS_LAYER = "indoor-buildings";
@@ -52,7 +52,7 @@ export class IndoorMap {
 	constructor(map: MapLibreMap) {
 		this.#map = map;
 		loadIconsOnDemand(map);
-		void styleReady(map).then(() => {
+		void slotsReady(map).then(() => {
 			if (!this.#removed) this.#install();
 		});
 	}
@@ -205,9 +205,6 @@ export class IndoorMap {
 
 	#install(): void {
 		const map = this.#map;
-		const firstLabel = map
-			.getStyle()
-			.layers.find((l) => l.type === "symbol")?.id;
 		map.addSource(INDOOR_SOURCE, {
 			type: "geojson",
 			data: this.#features?.collection ?? {
@@ -219,16 +216,20 @@ export class IndoorMap {
 		this.#sent = new Map(this.#features?.byId ?? []);
 		this.#drawing = true;
 		for (const layer of indoorLayers(this.#level)) {
-			map.addLayer(layer, ABOVE_LABELS.has(layer.id) ? undefined : firstLabel);
+			map.addLayer(layer, slotId(SLOTS[layer.id] ?? "indoor-top"));
 		}
-		map.addLayer({
-			id: BUILDINGS_LAYER,
-			type: "line",
-			source: INDOOR_SOURCE,
-			filter: ["has", "@building"],
-			layout: { visibility: "none" },
-			paint: { "line-color": BUILDING_OUTLINE, "line-width": 3 },
-		});
+		// Placed among the floor plans, in its place in their stack (`FloorPlanLayers`).
+		map.addLayer(
+			{
+				id: BUILDINGS_LAYER,
+				type: "line",
+				source: INDOOR_SOURCE,
+				filter: ["has", "@building"],
+				layout: { visibility: "none" },
+				paint: { "line-color": BUILDING_OUTLINE, "line-width": 3 },
+			},
+			slotId("plans"),
+		);
 		this.#ready = true;
 		this.#applyPlanMode();
 		this.setSelected(this.#selected);

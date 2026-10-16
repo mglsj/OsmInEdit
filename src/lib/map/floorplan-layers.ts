@@ -19,13 +19,13 @@ import type {
 	Tool,
 } from "#lib/state/floorplans.svelte.ts";
 import { BUILDINGS_LAYER } from "./indoor-map.ts";
+import { slotId, slotsReady } from "./layer-slots.ts";
 import type {
 	ExpressionSpecification,
 	GeoJSONSource,
 	ImageSource,
 	Map as MapLibreMap,
 } from "./maplibre.ts";
-import { styleReady } from "./ready.ts";
 
 const EARTH_RADIUS = 6378137;
 
@@ -59,7 +59,7 @@ export class FloorPlanLayers {
 			// Zooming may call for another level of the plans' pyramids.
 			map.on("zoom", this.#onZoom);
 		};
-		void styleReady(map).then(() => {
+		void slotsReady(map).then(() => {
 			if (!this.#removed) install();
 		});
 	}
@@ -114,7 +114,7 @@ export class FloorPlanLayers {
 		const key = order.join(",");
 		if (!added && key === this.#order) return;
 		this.#order = key;
-		// Each one moved below the indoor outlines in turn: the last ends up on top.
+		// Each one moved to the top of the plans' slot in turn: the last ends up on top.
 		const below = this.#below();
 		for (const id of order) this.#map.moveLayer(id, below);
 	}
@@ -201,11 +201,9 @@ export class FloorPlanLayers {
 		this.#shown.delete(id);
 	}
 
-	/** The layer plans go below: the indoor outlines, or else the basemap labels. */
-	#below(): string | undefined {
-		return this.#map.getLayer("indoor-outline")
-			? "indoor-outline"
-			: this.#map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+	/** Plans go in their slot: over indoor fills, under indoor outlines. */
+	#below(): string {
+		return slotId("plans");
 	}
 }
 
@@ -336,58 +334,72 @@ export class PlanToolLayer {
 		this.#map = map;
 		const install = () => {
 			map.addSource(TOOL_SOURCE, { type: "geojson", data: this.#data });
-			map.addLayer({
-				id: `${TOOL_SOURCE}-frame`,
-				type: "line",
-				source: TOOL_SOURCE,
-				filter: ["==", ["get", "role"], "frame"],
-				paint: { "line-color": PLAN_COLOR, "line-width": 2 },
-			});
-			map.addLayer({
-				id: `${TOOL_SOURCE}-measured`,
-				type: "line",
-				source: TOOL_SOURCE,
-				filter: ["==", ["get", "role"], "measured"],
-				paint: { "line-color": PLAN_COLOR, "line-width": 2 },
-			});
-			map.addLayer({
-				id: `${TOOL_SOURCE}-links`,
-				type: "line",
-				source: TOOL_SOURCE,
-				filter: ["in", ["get", "role"], ["literal", ["link", "rubber"]]],
-				paint: {
-					"line-color": PLAN_COLOR,
-					"line-width": 2,
-					"line-dasharray": [2, 2],
+			// Over everything else: the marks are what the user is working with.
+			const tools = slotId("tools");
+			map.addLayer(
+				{
+					id: `${TOOL_SOURCE}-frame`,
+					type: "line",
+					source: TOOL_SOURCE,
+					filter: ["==", ["get", "role"], "frame"],
+					paint: { "line-color": PLAN_COLOR, "line-width": 2 },
 				},
-			});
-			map.addLayer({
-				id: HANDLES_LAYER,
-				type: "circle",
-				source: TOOL_SOURCE,
-				filter: ["==", ["geometry-type"], "Point"],
-				paint: {
-					"circle-radius": [
-						"match",
-						["get", "role"],
-						["handle", "rotate"],
-						7,
-						6,
-					],
-					"circle-color": [
-						"match",
-						["get", "role"],
-						["target", "rotate"],
-						PLAN_COLOR,
-						"#ffffff",
-					],
-					"circle-stroke-color": PLAN_COLOR,
-					"circle-stroke-width": 2,
+				tools,
+			);
+			map.addLayer(
+				{
+					id: `${TOOL_SOURCE}-measured`,
+					type: "line",
+					source: TOOL_SOURCE,
+					filter: ["==", ["get", "role"], "measured"],
+					paint: { "line-color": PLAN_COLOR, "line-width": 2 },
 				},
-			});
+				tools,
+			);
+			map.addLayer(
+				{
+					id: `${TOOL_SOURCE}-links`,
+					type: "line",
+					source: TOOL_SOURCE,
+					filter: ["in", ["get", "role"], ["literal", ["link", "rubber"]]],
+					paint: {
+						"line-color": PLAN_COLOR,
+						"line-width": 2,
+						"line-dasharray": [2, 2],
+					},
+				},
+				tools,
+			);
+			map.addLayer(
+				{
+					id: HANDLES_LAYER,
+					type: "circle",
+					source: TOOL_SOURCE,
+					filter: ["==", ["geometry-type"], "Point"],
+					paint: {
+						"circle-radius": [
+							"match",
+							["get", "role"],
+							["handle", "rotate"],
+							7,
+							6,
+						],
+						"circle-color": [
+							"match",
+							["get", "role"],
+							["target", "rotate"],
+							PLAN_COLOR,
+							"#ffffff",
+						],
+						"circle-stroke-color": PLAN_COLOR,
+						"circle-stroke-width": 2,
+					},
+				},
+				tools,
+			);
 			this.#ready = true;
 		};
-		void styleReady(map).then(() => {
+		void slotsReady(map).then(() => {
 			if (!this.#removed) install();
 		});
 	}

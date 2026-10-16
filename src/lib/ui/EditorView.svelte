@@ -151,7 +151,7 @@
 		if (entry && !imageryUsed.includes(entry.name)) {
 			imageryUsed = [...imageryUsed, entry.name];
 		}
-		if (map) setBackground(map, entry);
+		if (map) void setBackground(map, entry);
 	}
 
 	// The indoor layers live as long as the map, and follow the data and the selected level.

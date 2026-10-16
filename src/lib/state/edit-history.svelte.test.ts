@@ -181,6 +181,13 @@ describe("EditHistory.patchTags: a field's change over every selected feature", 
 		expect(tagsOf(history, "n2")?.description).toBe("Unnamed");
 	});
 
+	it("tells a patch made per feature which feature it is for", () => {
+		const history = benches();
+		history.patchTags(["n1", "n2"], (_, id) => ({ ref: id }));
+		expect(tagsOf(history, "n1")?.ref).toBe("n1");
+		expect(tagsOf(history, "n2")?.ref).toBe("n2");
+	});
+
 	it("folds typing into one step, closed by the change leaving the field", () => {
 		const history = benches();
 		history.patchTags(["n1", "n2"], { name: "P" }, { live: true });

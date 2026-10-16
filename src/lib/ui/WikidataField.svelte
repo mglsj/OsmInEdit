@@ -8,12 +8,15 @@
 	} from "#lib/api/wikidata.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import * as InputGroup from "#lib/components/shadcn/input-group/index.ts";
+	import { msg, t } from "#lib/i18n/messages.ts";
 	import type { Tags } from "#lib/osm/tags.ts";
 	import type { Field } from "#lib/presets/presets.ts";
 	import { cleanValue } from "#lib/presets/text.ts";
 	import {
 		type FieldContext,
 		fieldInputId,
+		type MixedValues,
+		NOT_MIXED,
 		type TagPatch,
 	} from "#lib/ui/field-context.ts";
 	import SearchCombo from "#lib/ui/SearchCombo.svelte";
@@ -22,12 +25,21 @@
 		/** A wikidata field (`wikidata`, `brand:wikidata`…), with its wikipedia key. */
 		field: Field;
 		tags: Tags;
+		/** Keys whose values differ between the features edited. */
+		mixed?: MixedValues;
 		context: FieldContext;
 		locked: boolean;
 		onchange: (patch: TagPatch) => void;
 	}
 
-	let { field, tags, context, locked, onchange }: Props = $props();
+	let {
+		field,
+		tags,
+		mixed = NOT_MIXED,
+		context,
+		locked,
+		onchange,
+	}: Props = $props();
 
 	const key = $derived(field.key ?? "wikidata");
 	const qid = $derived(tags[key] ?? "");
@@ -105,7 +117,9 @@
 			class="flex-1"
 			value={label?.value ?? qid}
 			lang={label?.language}
-			placeholder="Search Wikidata"
+			placeholder={mixed.has(key)
+				? t(msg("field_multiple_values"))
+				: "Search Wikidata"}
 			readonly={locked}
 			{search}
 			onchoose={(item) => choose(item.key)}

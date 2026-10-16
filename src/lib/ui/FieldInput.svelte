@@ -11,9 +11,11 @@
 	import ChipsField from "#lib/ui/ChipsField.svelte";
 	import ComboField from "#lib/ui/ComboField.svelte";
 	import {
+		type FieldChange,
 		type FieldContext,
 		fieldInputId,
-		type TagPatch,
+		type MixedValues,
+		NOT_MIXED,
 	} from "#lib/ui/field-context.ts";
 	import InfoButton from "#lib/ui/InfoButton.svelte";
 	import LocalizedField from "#lib/ui/LocalizedField.svelte";
@@ -26,12 +28,13 @@
 
 	interface Props {
 		field: PresetField;
-		/** The feature's tags. */
+		/** The tags of the feature, or those the features edited share. */
 		tags: Tags;
+		/** Keys whose values differ between the features edited ("Multiple values"). */
+		mixed?: MixedValues;
 		context: FieldContext;
-		/** Called with the tags to change once the user commits a value. */
 		/** A change; `live` while text is typed (one undo step with the final value). */
-		onchange: (patch: TagPatch, live?: boolean) => void;
+		onchange: (change: FieldChange, live?: boolean) => void;
 		/** Shown, not editable (the name of a feature linked to Wikidata). */
 		locked?: boolean;
 		/** Buttons at the end of the label row (remove, revert). */
@@ -41,6 +44,7 @@
 	let {
 		field,
 		tags,
+		mixed = NOT_MIXED,
 		context,
 		onchange,
 		locked = false,
@@ -55,6 +59,7 @@
 		showDocs && reference ? context.docs?.(reference) : undefined,
 	);
 	const value = $derived(field.key ? tags[field.key] : undefined);
+	const isMixed = $derived(field.key !== undefined && mixed.has(field.key));
 	const kind = $derived.by(() => {
 		switch (field.type) {
 			case "check":
@@ -121,26 +126,33 @@
 		<TagReference {docs} />
 	{/if}
 	{#if kind === "single-combo"}
-		<ComboField {field} {value} {context} {locked} onchange={set} />
+		<ComboField
+			{field}
+			{value}
+			{context}
+			{locked}
+			mixed={isMixed}
+			onchange={set}
+		/>
 	{:else if kind === "chips"}
-		<ChipsField {field} {tags} {context} {locked} {onchange} />
+		<ChipsField {field} {tags} {mixed} {context} {locked} {onchange} />
 	{:else if kind === "check"}
-		<CheckField {field} {value} {locked} onchange={set} />
+		<CheckField {field} {value} {locked} mixed={isMixed} onchange={set} />
 	{:else if kind === "radio"}
 		<RadioField {field} {tags} {context} {locked} {onchange} />
 	{:else if kind === "access"}
-		<AccessField {field} {tags} {locked} {onchange} />
+		<AccessField {field} {tags} {mixed} {locked} {onchange} />
 	{:else if kind === "address"}
-		<AddressField {field} {tags} {context} {locked} {onchange} />
+		<AddressField {field} {tags} {mixed} {context} {locked} {onchange} />
 	{:else if kind === "localized"}
-		<LocalizedField {field} {tags} {locked} {onchange} />
+		<LocalizedField {field} {tags} {mixed} {locked} {onchange} />
 	{:else if kind === "wikidata"}
-		<WikidataField {field} {tags} {context} {locked} {onchange} />
+		<WikidataField {field} {tags} {mixed} {context} {locked} {onchange} />
 	{:else if kind === "wikipedia"}
-		<WikipediaField {field} {tags} {context} {locked} {onchange} />
+		<WikipediaField {field} {tags} {mixed} {context} {locked} {onchange} />
 	{:else if kind === "textarea"}
-		<TextareaField {field} {tags} {locked} {onchange} />
+		<TextareaField {field} {tags} {mixed} {locked} {onchange} />
 	{:else}
-		<TextField {field} {tags} {locked} {onchange} />
+		<TextField {field} {tags} {mixed} {locked} {onchange} />
 	{/if}
 </Field.Field>

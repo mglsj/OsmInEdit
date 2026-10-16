@@ -42,9 +42,18 @@
 		onzoom?: (id: EntityId) => void;
 		/** Selects a feature, and shows it when out of view (a relation's member). */
 		onshow?: (id: EntityId) => void;
+		/** Shown, not edited (P5.3's hover preview): every input and button is disabled. */
+		readonly?: boolean;
 	}
 
-	let { entity, websiteUrl, viewExtent, onzoom, onshow }: Props = $props();
+	let {
+		entity,
+		websiteUrl,
+		viewExtent,
+		onzoom,
+		onshow,
+		readonly = false,
+	}: Props = $props();
 	const editor = getEditor();
 
 	/** The feature as selected: closing turns into a ✓ once it was changed. */
@@ -104,19 +113,21 @@
 		<h2 class="min-w-0 flex-1 truncate text-base font-semibold">
 			{choosing ? "Select feature type" : "Edit feature"}
 		</h2>
-		<Button
-			variant="ghost"
-			size="icon-sm"
-			aria-label={changed ? "Done" : "Close"}
-			title={changed ? "Done" : "Close"}
-			onclick={() => editor.select(null)}
-		>
-			{#if changed}
-				<Check />
-			{:else}
-				<X />
-			{/if}
-		</Button>
+		{#if !readonly}
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				aria-label={changed ? "Done" : "Close"}
+				title={changed ? "Done" : "Close"}
+				onclick={() => editor.select(null)}
+			>
+				{#if changed}
+					<Check />
+				{:else}
+					<X />
+				{/if}
+			</Button>
+		{/if}
 	</header>
 
 	{#if choosing && editor.catalog.presets}
@@ -135,117 +146,119 @@
 		/>
 	{:else}
 		<ScrollArea class="min-h-0 flex-1">
-			<InspectorSection id="feature-type" title="Feature Type">
-				<div class="flex items-center gap-1">
-					<button
-						type="button"
-						class="flex w-full items-center gap-3 rounded-md border p-2 text-left outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50"
-						aria-label={`${preset?.name ?? "Feature"}, change feature type`}
-						onclick={() => (choosing = true)}
-					>
-						<PresetIcon icon={preset?.icon} size={28} />
-						<span class="min-w-0 flex-1">
-							<span class="block truncate font-medium">
-								{preset?.name ?? "Feature"}
+			<fieldset disabled={readonly} class="contents">
+				<InspectorSection id="feature-type" title="Feature Type">
+					<div class="flex items-center gap-1">
+						<button
+							type="button"
+							class="flex w-full items-center gap-3 rounded-md border p-2 text-left outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50"
+							aria-label={`${preset?.name ?? "Feature"}, change feature type`}
+							onclick={() => (choosing = true)}
+						>
+							<PresetIcon icon={preset?.icon} size={28} />
+							<span class="min-w-0 flex-1">
+								<span class="block truncate font-medium">
+									{preset?.name ?? "Feature"}
+								</span>
+								<span class="block text-xs text-muted-foreground"
+									>{entity.id}</span
+								>
 							</span>
-							<span class="block text-xs text-muted-foreground"
-								>{entity.id}</span
-							>
-						</span>
-						<ChevronRight class="size-4 shrink-0 text-muted-foreground" />
-					</button>
-					{#if editor.catalog.services.wikibase &&
-						preset &&
-						presetReference(preset)}
-						<InfoButton
-							label={preset?.name ?? "Feature"}
-							expanded={showPresetDocs}
-							ontoggle={() => (showPresetDocs = !showPresetDocs)}
-						/>
-					{/if}
-				</div>
-				{#if presetDocs}
-					<div class="mt-2"><TagReference docs={presetDocs} /></div>
-				{/if}
-			</InspectorSection>
-
-			{#if issues.length > 0}
-				<InspectorSection id="issues" title={`Issues (${issues.length})`}>
-					<div class="flex flex-col gap-2">
-						{#each issues as issue (issue.id)}
-							<Alert.Root role="note">
-								<TriangleAlert />
-								<Alert.Description>{t(issue.message)}</Alert.Description>
-								{#if issue.fix}
-									<div class="col-start-2 mt-2">
-										<Button
-											variant="outline"
-											size="xs"
-											onclick={() => fix(editor, issue)}
-										>
-											{t(issue.fix.label)}
-										</Button>
-									</div>
-								{/if}
-							</Alert.Root>
-						{/each}
+							<ChevronRight class="size-4 shrink-0 text-muted-foreground" />
+						</button>
+						{#if editor.catalog.services.wikibase &&
+							preset &&
+							presetReference(preset)}
+							<InfoButton
+								label={preset?.name ?? "Feature"}
+								expanded={showPresetDocs}
+								ontoggle={() => (showPresetDocs = !showPresetDocs)}
+							/>
+						{/if}
 					</div>
+					{#if presetDocs}
+						<div class="mt-2"><TagReference docs={presetDocs} /></div>
+					{/if}
 				</InspectorSection>
-			{/if}
 
-			<InspectorSection id="fields" title="Fields">
-				{#if preset}
-					{#key preset.id}
-						<FieldsSection {entity} {preset} />
-					{/key}
+				{#if issues.length > 0}
+					<InspectorSection id="issues" title={`Issues (${issues.length})`}>
+						<div class="flex flex-col gap-2">
+							{#each issues as issue (issue.id)}
+								<Alert.Root role="note">
+									<TriangleAlert />
+									<Alert.Description>{t(issue.message)}</Alert.Description>
+									{#if issue.fix}
+										<div class="col-start-2 mt-2">
+											<Button
+												variant="outline"
+												size="xs"
+												onclick={() => fix(editor, issue)}
+											>
+												{t(issue.fix.label)}
+											</Button>
+										</div>
+									{/if}
+								</Alert.Root>
+							{/each}
+						</div>
+					</InspectorSection>
 				{/if}
-			</InspectorSection>
 
-			<InspectorSection
-				id="tags"
-				title={`Tags (${tagCount})`}
-				defaultOpen={false}
-				forceOpen={isFallback}
-			>
-				<TagEditor
-					tags={entity.tags}
-					onchange={(tags) => editor.history.setTags(entity.id, tags)}
-					suggestKeys={editor.catalog.services.taginfo
-						? (query) =>
-								editor.catalog.services.taginfo
-									?.keys({ query, geometry })
-									.then((found) =>
-										keySuggestions(
-											found,
-											query,
-											entity.tags,
-											editor.catalog.discardedKeys,
-										),
-									) ?? Promise.resolve([])
-						: undefined}
-					suggestValues={editor.catalog.services.taginfo
-						? (key, query) =>
-								editor.catalog.services.taginfo
-									?.values({ key, query, geometry })
-									.then((found) => valueSuggestions(found, query)) ??
-								Promise.resolve([])
-						: undefined}
-					docs={editor.catalog.services.wikibase
-						? (reference) =>
-								editor.catalog.services.wikibase?.docs(reference) ??
-								Promise.resolve(null)
-						: undefined}
-				/>
-			</InspectorSection>
+				<InspectorSection id="fields" title="Fields">
+					{#if preset}
+						{#key preset.id}
+							<FieldsSection entities={[entity]} {preset} {readonly} />
+						{/key}
+					{/if}
+				</InspectorSection>
 
-			{#if entity.type === "relation"}
-				<MembersSection
-					relation={entity}
-					onshow={onshow ?? ((id) => editor.select(id))}
-					{onzoom}
-				/>
-			{/if}
-			<RelationsSection {entity} {viewExtent} {onzoom} />
+				<InspectorSection
+					id="tags"
+					title={`Tags (${tagCount})`}
+					defaultOpen={false}
+					forceOpen={isFallback}
+				>
+					<TagEditor
+						tags={entity.tags}
+						onchange={(tags) => editor.history.setTags(entity.id, tags)}
+						suggestKeys={editor.catalog.services.taginfo
+							? (query) =>
+									editor.catalog.services.taginfo
+										?.keys({ query, geometry })
+										.then((found) =>
+											keySuggestions(
+												found,
+												query,
+												entity.tags,
+												editor.catalog.discardedKeys,
+											),
+										) ?? Promise.resolve([])
+							: undefined}
+						suggestValues={editor.catalog.services.taginfo
+							? (key, query) =>
+									editor.catalog.services.taginfo
+										?.values({ key, query, geometry })
+										.then((found) => valueSuggestions(found, query)) ??
+									Promise.resolve([])
+							: undefined}
+						docs={editor.catalog.services.wikibase
+							? (reference) =>
+									editor.catalog.services.wikibase?.docs(reference) ??
+									Promise.resolve(null)
+							: undefined}
+					/>
+				</InspectorSection>
+
+				{#if entity.type === "relation"}
+					<MembersSection
+						relation={entity}
+						onshow={onshow ?? ((id) => editor.select(id))}
+						{onzoom}
+					/>
+				{/if}
+				<RelationsSection {entity} {viewExtent} {onzoom} />
+			</fieldset>
 		</ScrollArea>
 
 		{#if !isNewId(entity.id)}

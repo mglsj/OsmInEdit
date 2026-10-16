@@ -1,7 +1,7 @@
 import type { TagDocs } from "#lib/api/osm-wikibase.ts";
 import type { Wikidata } from "#lib/api/wikidata.ts";
 import type { Tags } from "#lib/osm/tags.ts";
-import type { SuggestedValue } from "#lib/presets/combo.ts";
+import type { SuggestedValue, TagPatch } from "#lib/presets/combo.ts";
 import type { Field } from "#lib/presets/presets.ts";
 import type { TagReference } from "#lib/presets/wiki.ts";
 
@@ -35,6 +35,15 @@ export interface FieldContext {
 }
 
 export type { TagPatch } from "#lib/presets/combo.ts";
+
+/** Keys whose values differ between the features edited: each feature's value (`combineTags`). */
+export type MixedValues = ReadonlyMap<string, readonly (string | undefined)[]>;
+
+/** Nothing mixed: one feature edited. */
+export const NOT_MIXED: MixedValues = new Map();
+
+/** A field's change: the tags to set (undefined removes), or those made from each feature's own. */
+export type FieldChange = TagPatch | ((tags: Tags) => TagPatch);
 
 /** The id of a field's input, which its label points at. */
 export function fieldInputId(field: Field): string {

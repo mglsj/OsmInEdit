@@ -19,12 +19,17 @@ export function cleanValue(value: string): string {
 	return Array.from(value.trim().normalize("NFC")).slice(0, MAX_CHARS).join("");
 }
 
-/** The field's value: one of its keys set (`phone` or `contact:phone`), or mixed when they differ. */
+/**
+ * The field's value: one of its keys set (`phone` or `contact:phone`), or mixed when they
+ * differ, or when the features edited (`mixed`, see `combineTags`) have different values.
+ */
 export function textValue(
 	field: Field,
 	tags: Tags,
+	mixed?: ReadonlyMap<string, unknown>,
 ): { value: string; mixed: boolean } {
 	const keys = field.keys ?? (field.key ? [field.key] : []);
+	if (keys.some((key) => mixed?.has(key))) return { value: "", mixed: true };
 	const values = new Set(
 		keys.map((key) => tags[key]).filter((v): v is string => v !== undefined),
 	);

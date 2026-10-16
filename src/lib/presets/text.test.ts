@@ -141,3 +141,23 @@ describe("isDateLike", () => {
 		expect(["15/03/2024", "2024-3-15", "~1900"].some(isDateLike)).toBe(false);
 	});
 });
+
+describe("textValue over several features", () => {
+	it("is mixed when the features' values of a key differ", () => {
+		const phone: Field = {
+			...({} as Field),
+			id: "phone",
+			key: "phone",
+			keys: ["phone", "contact:phone"],
+			type: "tel",
+			label: "Phone",
+			options: [],
+		};
+		const mixed = new Map([["phone", ["1", undefined]]]);
+		expect(textValue(phone, {}, mixed)).toEqual({ value: "", mixed: true });
+		expect(textValue(phone, { "contact:phone": "2" })).toEqual({
+			value: "2",
+			mixed: false,
+		});
+	});
+});

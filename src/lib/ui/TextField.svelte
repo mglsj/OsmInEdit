@@ -8,6 +8,7 @@
 	import type { Snippet } from "svelte";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import * as InputGroup from "#lib/components/shadcn/input-group/index.ts";
+	import { msg, t } from "#lib/i18n/messages.ts";
 	import type { Tags } from "#lib/osm/tags.ts";
 	import type { Field } from "#lib/presets/presets.ts";
 	import {
@@ -20,13 +21,20 @@
 		textPatch,
 		textValue,
 	} from "#lib/presets/text.ts";
-	import { fieldInputId, type TagPatch } from "#lib/ui/field-context.ts";
+	import {
+		fieldInputId,
+		type MixedValues,
+		NOT_MIXED,
+		type TagPatch,
+	} from "#lib/ui/field-context.ts";
 	import LengthIndicator from "#lib/ui/LengthIndicator.svelte";
 
 	interface Props {
 		/** text, tel, email, url, identifier, schedule, date, colour, number or integer. */
 		field: Field;
 		tags: Tags;
+		/** Keys whose values differ between the features edited. */
+		mixed?: MixedValues;
 		locked: boolean;
 		/** A change; `live` while typing (kept as typed, one undo step with the final value). */
 		onchange: (patch: TagPatch, live?: boolean) => void;
@@ -34,10 +42,17 @@
 		extra?: Snippet;
 	}
 
-	let { field, tags, locked, onchange, extra }: Props = $props();
+	let {
+		field,
+		tags,
+		mixed = NOT_MIXED,
+		locked,
+		onchange,
+		extra,
+	}: Props = $props();
 
 	const id = $derived(fieldInputId(field));
-	const current = $derived(textValue(field, tags));
+	const current = $derived(textValue(field, tags, mixed));
 	const isNumber = $derived(
 		field.type === "number" || field.type === "integer",
 	);
@@ -124,7 +139,7 @@
 		autocomplete="off"
 		value={current.value}
 		placeholder={current.mixed
-			? "Multiple values"
+			? t(msg("field_multiple_values"))
 			: (field.placeholder ?? "Unknown")}
 		title={field.key && current.value
 			? `${field.key}=${current.value}`

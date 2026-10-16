@@ -4,7 +4,13 @@
  * values" and a list field can change each feature's list rather than overwrite it.
  */
 import type { Tags } from "#lib/osm/tags.ts";
-import { splitSemicolons } from "./combo.ts";
+import {
+	chipsOf,
+	type Chip as FieldChip,
+	splitSemicolons,
+	type TagPatch,
+} from "./combo.ts";
+import type { Field } from "./presets.ts";
 
 export interface CombinedTags {
 	/** The tags every feature has, with the same value. */
@@ -52,4 +58,63 @@ export function chipsIn(combined: CombinedTags, key: string): Chip[] {
 		value,
 		all: lists.every((list) => list.includes(value)),
 	}));
+}
+
+/** A chip field's chip over several features: `all` when every feature has it. */
+export type SharedChip = FieldChip & { readonly all: boolean };
+
+/**
+ * The chips of a list (`;` values) or multi-key field over several features: those every
+ * feature has, and those only some have (a key without a state then: its values differ).
+ */
+export function chipsOver(field: Field, combined: CombinedTags): SharedChip[] {
+	if (field.type === "semiCombo") {
+		const key = field.key ?? "";
+		const shared = chipsIn(combined, key);
+		const union = { [key]: shared.map((c) => c.value).join(";") };
+		return chipsOf(field, union).map((chip) => ({
+			...chip,
+			all: shared.find((c) => c.value === chip.value)?.all ?? true,
+		}));
+	}
+	// Mixed keys stand in the shared tags with an empty value, which chipsOf keeps.
+	const all = chipsOf(field, {
+		...combined.tags,
+		...Object.fromEntries([...combined.mixed.keys()].map((k) => [k, ""])),
+	});
+	return all.map((chip) =>
+		combined.mixed.has(chip.key)
+			? {
+					key: chip.key,
+					value: chip.value,
+					label: chip.label,
+					raw: chip.raw,
+					all: false,
+				}
+			: { ...chip, all: true },
+	);
+}
+
+/** The patch taking a chip off one feature's own tags (nothing if it hasn't the chip). */
+export function withoutChip(
+	field: Field,
+	tags: Tags,
+	chip: { readonly key: string; readonly value: string },
+): TagPatch {
+	if (field.type !== "semiCombo") {
+		return tags[chip.key] === undefined ? {} : { [chip.key]: undefined };
+	}
+	const list = splitSemicolons(tags[chip.key]);
+	if (!list.includes(chip.value)) return {};
+	const rest = list.filter((v) => v !== chip.value);
+	return { [chip.key]: rest.length ? rest.join(";") : undefined };
+}
+
+/** The patch turning `before` into `after`: keys changed or added, and those removed. */
+export function tagDiff(before: Tags, after: Tags): TagPatch {
+	const patch: TagPatch = {};
+	for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+		if (before[key] !== after[key]) patch[key] = after[key];
+	}
+	return patch;
 }

@@ -60,6 +60,9 @@ runs the same commands.
   `CheckField`, `RadioField`, `TextField`, `TextareaField`, `LocalizedField`, `AddressField`,
   `AccessField`, `WikidataField` or `WikipediaField`; `TagReference` + `InfoButton` for ⓘ;
   every combobox on `ui/combobox.svelte.ts` (`Combobox`) and `ui/ComboList.svelte`;
+  fields edit several features at once: they get the shared `tags` and the `mixed` keys
+  (`presets/multi.ts`) and send patches (`FieldChange`, per feature when a function), applied
+  with `history.patchTags`;
   `TagEditor` for the Tags section, whose text view e2e tests read with `tagsBox()`;
   `RelationsSection` and `MembersSection` on `actions/members.ts` and `osm/relations.ts`),
   `ui/SaveDialog.svelte`.
@@ -124,6 +127,7 @@ runs the same commands.
   mode, the `component` project; `bun run test:unit` runs both projects). Render with
   `render()` from `vitest-browser-svelte`, query with `page` and type with `userEvent` from
   `vitest/browser`; put the props under `props` when one is named `context` (a mount option).
+  Render a component that calls `getEditor()` with `renderWithEditor()` (`ui/testing/render.ts`).
   Test a component's behaviour here rather than in e2e when the map isn't involved.
 - E2E tests use the `test` fixture from `tests/e2e/fixtures.ts`: it blocks all external requests
   and serves a blank basemap style. Override a route in the test when you need specific data.

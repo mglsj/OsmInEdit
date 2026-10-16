@@ -7,6 +7,8 @@
 	import {
 		type FieldContext,
 		fieldInputId,
+		type MixedValues,
+		NOT_MIXED,
 		type TagPatch,
 	} from "#lib/ui/field-context.ts";
 
@@ -14,13 +16,22 @@
 		/** iD's address field: `addr:*` parts in rows. */
 		field: Field;
 		tags: Tags;
+		/** Parts whose values differ between the features edited. */
+		mixed?: MixedValues;
 		context: FieldContext;
 		locked: boolean;
 		/** A change; `live` while typing (kept as typed, one undo step with the final value). */
 		onchange: (patch: TagPatch, live?: boolean) => void;
 	}
 
-	let { field, tags, context, locked, onchange }: Props = $props();
+	let {
+		field,
+		tags,
+		mixed = NOT_MIXED,
+		context,
+		locked,
+		onchange,
+	}: Props = $props();
 
 	const prefix = $derived(field.key ?? "addr");
 
@@ -79,6 +90,7 @@
 						context={partContext}
 						plain
 						{locked}
+						mixed={mixed.has(sub.key ?? "")}
 						onchange={(value) =>
 							onchange({
 								[sub.key ?? ""]: value ? cleanValue(value) : undefined,

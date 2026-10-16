@@ -4,6 +4,7 @@
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import { Input } from "#lib/components/shadcn/input/index.ts";
 	import * as InputGroup from "#lib/components/shadcn/input-group/index.ts";
+	import { msg, t } from "#lib/i18n/messages.ts";
 	import type { Tags } from "#lib/osm/tags.ts";
 	import {
 		languageCode,
@@ -18,6 +19,8 @@
 	import {
 		type FieldContext,
 		fieldInputId,
+		type MixedValues,
+		NOT_MIXED,
 		type TagPatch,
 	} from "#lib/ui/field-context.ts";
 	import TextField from "#lib/ui/TextField.svelte";
@@ -26,17 +29,30 @@
 		/** A localized field: `name`, with `name:<lang>` rows. */
 		field: Field;
 		tags: Tags;
+		/** Keys whose values differ between the features edited (the name, translations). */
+		mixed?: MixedValues;
 		locked: boolean;
 		/** A change; `live` while typing (kept as typed, one undo step with the final value). */
 		onchange: (patch: TagPatch, live?: boolean) => void;
 	}
 
-	let { field, tags, locked, onchange }: Props = $props();
+	let { field, tags, mixed = NOT_MIXED, locked, onchange }: Props = $props();
 
 	/** Rows added and not saved yet (no language or no value), shown first as in iD. */
 	let pending = $state<{ id: number; lang: string; value: string }[]>([]);
 	let nextId = 0;
-	const saved = $derived(translations(field, tags));
+	/** Translations, those whose values differ included (shown empty). */
+	const saved = $derived(
+		translations(field, {
+			...tags,
+			...Object.fromEntries(
+				[...mixed.keys()]
+					.filter((key) => key.startsWith(`${field.key}:`))
+					.map((key) => [key, ""]),
+			),
+		}),
+	);
+	const isMixed = (lang: string) => mixed.has(`${field.key}:${lang}`);
 	const noContext: FieldContext = { deprecated: () => [] };
 
 	/** A language input, offering languages by English name with their own name. */
@@ -85,7 +101,7 @@
 {/snippet}
 
 <div class="flex flex-col gap-2">
-	<TextField {field} {tags} {locked} {onchange} extra={addButton} />
+	<TextField {field} {tags} {mixed} {locked} {onchange} extra={addButton} />
 
 	{#each pending as row (row.id)}
 		{@const lang = languageField(`new-${row.id}`)}
@@ -93,6 +109,7 @@
 			lang,
 			row.lang,
 			row.value,
+			false,
 			(code) => {
 				row.lang = code;
 				settle(row);
@@ -109,6 +126,7 @@
 			languageField(row.lang),
 			row.lang,
 			row.value,
+			isMixed(row.lang),
 			(code) => onchange(translationPatch(field, row.lang, code, row.value)),
 			(value) => onchange(translationPatch(field, row.lang, row.lang, value)),
 			() => onchange({ [`${field.key}:${row.lang}`]: undefined }),
@@ -120,6 +138,8 @@
 	langField: Field,
 	lang: string,
 	value: string,
+	/** The features' values differ: shown empty, its language kept. */
+	rowMixed: boolean,
 	onlang: (code: string) => void,
 	onvalue: (value: string) => void,
 	onremove: () => void,
@@ -132,7 +152,7 @@
 			field={langField}
 			value={lang || undefined}
 			context={noContext}
-			{locked}
+			locked={locked || rowMixed}
 			onchange={(typed) => {
 				const code = typed ? languageCode(typed) : "";
 				if (code && code !== lang) onlang(code);
@@ -145,7 +165,9 @@
 			aria-label={lang
 				? `${field.label} in ${languageName(lang)}`
 				: "Translated name"}
-			placeholder="Translated name"
+			placeholder={rowMixed
+				? t(msg("field_multiple_values"))
+				: "Translated name"}
 			readonly={locked}
 			onchange={(event) => onvalue(cleanValue(event.currentTarget.value))}
 		/>

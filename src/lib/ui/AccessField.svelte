@@ -6,6 +6,8 @@
 	import {
 		type FieldContext,
 		fieldInputId,
+		type MixedValues,
+		NOT_MIXED,
 		type TagPatch,
 	} from "#lib/ui/field-context.ts";
 
@@ -13,11 +15,13 @@
 		/** iD's access field: one row per kind of traffic (`access`, `foot`…). */
 		field: Field;
 		tags: Tags;
+		/** Rows whose values differ between the features edited. */
+		mixed?: MixedValues;
 		locked: boolean;
 		onchange: (patch: TagPatch) => void;
 	}
 
-	let { field, tags, locked, onchange }: Props = $props();
+	let { field, tags, mixed = NOT_MIXED, locked, onchange }: Props = $props();
 
 	const noContext: FieldContext = { deprecated: () => [] };
 
@@ -51,6 +55,7 @@
 			value={tags[type]}
 			context={noContext}
 			{locked}
+			mixed={mixed.has(type)}
 			onchange={(value) => onchange({ [type]: value })}
 		/>
 	{/each}

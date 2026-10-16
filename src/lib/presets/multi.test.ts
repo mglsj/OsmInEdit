@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { chipsIn, combineTags, isMixed } from "./multi.ts";
+import {
+	chipsIn,
+	chipsOver,
+	combineTags,
+	isMixed,
+	tagDiff,
+	withoutChip,
+} from "./multi.ts";
+import type { Field } from "./presets.ts";
 
 describe("combineTags: the tags of several features, as one editor shows them", () => {
 	it("gives one feature's tags as they are, nothing mixed", () => {
@@ -60,5 +68,80 @@ describe("chipsIn: a list field's values over several features", () => {
 			{ value: "sushi", all: true },
 		]);
 		expect(chipsIn(combineTags([{}]), "cuisine")).toEqual([]);
+	});
+});
+
+const field = (extra: Partial<Field>): Field => ({
+	id: "f",
+	key: "cuisine",
+	type: "semiCombo",
+	label: "Cuisine",
+	options: [{ value: "pizza", label: "Pizza" }],
+	terms: [],
+	universal: false,
+	snakeCase: true,
+	caseSensitive: false,
+	customValues: true,
+	autoSuggestions: false,
+	allowDuplicates: false,
+	...extra,
+});
+
+describe("chipsOver: a chip field's chips over several features", () => {
+	it("marks a list's values only some features have", () => {
+		const combined = combineTags([
+			{ cuisine: "pizza;burger" },
+			{ cuisine: "burger" },
+		]);
+		expect(chipsOver(field({}), combined).map((c) => [c.label, c.all])).toEqual(
+			[
+				["Pizza", false],
+				["burger", true],
+			],
+		);
+	});
+
+	it("shows a key set on only some features without a state", () => {
+		const payment = field({ key: "payment:", type: "multiCombo", options: [] });
+		const combined = combineTags([
+			{ "payment:cash": "yes", "payment:card": "yes" },
+			{ "payment:cash": "yes" },
+		]);
+		expect(
+			chipsOver(payment, combined).map((c) => [c.key, c.state, c.all]),
+		).toEqual([
+			["payment:cash", "yes", true],
+			["payment:card", undefined, false],
+		]);
+	});
+});
+
+describe("withoutChip: a chip taken off one feature's own tags", () => {
+	it("removes the value from that feature's list, or its key", () => {
+		const chip = { key: "cuisine", value: "pizza" };
+		expect(withoutChip(field({}), { cuisine: "burger;pizza" }, chip)).toEqual({
+			cuisine: "burger",
+		});
+		expect(withoutChip(field({}), { cuisine: "pizza" }, chip)).toEqual({
+			cuisine: undefined,
+		});
+		expect(withoutChip(field({}), { cuisine: "sushi" }, chip)).toEqual({});
+		const payment = field({ key: "payment:", type: "multiCombo" });
+		expect(
+			withoutChip(
+				payment,
+				{ "payment:cash": "yes" },
+				{ key: "payment:cash", value: "cash" },
+			),
+		).toEqual({ "payment:cash": undefined });
+	});
+});
+
+describe("tagDiff", () => {
+	it("is the patch turning some tags into others", () => {
+		expect(
+			tagDiff({ a: "1", b: "2", c: "3" }, { a: "1", b: "x", d: "4" }),
+		).toEqual({ b: "x", c: undefined, d: "4" });
+		expect(tagDiff({ a: "1" }, { a: "1" })).toEqual({});
 	});
 });

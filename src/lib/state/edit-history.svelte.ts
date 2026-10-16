@@ -90,14 +90,15 @@ export class EditHistory {
 	 */
 	patchTags(
 		ids: readonly EntityId[],
-		patch: TagPatch | ((tags: Tags) => TagPatch),
+		patch: TagPatch | ((tags: Tags, id: EntityId) => TagPatch),
 		{ live = false } = {},
 	): void {
 		const actions: Action[] = [];
 		for (const id of ids) {
 			const entity = this.graph.entity(id);
 			if (!entity) continue;
-			const changes = typeof patch === "function" ? patch(entity.tags) : patch;
+			const changes =
+				typeof patch === "function" ? patch(entity.tags, id) : patch;
 			const tags: Record<string, string> = { ...entity.tags };
 			for (const [key, value] of Object.entries(changes)) {
 				if (value === undefined) delete tags[key];

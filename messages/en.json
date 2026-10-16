@@ -1,6 +1,7 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
 	"field_multiple_values": "Multiple values",
+	"field_some_features": "Only some of the features have it",
 	"undo_change_tags": "Change tags",
 	"undo_change_preset": "Change to {preset}",
 	"undo_add_to_relation": "Add to relation",

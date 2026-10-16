@@ -2,37 +2,49 @@
 	import X from "@lucide/svelte/icons/x";
 	import { tick } from "svelte";
 	import { Checkbox } from "#lib/components/shadcn/checkbox/index.ts";
+	import { msg, t } from "#lib/i18n/messages.ts";
 	import type { Tags } from "#lib/osm/tags.ts";
-	import {
-		addChips,
-		chipsOf,
-		moveChip,
-		removeChip,
-		toggleChip,
-	} from "#lib/presets/combo.ts";
+	import { addChips, moveChip, toggleChip } from "#lib/presets/combo.ts";
+	import { chipsOver, withoutChip } from "#lib/presets/multi.ts";
 	import type { Field } from "#lib/presets/presets.ts";
 	import ComboField from "#lib/ui/ComboField.svelte";
 	import {
+		type FieldChange,
 		type FieldContext,
 		fieldInputId,
-		type TagPatch,
+		type MixedValues,
+		NOT_MIXED,
 	} from "#lib/ui/field-context.ts";
 
 	interface Props {
 		/** A semiCombo (a `;` list), multiCombo (`key:value=yes`) or manyCombo (`value=yes`). */
 		field: Field;
 		tags: Tags;
+		/** Keys whose values differ between the features edited. */
+		mixed?: MixedValues;
 		context: FieldContext;
 		locked: boolean;
-		onchange: (patch: TagPatch) => void;
+		/** Changes are made from each feature's own tags: no feature's list is overwritten. */
+		onchange: (change: FieldChange) => void;
 	}
 
-	let { field, tags, context, locked, onchange }: Props = $props();
+	let {
+		field,
+		tags,
+		mixed = NOT_MIXED,
+		context,
+		locked,
+		onchange,
+	}: Props = $props();
 
 	const id = $derived(fieldInputId(field));
-	const chips = $derived(chipsOf(field, tags));
+	const chips = $derived(chipsOver(field, { tags, mixed }));
 	/** Only a list has an order; keys are switched yes/no instead. */
 	const isList = $derived(field.type === "semiCombo");
+	/** The features' lists differ: they have no common order to change. */
+	const ordered = $derived(
+		isList && !locked && !(field.key && mixed.has(field.key)),
+	);
 	/** A field with a fixed set of values hides its input once they are all chosen (as iD). */
 	const canAdd = $derived(
 		!locked &&
@@ -45,14 +57,14 @@
 
 	async function move(from: number, to: number) {
 		if (to < 0 || to >= chips.length || to === from) return;
-		onchange(moveChip(field, tags, from, to));
+		onchange((own) => moveChip(field, own, from, to));
 		await tick();
 		document.getElementById(`${id}-chip-${to}`)?.focus();
 	}
 
 	/** Alt+← and Alt+→ move a chip of a list, as the floor plan list does. */
 	function onkeydown(event: KeyboardEvent, index: number) {
-		if (!isList || locked || !event.altKey) return;
+		if (!ordered || !event.altKey) return;
 		if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 		event.preventDefault();
 		void move(index, index + (event.key === "ArrowLeft" ? -1 : 1));
@@ -70,16 +82,20 @@
 		<ul aria-label={field.label} class="flex flex-wrap gap-1">
 			{#each chips as chip, i (chip.key + chip.value)}
 				<li
-					draggable={isList && !locked}
+					draggable={ordered}
 					title={[
 						chip.state && !["yes", "no"].includes(chip.state) ? chip.state : "",
-						isList ? `${field.key}=${chip.value}` : `${chip.key}=${chip.state}`,
+						isList
+							? `${field.key}=${chip.value}`
+							: `${chip.key}=${chip.state ?? ""}`,
+						chip.all ? "" : t(msg("field_some_features")),
 					]
 						.filter(Boolean)
 						.join("\n")}
 					class={[
 						"flex h-7 items-center gap-1.5 rounded-md border bg-muted/50 pr-0.5 pl-2 text-sm",
-						isList && !locked && "cursor-grab",
+						!chip.all && "border-dashed text-muted-foreground",
+						ordered && "cursor-grab",
 						dragged === i && "opacity-50",
 						target === i && dragged !== i && "ring-2 ring-ring/50",
 					]}
@@ -105,7 +121,10 @@
 							indeterminate={chip.state !== "yes" && chip.state !== "no"}
 							disabled={locked}
 							aria-label={chip.label}
-							onCheckedChange={() => onchange(toggleChip(tags, chip.key))}
+							onCheckedChange={() =>
+								onchange(
+									chip.all ? toggleChip(tags, chip.key) : { [chip.key]: "yes" },
+								)}
 						/>
 					{/if}
 					<span
@@ -121,9 +140,9 @@
 							type="button"
 							id={`${id}-chip-${i}`}
 							aria-label={`Remove ${chip.label}`}
-							title={isList ? "Remove (Alt+← Alt+→ to move)" : "Remove"}
+							title={ordered ? "Remove (Alt+← Alt+→ to move)" : "Remove"}
 							class="flex size-6 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-							onclick={() => onchange(removeChip(field, tags, i))}
+							onclick={() => onchange((own) => withoutChip(field, own, chip))}
 							onkeydown={(event) => onkeydown(event, i)}
 						>
 							<X class="size-3.5" />
@@ -141,7 +160,7 @@
 			{locked}
 			adding={{
 				chosen: chips.map((c) => c.value),
-				onadd: (typed) => onchange(addChips(field, tags, typed)),
+				onadd: (typed) => onchange((own) => addChips(field, own, typed)),
 			}}
 		/>
 	{/if}

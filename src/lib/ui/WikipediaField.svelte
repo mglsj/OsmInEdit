@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ExternalLink from "@lucide/svelte/icons/external-link";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
+	import { msg, t } from "#lib/i18n/messages.ts";
 	import type { Tags } from "#lib/osm/tags.ts";
 	import type { Field } from "#lib/presets/presets.ts";
 	import { cleanValue } from "#lib/presets/text.ts";
@@ -14,6 +15,8 @@
 	import {
 		type FieldContext,
 		fieldInputId,
+		type MixedValues,
+		NOT_MIXED,
 		type TagPatch,
 	} from "#lib/ui/field-context.ts";
 	import SearchCombo from "#lib/ui/SearchCombo.svelte";
@@ -21,12 +24,21 @@
 	interface Props {
 		field: Field;
 		tags: Tags;
+		/** Keys whose values differ between the features edited. */
+		mixed?: MixedValues;
 		context: FieldContext;
 		locked: boolean;
 		onchange: (patch: TagPatch) => void;
 	}
 
-	let { field, tags, context, locked, onchange }: Props = $props();
+	let {
+		field,
+		tags,
+		mixed = NOT_MIXED,
+		context,
+		locked,
+		onchange,
+	}: Props = $props();
 
 	const ENGLISH: WikipediaSite = ["English", "English", "en"];
 
@@ -133,7 +145,9 @@
 		class="flex-1"
 		value={title}
 		lang={site[2]}
-		placeholder="Article title"
+		placeholder={mixed.has(key)
+			? t(msg("field_multiple_values"))
+			: "Article title"}
 		readonly={locked}
 		search={searchTitles}
 		onchoose={(item) => setTitle(item.key, site, true)}

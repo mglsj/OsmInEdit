@@ -743,6 +743,16 @@ projects, `unit` (Node) and `component` (`*.component.test.ts`, rendered with
 `vitest-browser-svelte` in Playwright's Chromium, `@vitest/browser-playwright`); first tests for
 `ComboField` (keys, filtering, mixed), `SearchCombo` and `TagEditor`; CI's check job installs
 Chromium for them (triggers unchanged).
+R1.10: `presets/multi.ts` (`combineTags`: shared values and each feature's value of mixed
+keys; `chipsOver`, `withoutChip`, `tagDiff`), `history.patchTags(ids, patch | (tags, id) =>
+patch, {live})` (one undo step over every feature, typing folded as `setTags`, which stays for
+the tag text view); `FieldsSection` takes `entities` and changes them all, and every field type
+has a mixed state ("Multiple values"; a check shows – and a click sets yes; list chips only some
+features have are dashed, and are added and removed per feature's own list, lists that differ
+can't be reordered); `readonly` through `Inspector` and `FieldsSection` (a disabled fieldset,
+no action buttons) for P5.3's hover preview. Component tests: `FieldInput` per field type,
+`FieldsSection` (one step over two features, read-only), with `ui/testing/render.ts`
+(`renderWithEditor`).
 
 ### R2: Floor plan content model — M
 

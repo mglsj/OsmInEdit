@@ -8,6 +8,8 @@
 	import * as Command from "#lib/components/shadcn/command/index.ts";
 	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import * as Popover from "#lib/components/shadcn/popover/index.ts";
+	import type { Entity, EntityId } from "#lib/osm/entity.ts";
+	import type { Tags } from "#lib/osm/tags.ts";
 	import { addressSuggestions } from "#lib/presets/address.ts";
 	import {
 		addField,
@@ -19,24 +21,33 @@
 		removeField,
 		revertField,
 	} from "#lib/presets/field-list.ts";
+	import { combineTags, tagDiff } from "#lib/presets/multi.ts";
 	import type { Preset, Field as PresetField } from "#lib/presets/presets.ts";
 	import type { TagReference } from "#lib/presets/wiki.ts";
-	import { type Editor, getEditor } from "#lib/state/editor.svelte.ts";
+	import { getEditor } from "#lib/state/editor.svelte.ts";
 	import FieldInput from "#lib/ui/FieldInput.svelte";
 	import {
+		type FieldChange,
 		type FieldContext,
 		fieldInputId,
-		type TagPatch,
 	} from "#lib/ui/field-context.ts";
 
 	interface Props {
-		entity: NonNullable<Editor["selected"]>;
-		/** The feature's type; the section is made anew when it changes, as in iD. */
+		/** The features edited (one until multi-selection): their values shown together. */
+		entities: readonly Entity[];
+		/** Their type; the section is made anew when it changes, as in iD. */
 		preset: Preset;
+		/** Shown, not edited (the hover preview): no input takes text, no button shows. */
+		readonly?: boolean;
 	}
 
-	let { entity, preset }: Props = $props();
+	let { entities, preset, readonly = false }: Props = $props();
 	const editor = getEditor();
+
+	/** The feature fields are looked up for (its geometry, the data around it). */
+	const entity = $derived(entities[0] as Entity);
+	const ids = $derived(entities.map((e) => e.id));
+	const combined = $derived(combineTags(entities.map((e) => e.tags)));
 
 	/** Fields added from "Add field", or emptied here: they stay until the feature is left. */
 	const added = new SvelteSet<string>();
@@ -48,13 +59,12 @@
 			? fieldList(
 					editor.catalog.presets,
 					preset,
-					entity.tags,
+					combined.tags,
 					editor.geometryOf(entity),
 					added,
 				)
 			: { shown: [], addable: [] },
 	);
-	const downloaded = $derived(editor.history.downloadedTags(entity.id));
 	const found = $derived(
 		query.trim()
 			? list.addable.filter((f) => matchesField(f, query))
@@ -82,6 +92,8 @@
 		deprecated: (key) => editor.catalog.deprecatedValues.get(key) ?? [],
 		field: (id) => editor.catalog.presets?.field(id),
 		amend: (work) => {
+			// Tags looked up after an edit (a Wikidata item's article) follow one feature only.
+			if (entities.length !== 1) return;
 			const after = editor.graph;
 			const id = entity.id;
 			work
@@ -106,78 +118,90 @@
 			),
 	};
 
-	/** Applies a field's change to the feature's tags as they are now (`live` while typing). */
-	function setField(patch: TagPatch, live = false) {
-		const tags: Record<string, string> = {
-			...(editor.graph.entity(entity.id)?.tags ?? entity.tags),
-		};
-		for (const [key, value] of Object.entries(patch)) {
-			if (value === undefined) delete tags[key];
-			else tags[key] = value;
-		}
-		editor.history.setTags(entity.id, tags, { live });
+	/** Applies a field's change to every feature's tags as they are now (`live` while typing). */
+	function setField(change: FieldChange, live = false) {
+		editor.history.patchTags(ids, change, { live });
+	}
+
+	/** Each feature's tags made into others, as a change of only what differs. */
+	function changeEach(next: (tags: Tags, id: EntityId) => Tags) {
+		editor.history.patchTags(ids, (tags, id) => tagDiff(tags, next(tags, id)));
 	}
 
 	function remove(field: PresetField) {
 		added.add(field.id);
-		editor.history.setTags(entity.id, removeField(field, entity.tags));
+		changeEach((tags) => removeField(field, tags));
+	}
+
+	function revert(field: PresetField) {
+		changeEach((tags, id) =>
+			revertField(field, editor.history.downloadedTags(id), tags),
+		);
 	}
 
 	async function add(field: PresetField) {
 		adding = false;
 		query = "";
 		added.add(field.id);
-		const tags = addField(field, entity.tags);
-		if (tags !== entity.tags) editor.history.setTags(entity.id, tags);
+		changeEach((tags) => addField(field, tags));
 		await tick();
 		document.getElementById(fieldInputId(field))?.focus();
 	}
+
+	const lockedAny = (field: PresetField) =>
+		entities.some((e) => isLocked(field, e.tags));
+	const modifiedAny = (field: PresetField) =>
+		entities.some((e) =>
+			isModified(field, editor.history.downloadedTags(e.id), e.tags),
+		);
+	const valueAny = (field: PresetField) =>
+		entities.some((e) => hasValue(field, e.tags));
 </script>
 
-<Field.Group class="gap-4">
-	{#each list.shown as field (field.id)}
-		{@const locked = isLocked(field, entity.tags)}
-		<FieldInput
-			{field}
-			{locked}
-			tags={entity.tags}
-			{context}
-			onchange={setField}
-		>
-			{#snippet actions()}
-				{#if !locked && isModified(field, downloaded, entity.tags)}
-					<Button
-						variant="ghost"
-						size="icon-xs"
-						aria-label={`Revert ${field.label}`}
-						title="Revert to the downloaded value"
-						onclick={() =>
-							editor.history.setTags(
-								entity.id,
-								revertField(field, downloaded, entity.tags),
-							)}
-					>
-						<Undo2 />
-					</Button>
-				{/if}
-				{#if !locked && hasValue(field, entity.tags)}
-					<Button
-						variant="ghost"
-						size="icon-xs"
-						aria-label={`Remove ${field.label}`}
-						title="Remove"
-						class="text-muted-foreground hover:text-destructive"
-						onclick={() => remove(field)}
-					>
-						<Trash2 />
-					</Button>
-				{/if}
-			{/snippet}
-		</FieldInput>
-	{/each}
-</Field.Group>
+<!-- Disabled, so is every input and button in it (the hover preview). -->
+<fieldset disabled={readonly} class="contents">
+	<Field.Group class="gap-4">
+		{#each list.shown as field (field.id)}
+			{@const locked = lockedAny(field)}
+			<FieldInput
+				{field}
+				{locked}
+				tags={combined.tags}
+				mixed={combined.mixed}
+				{context}
+				onchange={setField}
+			>
+				{#snippet actions()}
+					{#if !readonly && !locked && modifiedAny(field)}
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							aria-label={`Revert ${field.label}`}
+							title="Revert to the downloaded value"
+							onclick={() => revert(field)}
+						>
+							<Undo2 />
+						</Button>
+					{/if}
+					{#if !readonly && !locked && valueAny(field)}
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							aria-label={`Remove ${field.label}`}
+							title="Remove"
+							class="text-muted-foreground hover:text-destructive"
+							onclick={() => remove(field)}
+						>
+							<Trash2 />
+						</Button>
+					{/if}
+				{/snippet}
+			</FieldInput>
+		{/each}
+	</Field.Group>
+</fieldset>
 
-{#if list.addable.length > 0}
+{#if !readonly && list.addable.length > 0}
 	<Popover.Root bind:open={adding}>
 		<Popover.Trigger>
 			{#snippet child({

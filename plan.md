@@ -366,7 +366,9 @@ localized, address and access fields (`presets/text.ts`, `localized.ts`, `addres
 `AccessField`); (7) ✅ Wikidata, Wikipedia and wiki references
 (`api/wikidata.ts`, `api/osm-wikibase.ts`, `presets/wiki.ts`, `ui/WikidataField.svelte`,
 `ui/WikipediaField.svelte`, `ui/TagReference.svelte`); (8) ✅ tag
-table (`ui/TagEditor.svelte`, `osm/tag-rows.ts`, `presets/tag-table.ts`); (9) relations and members; (10) one undo step per field edit. Hover preview and
+table (`ui/TagEditor.svelte`, `osm/tag-rows.ts`, `presets/tag-table.ts`); (9) ✅ relations and
+members (`actions/members.ts`, `osm/relations.ts`, `ui/RelationsSection.svelte`,
+`ui/MembersSection.svelte`); (10) one undo step per field edit. Hover preview and
 multi-selection come with P5.3.
 
 The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`,
@@ -438,9 +440,16 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
   value (the editor keeps no tag without a value, where iD adds `key=` at once), an emptied
   value removes the tag, and the text view is sorted by key (iD's follows the list). Mixed
   values in a multi-selection show "Multiple values" (with P5.3).
-- **Relations and members** ✔: parent relations with roles (role autocomplete from
-  taginfo), adding the feature to a relation in view or to a new one, removing it; for a
-  selected relation, its members with roles, zoom-to and reorder.
+- **Relations and members** ✔: "Relations (N)" lists a row per membership (sorted by type and
+  name, those just added last) with its role (taginfo's roles for the relation type and the
+  member's geometry), select, zoom-to, remove and, for incomplete relations, download
+  (`/relation/{id}/full`); "Add to a relation" offers a new relation (selected, its type
+  list open) or one typed by id or in view (connected ones first, then the newest). A
+  relation's "Members (N)" lists its members with roles, select (zooming when out of view),
+  zoom-to, remove (an emptied relation is deleted), download for incomplete members, and
+  reorder by dragging or Alt+↑/↓ (an addition to iD). Differences: members are added at
+  the end (iD orders ways along routes), the download loads the whole relation, and rows
+  don't highlight on the map until hover comes with P5.3.
 - **Multi-selection** ✔ (with P5.3's multi-select): "Features (N)" list, the fields the
   selected presets share, "Multiple values", edits applied to each feature in one undo step.
 - **Hover preview** ✔: hovering a feature shows its editor read-only.

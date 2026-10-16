@@ -9,7 +9,8 @@
 	import * as Alert from "#lib/components/shadcn/alert/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
-	import { isNewId, osmId } from "#lib/osm/entity.ts";
+	import { type EntityId, isNewId, osmId } from "#lib/osm/entity.ts";
+	import type { Extent } from "#lib/osm/relations.ts";
 	import type { Preset } from "#lib/presets/presets.ts";
 	import { keySuggestions, valueSuggestions } from "#lib/presets/tag-table.ts";
 	import { presetReference } from "#lib/presets/wiki.ts";
@@ -17,8 +18,10 @@
 	import FieldsSection from "#lib/ui/FieldsSection.svelte";
 	import InfoButton from "#lib/ui/InfoButton.svelte";
 	import InspectorSection from "#lib/ui/InspectorSection.svelte";
+	import MembersSection from "#lib/ui/MembersSection.svelte";
 	import PresetIcon from "#lib/ui/PresetIcon.svelte";
 	import PresetList from "#lib/ui/PresetList.svelte";
+	import RelationsSection from "#lib/ui/RelationsSection.svelte";
 	import TagEditor from "#lib/ui/TagEditor.svelte";
 	import TagReference from "#lib/ui/TagReference.svelte";
 	import { timeAgo } from "#lib/ui/time-ago.ts";
@@ -32,15 +35,25 @@
 		entity: NonNullable<Editor["selected"]>;
 		/** openstreetmap.org, or the configured website, for "View on openstreetmap.org". */
 		websiteUrl: string;
+		/** The part of the map in view, for the relations a feature can be added to. */
+		viewExtent?: () => Extent | undefined;
+		/** Fits a feature in view. */
+		onzoom?: (id: EntityId) => void;
+		/** Selects a feature, and shows it when out of view (a relation's member). */
+		onshow?: (id: EntityId) => void;
 	}
 
-	let { editor, entity, websiteUrl }: Props = $props();
+	let { editor, entity, websiteUrl, viewExtent, onzoom, onshow }: Props =
+		$props();
 
 	/** The feature as selected: closing turns into a ✓ once it was changed. */
 	const selectedAs = untrack(() => entity);
 	const changed = $derived(entity !== selectedAs);
 
-	let choosing = $state(false);
+	/** A new feature without tags starts on its type, as iD's `newFeature`. */
+	let choosing = $state(
+		untrack(() => isNewId(entity.id) && Object.keys(entity.tags).length === 0),
+	);
 
 	const geometry = $derived(editor.geometryOf(entity));
 	const preset = $derived(editor.presetOf(entity));
@@ -219,6 +232,16 @@
 						: undefined}
 				/>
 			</InspectorSection>
+
+			{#if entity.type === "relation"}
+				<MembersSection
+					{editor}
+					relation={entity}
+					onshow={onshow ?? ((id) => editor.select(id))}
+					{onzoom}
+				/>
+			{/if}
+			<RelationsSection {editor} {entity} {viewExtent} {onzoom} />
 		</ScrollArea>
 
 		{#if !isNewId(entity.id)}

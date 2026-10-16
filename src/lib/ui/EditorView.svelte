@@ -40,6 +40,11 @@
 	} from "#lib/map/maplibre.ts";
 	import { PlanDragging } from "#lib/map/plan-dragging.ts";
 	import type { EntityId } from "#lib/osm/entity.ts";
+	import {
+		type Extent,
+		entityExtent,
+		extentsIntersect,
+	} from "#lib/osm/relations.ts";
 	import { IndexedDbPlanStore } from "#lib/persist/plan-store.ts";
 	import { Editor } from "#lib/state/editor.svelte.ts";
 	import {
@@ -259,6 +264,48 @@
 		return best;
 	}
 
+	/** The map in view, as an extent. */
+	function visibleExtent(): Extent | undefined {
+		const bounds = map?.getBounds();
+		return (
+			bounds && {
+				west: bounds.getWest(),
+				south: bounds.getSouth(),
+				east: bounds.getEast(),
+				north: bounds.getNorth(),
+			}
+		);
+	}
+
+	/** Fits a feature in the part of the map the side panel leaves visible. */
+	function zoomTo(id: EntityId) {
+		const extent = entityExtent(editor.graph, id);
+		if (!map || !extent) return;
+		map.fitBounds(
+			[
+				[extent.west, extent.south],
+				[extent.east, extent.north],
+			],
+			{
+				padding: {
+					top: 60,
+					bottom: 60,
+					right: 60,
+					left: (sidePanel?.offsetWidth ?? 0) + 60,
+				},
+				maxZoom: 20,
+			},
+		);
+	}
+
+	/** Selects a feature, zooming to it when none of it is in view (a relation's member, as iD). */
+	function show(id: EntityId) {
+		editor.select(id);
+		const extent = entityExtent(editor.graph, id);
+		const view = visibleExtent();
+		if (extent && view && !extentsIntersect(extent, view)) zoomTo(id);
+	}
+
 	/** The side panel, which covers the left of the map while it is open. */
 	let sidePanel = $state<HTMLElement>();
 
@@ -419,7 +466,14 @@
 	>
 		{#if editor.selected}
 			{#key editor.selected.id}
-				<Inspector {editor} entity={editor.selected} {websiteUrl} />
+				<Inspector
+					{editor}
+					entity={editor.selected}
+					{websiteUrl}
+					viewExtent={visibleExtent}
+					onzoom={zoomTo}
+					onshow={show}
+				/>
 			{/key}
 		{:else}
 			<FloorPlansPanel

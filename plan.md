@@ -25,7 +25,13 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P3    | Presets, validation, upload                | Done        |
 | P4    | Floor plans                                | Done        |
 | P4.1  | Floor plan layers, edit sessions, align UX | Done        |
-| P5    | Feature editor, fast core, geometry        | Next        |
+| P5.0–2 | Quick fixes, feature editor, fast core    | Done        |
+| R0    | Fixes and fast feedback (review)           | Next        |
+| R1    | Foundations for editing (review)           | Not started |
+| R2    | Floor plan content model (review)          | Not started |
+| P4.2  | Vector and light raster floor plans        | Not started |
+| P5.3  | Geometry editing                           | Not started |
+| P5.4  | Autosave and conflicts                     | Not started |
 | P6    | Parity and polish                          | Not started |
 
 ## Why a rewrite (findings from the 1.x code)
@@ -98,12 +104,14 @@ src/lib/
   presets/     load, match, search, fields, recent, overlay/indoor.json
   validation/  rules/*, upgrades (deprecated tag → one-click fix)
   map/         maplibre (entry point), hash, sources (graph → GeoJSON), style/*, imagery/*
-  edit/        modes/{browse,select,draw-point,draw-line,draw-area,drag,floorplan-align},
-               behaviors/{hover,snap,keys,hit-test}
-  floorplans/  import/{raster,pdf,svg}, georef/{similarity,affine,homography,fit}, tiling, store
-  persist/     idb, autosave
-  state/       editor.svelte.ts, session.svelte.ts, floorplans.svelte.ts
-  ui/          layout, panes, components
+  edit/        mode-manager, modes/{browse,select,draw-*,drag-node,floorplan,floorplan-tool},
+               drag, keys (R1)
+  floorplans/  import, plan-io (R2), georef, tiling, plan-file, vector extraction (P4.2)
+  persist/     plan-store, autosave (P5.4)
+  state/       history, selection, data sync, catalog, validator (R1 split of editor.svelte.ts),
+               session.svelte.ts, floorplans.svelte.ts
+  map/         layer-slots (R1), snap (P5.3), plan WebGL layer (P4.2)
+  ui/          components, one headless Combobox (R1)
 ```
 
 - **Pure modules** (`osm`, `levels`, `actions`, `presets`, `validation`, `floorplans/georef`)
@@ -333,7 +341,7 @@ user are marked ✔; the rest follow from them.
    clicking a row switches the level; inline rename saved by Done, dropped by Cancel.
 6. ✅ PDF pages. E2E: importing pages 1 and 2 of `plan.pdf` adds two plans, both on level 0.
 
-### P5: Feature editor, fast core, geometry editing — next
+### P5: Feature editor, fast core, geometry editing — P5.0 to P5.2 done
 
 Order agreed with the user: quick performance fixes, then the iD-style feature editor, then
 the fast core (needed before anything is dragged), then geometry editing. Decisions agreed
@@ -498,29 +506,268 @@ into an empty editor stay at the full build's 45–60 ms (big downloads are rebu
 
 #### P5.3 Geometry editing
 
-- Modes: browse, select/multi-select, drag node (moves every parent way), draw point, line, area;
-  snapping (rbush, 8 px, current level only).
-- Operations: add vertex at midpoint; delete with cleanup (keep POI and shared nodes, drop empty
-  relations); door on wall; orthogonalize (port iD's current action); copy/paste features and
-  tags; copy level.
-- Building, Levels and Features workflows; simple multipolygons (outer + inner).
-- Door widths and incline/conveying arrows on the map; incremental source updates on edit.
-- Floor plans (from P4): snap control points to building outlines, numeric offset, assign
-  plans to a building.
-- Spatial validation (from P3): level outside the building's levels, missing `indoor=level`
-  outline; empty keys or values.
-- History autosaved to IndexedDB with a restore prompt and a `beforeunload` guard.
+Replanned after the review below: see R1, P4.2, P5.3 and P5.4 in the roadmap.
 
-Later, nice to have: build floor plan pyramids on first display and in a worker (an
-8192 × 8192 plan keeps about 360 MB of halved images today), and keep original image files
-instead of re-encoding them as PNG.
+## Review before geometry editing (October 2026)
 
-### P6: Parity and polish
+A read-through of the whole codebase (about 23,000 lines, 571 unit and 115 e2e tests) against
+what comes next: geometry editing, vector floor plans, light raster plans, autosave, conflicts
+and translations. Most of the code is in good shape; what blocks or slows the next phases is
+listed here, with the file and the fix. Effort: S small, M medium, L large.
 
-- i18n with Paraglide; migrate 1.x UI translations (en, fr, de, it, hu, cs, es); preset and
-  field translations from the schema; recent presets in the type picker.
-- Keyboard shortcuts, help, indoor= preview (origin-checked `postMessage`), conflict dialog,
-  README and usage docs. Release gate: an e2e checklist of 1.x features.
+**Bugs found on the way**
+
+- Duplicate issue ids: `validate.ts` builds `${rule}:${entity.id}`, and `levelIssues` can raise
+  `unreadable-level` for both `level` and `repeat_on`; `level=G` with `repeat_on=G` gives two
+  issues with one id, a duplicate key in the Inspector's and the Save dialog's keyed lists (S).
+- Map readiness race: `indoor-map.ts`, `floorplan-layers.ts` and `PlanToolLayer` install with
+  `map.isStyleLoaded() ? install() : map.once("load", install)`. In MapLibre 6
+  `isStyleLoaded()` is false while any tile or image loads, and `load` fires only once, so a
+  layer owner created later (mid-pan) never installs. It works today only because all owners
+  exist before the first load; every P5.3 overlay and the vector plan layer would hit it (S).
+- `plan-store.ts` `load()` drops plans without an image blob: a plan without a raster would
+  vanish on reload (S, with the schema change below).
+- `graph.newId()` doesn't reserve the id: two calls before a `replace` return the same one;
+  drawing an area or pasting needs several (S).
+- `History.perform` adds a step even when an action changed nothing (S).
+- Deleting a relation leaves its untagged member ways behind, invisible but uploaded (iD
+  deletes members left untagged and in no other relation) (S).
+- Conflicts can't be resolved: `History.merge` drops the server's newer version of an entity
+  edited locally, `MapLoader` never downloads a tile twice, and every 409 is a "conflict" (a
+  closed changeset is one too); the Save dialog's advice, "reload the area, then upload again",
+  leads nowhere (L, phase C).
+
+**Map and view: what blocks geometry editing**
+
+- No mode or event owner: the mode is two flags (`planMode`, `floorplans.tool`) read in about
+  eight places of `EditorView.svelte` (606 lines); three separate click listeners
+  (`IndoorMap.onClick`, the alignment tool, `PlanDragging`) each decide whether they apply; one
+  window keydown handler guesses "typing" from `closest("input, textarea, select")`; the
+  cursor is written from three places. Every new mode would add a flag to every listener (M–L).
+- Layer order is set in four places, by other modules' layer ids (`ABOVE_LABELS`,
+  `"indoor-outline"`, `"indoor-fill"`, `FLOORPLAN_PREFIX`) and by install order; plans end up
+  under `indoor-fill` if the effects run in another order (M).
+- Vertices, midpoints and untagged member ways aren't drawn (`features.ts`: no feature without
+  interesting tags), so nothing can be hit to drag or split (M).
+- Selection is one id (`selectedId`, `{#key editor.selected.id}`, `setSelected(id)`); there is no
+  hover state (M).
+- `PlanDragging` uses mouse events on the map: no pointer capture, no threshold (a click
+  commits a placement), no Escape, no frame coalescing; node dragging can't reuse it (M).
+- MapLibre's double-click zoom, box zoom (Shift+drag) and right-drag rotation clash with
+  finishing a line, lasso selection and an operations menu (S).
+- `snap()` and the shown `level` live in `EditorView`; drawing needs both, and snapping to a
+  segment, not only a node (S).
+
+**Data model and state**
+
+- `Editor` (362 lines) is becoming a god object: history and typing, loading, map features,
+  presets and upgrades, recent presets, five web services, validation, upload, selection,
+  relation commands. Geometry editing would add modes, hover, multi-selection, the clipboard,
+  autosave and conflicts (M).
+- One entity everywhere: `setTags(id, tags)` replaces the whole tag set, fields send whole
+  tags, `#typing` is one id. Multi-selection needs `setTags(ids, patch)` and a "mixed" state in
+  every field type (only `text.ts` knows it) (M).
+- History can't be saved: `Graph` and `History` keep their data in private fields with no
+  export; steps don't record the selection (iD does, for undo to reselect) (M).
+- Undo labels, issue messages, fix labels and floor plan errors are English strings built in
+  pure modules (`validate.ts`, `georef.ts`, `editor.svelte.ts`): translation and autosave both
+  want `{key, params}` instead (S now, M later).
+- Geometry helpers are duplicated and disagree: three "closed way" tests (`area.ts`,
+  `address.ts` need more than 3 nodes, `delete.ts` more than 2), point-in-polygon twice,
+  extents in `relations.ts` and `address.ts`, `joinRings` private to `map/features.ts`,
+  distances in `georef.ts` and `address.ts` (S–M).
+- Validation sees only created and modified entities: a door left behind by a deleted wall is
+  never reported; `editIssues` is a getter re-run on every read; spatial rules need an area
+  index (M).
+- Every new graph copies all local edits and rebuilds its local parent index: fine at hundreds
+  of edits, to be measured at 10,000 before dragging goes through history (benchmark first).
+
+**Floor plans: what blocks vector and light raster plans**
+
+- `PlanImage` mixes the plan's size with raster data (`width/height` used in about 9 places,
+  `levels` in 3, `blob` in 4); nothing else can describe a plan (M).
+- Plan coordinates are rendered pixels, so they depend on the import DPI and the 8,192 px cap;
+  vector paths come in PDF points. Plan units should be PDF points (SVG user units), fixed
+  before anything is stored in a new format (S).
+- The IndexedDB store has no real migrations (`upgrade` ignores `oldVersion`), reads every
+  image blob at load, and keeps a PNG rendering instead of the original file (M).
+- Every reload decodes every plan in full and rebuilds its pyramid before showing any
+  (1.6 s + 1.6 s per 8,192 px plan, about 250 MB each) (M).
+- The map layer adds every tile of a pyramid level as an image source, on screen or not, and
+  only reacts to zoom (M).
+- The plan's transform maps to absolute Web Mercator metres (about 10⁷): fine as a 3 × 3
+  matrix, but it must be multiplied with the camera on the CPU in float64 before reaching a
+  shader, or lines jitter by centimetres (S).
+- Import, export and the PDF page loop live in `FloorPlansPanel.svelte` (854 lines), on the
+  main thread, untested (`import.ts` has no unit tests) (M).
+- The plan file format requires an embedded raster (`imageOf` throws without one) and never
+  checks its version (M).
+
+**UI, tests and CI**
+
+- Three combobox implementations: `ComboField` (384 lines, four mode flags, callers fake a
+  preset `Field` to use it), `SearchCombo` (same popover, debounce and highlight code) and
+  shadcn `Command` lists. "Multiple values" and keyboard work would be done twice (M).
+- Services are wired by hand about eight times
+  (`editor.taginfo ? (q) => editor.taginfo?.x(...) ?? Promise.resolve([]) : undefined`), and
+  `editor` is passed into five components (S).
+- No read-only mode outside the fields, for the hover preview (S).
+- About 300 user-facing English strings (230 in components, 70 in modules), hand-made plurals,
+  `"en"` hard-coded in `time-ago.ts` and `localized.ts`, "Ctrl+Z" tooltips (no ⌘ on Mac) (M).
+- CI only runs on pushes to `master` and on pull requests, so this branch has never run in
+  CI; no Bun or Playwright cache; `retries: 1` hides flaky tests (S).
+- E2E: no `fullyParallel`, 4.3 minutes for 115 tests on one worker here; the
+  click-until-the-inspector-opens loop is copied three times; two unexplained one-off failures
+  in P5.2's full runs; no component tests, so all UI logic waits for the e2e run (S–M).
+- Leftovers: `editor_name` in `config.json` is never read, `loadConfig` doesn't validate,
+  two shadcn components (`card`, `native-select`) are unused (S).
+
+**Keep as they are:** immutable entities and graphs with `Graph.update`; `changedSince` by
+identity and the incremental `FeatureStore`; osmChange ordering and `if-unused`; levels as
+ranges, never rewritten; `georef.ts` (one 3 × 3 matrix for similarity, affine and projective,
+ready for a shader); `tiling.ts` with hysteresis; plan edit sessions (preview, then commit on
+release, the pattern node dragging needs); field inputs taking `tags` and emitting patches;
+ARIA combobox and listbox patterns; the network-blocking e2e fixture and pixel checks; lazy
+pdf.js and presets (the bundle is fine: 421 KB gzipped plus MapLibre's worker).
+
+## Roadmap from here (proposed, to agree with the user)
+
+Order: fix what's broken and make tests fast (R0), lay the foundations that editing and plans
+share (R1), move floor plans to a content model (R2), then the features: vector and light
+raster plans (P4.2), geometry editing (P5.3), autosave and conflicts (P5.4), parity (P6).
+Vector plans come before editing so that drawing can snap to plan walls from the start. Each
+slice still agrees its test seams first.
+
+### R0: Fixes and fast feedback — S
+
+1. The six bugs above that are small: duplicate issue ids, readiness race (`whenStyleReady`
+   plus an `AbortSignal` per layer owner), `newIds(type, n)`, no empty undo steps, relation
+   delete cleanup, the store keeping image-less plans (behind R2's schema).
+2. CI on every push to a branch, with Bun and Playwright caches, `concurrency:
+   cancel-in-progress`, a sharded e2e job, and flaky tests reported instead of hidden.
+3. E2E: `fullyParallel`; a map readiness signal (`data-idle` once the source has data) so a
+   test clicks once instead of looping; `clickMap()`, `lngLatAt()` and an `inspector(page)`
+   page object in `fixtures.ts`; `locale: "en-US"` pinned.
+4. Leftovers: `editor_name`, unused shadcn components, config validation with defaults.
+
+### R1: Foundations for editing — M–L
+
+1. **Layer slots** (`map/layer-slots.ts`): invisible anchor layers (imagery, plans, indoor,
+   edit overlay, tools) installed once; every owner inserts before a slot.
+2. **Modes** (`edit/modes/*`, `edit/mode-manager.ts`): one owner of the map's pointer and
+   key events hands them to the current mode (`enter`, `exit`, pointer, click, key, cursor,
+   which MapLibre handlers stay on). Today's floor plan mode and alignment tools become the
+   first two modes; browse and select follow. `EditorView` keeps only the current mode.
+3. **Keys** (`edit/keys.ts`): a pure keymap per mode (`{keys, label, when, run}`), active only
+   while the map or page has focus; the P6 shortcuts help lists it. ⌘ on Mac.
+4. **Drag behaviour** (`edit/drag.ts`): pointer events with capture, a 3 px threshold, one
+   update per frame, Escape cancels, the click after a drag swallowed. `PlanDragging` moves
+   onto it.
+5. **Selection** (`state/selection.svelte.ts`): `ids` and `hover`, feature-state for both;
+   `{#key}` on the selection, not one id.
+6. **Split `Editor`**: history (graph, perform, typing, later autosave), selection, data sync
+   (loader, merge, upload, later conflicts), catalog (presets, upgrades, services as one
+   object provided by context), validator (affected set: changed entities plus parents,
+   children and nodes left by deleted ways; issues cached per entity). Commands become plain
+   functions.
+7. **Messages as keys**: undo labels, issues, fixes and floor plan errors become
+   `{key, params}`, rendered in English for now (P6 translates them).
+8. **`osm/geometry.ts`**: one closed-way test, rings, point in polygon, extents, Web Mercator
+   projection, midpoints, distance to a segment; `graph.childNodes(way)`. Callers move to it.
+9. **One combobox** (`ui/Combobox.svelte`, headless: input, listbox, highlight, debounce,
+   `suggest(query)`, a mixed state); `ComboField`, `SearchCombo`, the tag table and roles
+   become thin wrappers.
+10. **Many features in the Inspector's data model**: `setTags(ids, patch, {live})` in one undo
+    step; fields send patches only; `values(key)` per field with a mixed state in every field
+    type; a `readonly` prop through the Inspector for the hover preview.
+11. **Component tests**: Vitest browser mode (Playwright's Chromium) for the combobox, the tag
+    table and mixed values, so the Inspector work doesn't wait on the e2e run.
+12. **Measure history at scale**: a bench of 10,000 local edits; structural sharing in `Graph`
+    only if an edit there costs more than a frame.
+
+### R2: Floor plan content model — M
+
+1. `PlanContent = { size in plan units, raster?, vector?, thumbnail }`; plan units are PDF
+   points (SVG user units, image pixels for photos and scans); bitmaps leave the reactive
+   `FloorPlan` for a content cache.
+2. IndexedDB schema 3 with migrations from 1 and 2: plan metadata, pre-cut tiles
+   (`[plan, level, x, y]` → WebP), vector geometry, the original file, thumbnails. Restore loads
+   metadata only; content loads when shown.
+3. `floorplans/plan-io.ts`: import and export out of the panel, tested; heavy work (tile
+   cutting, WebP encoding, path flattening) in one module worker; pdf.js keeps parsing in its
+   own worker.
+4. Plan file format 2 (raster, vector or original file; size required; version checked); the
+   v1 and 1.x readers stay.
+5. The panel split into a plan list and the alignment tools; 128 px thumbnails.
+
+### P4.2: Vector and light raster plans — M–L
+
+1. **Vector extraction**: stroked and filled paths from PDF pages (pdf.js operator list with
+   the transform tracked through save and restore) and SVG files (parsed with `DOMParser`,
+   never attached to the page), as Float32 positions, indices and per-path styles, stored
+   with the plan. Measured on the user's A3 plans: up to 195,000 paths and 550,000 segments
+   a page, 6 MB; extraction 63 ms after pdf.js's own parse (about 3 s, once).
+2. **WebGL plan layer**: one MapLibre custom layer per plan, lines drawn as instanced quads;
+   the plan's 3 × 3 transform combined with the camera on the CPU in float64 each frame
+   (relative to the plan's centre), so moving and aligning only changes a uniform;
+   projective plans divide in the shader. Ordered by the plans' stack as today.
+3. **Text and CAD layers**: text from pdf.js's text content as labels (or a light image layer
+   for text only); optional content groups as layer toggles in the panel.
+4. **Light raster plans**: only on-screen tiles at the needed level, decoded on demand, an
+   LRU that closes bitmaps, stored tiles, updates on pan as well as zoom. For scans, photos
+   and image-heavy PDFs.
+5. **Plan vertices for snapping**: an rbush of plan vertices in plan units, queried through
+   the inverse transform; used by P5.3's snapping.
+
+### P5.3: Geometry editing — L
+
+On R1's modes, drag, selection and geometry. Slices:
+
+1. Edit overlay: vertices and midpoints of the selected and hovered ways (and shared
+   vertices from zoom 18), untagged member ways as thin lines; the drag preview lives here.
+2. Snapping (`map/snap.ts`): node, then segment, then plan vertex, on the shown level, 8 px.
+3. Drag a node (moves every way using it), committed on release in one step.
+4. Draw point, line and area, tagged with the shown level; add a vertex at a midpoint
+   (in every way sharing the segment).
+5. Operations: delete with cleanup, door on a wall, orthogonalize (iD's current action),
+   copy and paste (ids remapped, pasted features selected), copy level, disconnect.
+6. Multi-selection (Shift+click, lasso) with the Inspector's shared fields and "Multiple
+   values"; hover preview, read-only.
+7. Simple multipolygons (outer and inner) and member editing on the map.
+8. Map details from P3: door widths, incline and conveying arrows.
+9. Spatial validation: level outside the building's levels, missing `indoor=level` outline,
+   door not on a wall, empty keys or values; an area index for "which building".
+10. Floor plans: snap control points to building outlines, numeric offset, assign plans to a
+    building.
+
+### P5.4: Autosave and conflicts — M–L
+
+1. Autosave: history saved to IndexedDB as per-step differences with their selection and
+   labels, the base versions of edited entities and `nextId`; a restore prompt on start; a
+   `beforeunload` guard; the open changeset id remembered so a retry after a lost response
+   checks it first.
+2. Conflicts: the server's newer versions kept next to the base; `OsmApi.loadEntities(ids)`;
+   `MapLoader.invalidate(area)`; 409, 410 and 412 bodies parsed into entity ids; versions
+   taken from the base when uploading; a conflict dialog (keep mine, take theirs, per entity).
+3. After upload, uploaded entities take the uploader and the time.
+
+### P6: Parity and polish — M
+
+- Translations with Paraglide (one module per locale), migrating 1.x's (en, fr, de, it, hu,
+  cs, es); preset and field names from the schema; plurals and dates from `Intl`.
+- Shortcuts help (from the keymap), help pages, indoor= preview (origin-checked
+  `postMessage`), README and usage docs.
+- Release: an e2e checklist of 1.x features, `LICENSE` (ISC notice for ported code), the
+  `legacy-v1.0.16` tag.
+
+### Decisions to take with the user
+
+- The order above, and vector plans (P4.2) before geometry editing (P5.3).
+- The custom WebGL layer rather than deck.gl (`@deck.gl/maplibre` supports MapLibre 6, but its
+  model matrix is affine only, and it adds a large dependency).
+- Vector plan text as labels or as a light image layer.
+- Component tests in Vitest browser mode (a new dev dependency).
+- CI on every branch push (uses more Actions minutes).
 
 ## Testing strategy
 
@@ -541,6 +788,8 @@ instead of re-encoding them as PNG.
 | OAuth redirect URIs per domain                       | Separate client ids per deployment in `config.json`         |
 | Biome's Svelte support is still experimental         | Keep `svelte-check` in CI; fall back to Prettier for `.svelte` if formatting breaks markup |
 | Losing 1.x features                                  | Legacy code kept at `cd1e955`; P6 parity checklist          |
+| GPU float32 precision for plans in Web Mercator      | Combine transform and camera in float64 on the CPU, relative to the plan's centre |
+| Refactors (R0–R2) breaking working features          | One refactor per slice, e2e suite green before and after, no behaviour change mixed in |
 
 ## Open questions
 

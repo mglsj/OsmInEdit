@@ -156,3 +156,25 @@ describe("Taginfo.multikeys", () => {
 		expect(url.searchParams.get("sortname")).toBe("count_nodes");
 	});
 });
+
+describe("Taginfo.keys", () => {
+	it("lists the keys used often or documented, simple keys first", async () => {
+		const { taginfo, requests } = fakeTaginfo([
+			{ key: "level:ref", count_all: 9000 },
+			{ key: "level", count_all: 5000 },
+			{ key: "levelz", count_all: 10 },
+			{ key: "level_note", count_all: 10, in_wiki: true },
+			{ key: "created_by", count_all: 99999 },
+		]);
+		expect(
+			(await taginfo.keys({ query: "lev", geometry: "area" })).map(
+				(k) => k.value,
+			),
+		).toEqual(["level", "level_note", "level:ref"]);
+		const url = requests()[0] as URL;
+		expect(url.pathname).toBe("/api/4/keys/all");
+		expect(url.searchParams.get("query")).toBe("lev");
+		expect(url.searchParams.get("sortname")).toBe("count_ways");
+		expect(url.searchParams.get("rp")).toBe("10");
+	});
+});

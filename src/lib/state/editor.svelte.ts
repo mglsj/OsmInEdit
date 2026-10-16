@@ -15,7 +15,11 @@ import type { Entity, EntityId } from "#lib/osm/entity.ts";
 import { Graph } from "#lib/osm/graph.ts";
 import { type Action, History } from "#lib/osm/history.ts";
 import type { Tags } from "#lib/osm/tags.ts";
-import { loadPresetIndex, loadSchemaUpgrades } from "#lib/presets/load.ts";
+import {
+	loadDiscardedKeys,
+	loadPresetIndex,
+	loadSchemaUpgrades,
+} from "#lib/presets/load.ts";
 import type {
 	Preset,
 	PresetGeometry,
@@ -62,6 +66,8 @@ export class Editor {
 	selectedId = $state<EntityId | null>(null);
 	/** The feature types chosen last, offered first in the type list. */
 	readonly recentPresets = new RecentPresets(browserStorage());
+	/** Keys the tag table never suggests, once loaded. */
+	discardedKeys = $state.raw<readonly string[]>([]);
 	/** Tag upgrade rules: local ones at once, the schema's once loaded. */
 	upgrades = $state.raw<readonly UpgradeRule[]>(LOCAL_UPGRADES);
 	/** The selected entity, or null when nothing (or something deleted) is selected. */
@@ -107,6 +113,7 @@ export class Editor {
 		this.searchWikipedia = searchWikipedia;
 		this.#api = api;
 		void loadPresetIndex().then((index) => (this.presets = index));
+		void loadDiscardedKeys().then((keys) => (this.discardedKeys = keys));
 		void loadSchemaUpgrades().then(
 			(rules) => (this.upgrades = [...LOCAL_UPGRADES, ...rules]),
 		);

@@ -231,6 +231,8 @@ write("presets.json", outPresets);
 write("fields.json", outFields);
 write("deprecated.json", deprecated);
 write("categories.json", outCategories);
+// Keys iD drops on save and never suggests (`created_by`…).
+write("discarded.json", Object.keys(read("discarded.json")));
 
 /** Icon sets bundled for the map, by the prefix of iD's icon names (`maki-toilet`). */
 const ICON_SETS: Record<string, string> = {

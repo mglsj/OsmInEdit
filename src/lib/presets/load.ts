@@ -30,3 +30,9 @@ export async function loadSchemaUpgrades(): Promise<UpgradeRule[]> {
 	const { default: rules } = await import("./generated/deprecated.json");
 	return rules as unknown as UpgradeRule[];
 }
+
+/** Keys never suggested in the tag table (iD's discarded tags: `created_by`…). */
+export async function loadDiscardedKeys(): Promise<string[]> {
+	const { default: keys } = await import("./generated/discarded.json");
+	return keys as unknown as string[];
+}

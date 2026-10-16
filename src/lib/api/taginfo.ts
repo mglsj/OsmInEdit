@@ -128,6 +128,37 @@ export class Taginfo {
 		);
 	}
 
+	/**
+	 * Keys starting with or containing `query`, used more than 2,500 times or documented on
+	 * the wiki, those without `:` first (iD's `keys`).
+	 */
+	keys({
+		query,
+		geometry,
+	}: {
+		query: string;
+		geometry: PresetGeometry;
+	}): Promise<TaginfoValue[]> {
+		return this.#get<{ key: string; count_all?: number; in_wiki?: boolean }>(
+			"keys/all",
+			{ query },
+			geometry,
+			true,
+			(data) =>
+				data
+					.filter(
+						(d) =>
+							(Number(d.count_all) > 2500 || d.in_wiki) &&
+							!/^(hashtags?|created_by)$/.test(d.key),
+					)
+					.sort(
+						(a, b) => Number(a.key.includes(":")) - Number(b.key.includes(":")),
+					)
+					.map((d) => ({ value: d.key, title: d.key })),
+			10,
+		);
+	}
+
 	#popularKeys(): Promise<Set<string>> {
 		this.#popular ??= this.#json<{ key: string }>(
 			this.#url("keys/all", {
@@ -155,6 +186,7 @@ export class Taginfo {
 		/** Whether a shorter query's complete answer can stand for this one. */
 		shortens: boolean,
 		convert: (data: T[]) => TaginfoValue[],
+		page = PAGE,
 	): Promise<TaginfoValue[]> {
 		const url = (query: string) =>
 			this.#url(path, {
@@ -163,7 +195,7 @@ export class Taginfo {
 				sortname: SORT[geometry] ?? "count_all",
 				sortorder: "desc",
 				page: "1",
-				rp: String(PAGE),
+				rp: String(page),
 				lang: this.#lang,
 			});
 		const query = params.query ?? "";
@@ -173,7 +205,7 @@ export class Taginfo {
 		if (shortens) {
 			for (let n = query.length - 1; n >= 0; n--) {
 				const shorter = this.#done.get(url(query.slice(0, n)));
-				if (shorter && shorter.length < PAGE) return Promise.resolve(shorter);
+				if (shorter && shorter.length < page) return Promise.resolve(shorter);
 			}
 		}
 		const answer = this.#json<T>(exact).then(convert);

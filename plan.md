@@ -732,6 +732,12 @@ Mercator, as drawn), `distanceToSegment`/`distanceToLine` (metres); `graph.child
 gives the nodes downloaded. The copies in `map/geometry.ts` (removed), `area.ts`, `delete.ts`,
 `address.ts`, `relations.ts`, `imagery.ts`, `georef.ts` and `floorplan-layers.ts` use it, with
 no change in behaviour. Slippy-tile maths stays in `map/tiles.ts`.
+R1.9: `ui/combobox.svelte.ts` (`Combobox`: open, highlight, `move`, `escape`, its search at
+once for nothing typed and after 300 ms while typing, older answers dropped) and
+`ui/ComboList.svelte` (the one popover listbox) under `ComboField` and `SearchCombo`, which the
+tag table, roles, chips, address and wiki fields use; `ComboField` takes `mixed` ("Multiple
+values", nothing changed until something is typed or chosen) for R1.10. Its look is checked by
+R1.11's component tests.
 
 ### R2: Floor plan content model — M
 

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
 	import { tick } from "svelte";
-	import * as Popover from "#lib/components/shadcn/popover/index.ts";
+	import { msg, t } from "#lib/i18n/messages.ts";
 	import {
 		type ComboSuggestion,
 		comboSuggestions,
@@ -10,6 +10,8 @@
 		tagValue,
 	} from "#lib/presets/combo.ts";
 	import type { Field } from "#lib/presets/presets.ts";
+	import ComboList from "#lib/ui/ComboList.svelte";
+	import { Combobox } from "#lib/ui/combobox.svelte.ts";
 	import { type FieldContext, fieldInputId } from "#lib/ui/field-context.ts";
 	import { cn } from "#lib/utils.ts";
 
@@ -43,6 +45,11 @@
 		 * offered after it; leaving the field then calls `onchange`, even with the same text.
 		 */
 		onlive?: (typed: string) => void;
+		/**
+		 * The features edited have different values: the input starts empty, saying so, and
+		 * nothing changes unless something is typed or chosen.
+		 */
+		mixed?: boolean;
 	}
 
 	let {
@@ -56,6 +63,7 @@
 		raw = false,
 		ariaLabel,
 		onlive,
+		mixed = false,
 	}: Props = $props();
 
 	const id = $derived(fieldInputId(field));
@@ -64,26 +72,29 @@
 
 	let input = $state<HTMLInputElement>();
 	let wrap = $state<HTMLDivElement>();
-	let open = $state(false);
 	/** What the suggestions are for: the text typed, or "" for all of them. */
 	let query = $state("");
-	let suggested = $state.raw<readonly SuggestedValue[] | null>(null);
-	let highlighted = $state(-1);
+	/** Taginfo's values, as last asked. */
+	const combo = new Combobox<readonly SuggestedValue[]>({
+		search: (q) => context.suggest?.(field, q) ?? [],
+		onresult: () => {
+			if (combo.open) autocomplete();
+		},
+	});
 	/** Whether the user typed or chose something since the field got focus. */
 	let dirty = false;
-	let pending: ReturnType<typeof setTimeout> | undefined;
-	/** The query taginfo was last asked about: older answers are dropped. */
-	let asked = "";
+
+	$effect(() => () => combo.dispose());
 
 	const suggestions = $derived(
-		comboSuggestions(field, query, suggested, {
+		comboSuggestions(field, query, combo.result, {
 			deprecated: field.key ? context.deprecated(field.key) : [],
 			chosen: adding?.chosen ?? [],
 		}),
 	);
 	const plain = $derived(plainProp || raw);
 	const shown = $derived(
-		adding ? "" : raw ? (value ?? "") : displayValue(field, value),
+		adding || mixed ? "" : raw ? (value ?? "") : displayValue(field, value),
 	);
 	/** iD asks taginfo for every combo but manyCombo, unless the field says not to. */
 	const asksTaginfo = $derived(
@@ -98,20 +109,7 @@
 
 	/** Asks taginfo for values matching `q`, after a pause while typing (as iD). */
 	function fetchValues(q: string) {
-		clearTimeout(pending);
-		const suggest = context.suggest;
-		if (!suggest || !asksTaginfo) return;
-		asked = q;
-		const run = () =>
-			suggest(field, q)
-				.then((values) => {
-					if (asked !== q) return;
-					suggested = values;
-					if (open) autocomplete();
-				})
-				.catch(() => {});
-		if (q) pending = setTimeout(run, 300);
-		else run();
+		if (asksTaginfo) combo.find(q);
 	}
 
 	/** The text typed, without the completion selected after it. */
@@ -140,7 +138,7 @@
 		if (best === undefined) return;
 		input.value = best;
 		input.setSelectionRange(text.length, best.length, "backward");
-		highlighted = suggestions.findIndex(
+		combo.highlighted = suggestions.findIndex(
 			(s) => s.label === best || s.value === best,
 		);
 	}
@@ -153,8 +151,8 @@
 		dirty = true;
 		const text = input.value;
 		query = text;
-		highlighted = -1;
-		open = text !== "";
+		combo.highlighted = -1;
+		combo.open = text !== "";
 		fetchValues(text);
 		if (onlive && !adding) {
 			appliedLive = true;
@@ -192,7 +190,7 @@
 	}
 
 	function accept() {
-		open = false;
+		combo.open = false;
 		if (input) input.setSelectionRange(input.value.length, input.value.length);
 		commit();
 	}
@@ -208,31 +206,25 @@
 		if (locked) return;
 		input?.focus();
 		query = "";
-		highlighted = suggestions.findIndex((s) => s.value === value);
-		open = !open;
+		combo.highlighted = suggestions.findIndex((s) => s.value === value);
+		combo.open = !combo.open;
 	}
 
 	function move(step: number) {
 		if (!input) return;
 		// Opened even before taginfo answers: the list shows once it does (as iD).
-		if (!open) {
-			if (!input.value) query = "";
-			open = true;
-		}
-		if (suggestions.length === 0) return;
-		const current =
-			highlighted >= 0
-				? highlighted
+		if (!combo.open && !input.value) query = "";
+		const from =
+			combo.highlighted >= 0
+				? combo.highlighted
 				: suggestions.findIndex(
 						(s) => s.label === input?.value || s.value === input?.value,
 					);
-		highlighted = Math.max(0, Math.min(current + step, suggestions.length - 1));
-		const suggestion = suggestions[highlighted] as ComboSuggestion;
+		const highlighted = combo.move(step, suggestions.length, from);
+		const suggestion = suggestions[highlighted];
+		if (!suggestion) return;
 		input.value = suggestion.label;
 		dirty = true;
-		document
-			.getElementById(`${listId}-${highlighted}`)
-			?.scrollIntoView({ block: "nearest" });
 	}
 
 	function onkeydown(event: KeyboardEvent) {
@@ -252,17 +244,14 @@
 				accept();
 				break;
 			case "Escape":
-				if (open) {
-					event.stopPropagation();
-					open = false;
-				}
+				if (combo.escape()) event.stopPropagation();
 				break;
 			case "Backspace":
 			case "Delete":
 				// A fixed list's value can't be typed over: these keys take it off (as iD).
 				if (readonly && !locked && !adding && value !== undefined) {
 					event.preventDefault();
-					open = false;
+					combo.open = false;
 					onchange?.(undefined);
 				}
 				break;
@@ -282,13 +271,14 @@
 		spellcheck="false"
 		aria-autocomplete="both"
 		aria-label={ariaLabel}
-		aria-expanded={open && suggestions.length > 0}
+		aria-expanded={combo.open && suggestions.length > 0}
 		aria-controls={listId}
-		aria-activedescendant={open && highlighted >= 0
-			? `${listId}-${highlighted}`
+		aria-activedescendant={combo.open && combo.highlighted >= 0
+			? `${listId}-${combo.highlighted}`
 			: undefined}
 		value={shown}
-		placeholder={field.placeholder ??
+		placeholder={(mixed ? t(msg("field_multiple_values")) : undefined) ??
+			field.placeholder ??
 			(adding ? "Add…" : undefined) ??
 			suggestions
 				.slice(0, 3)
@@ -311,7 +301,7 @@
 			if (readonly) showAll();
 		}}
 		onblur={() => {
-			open = false;
+			combo.open = false;
 			commit();
 		}}
 	>
@@ -330,55 +320,25 @@
 	{/if}
 </div>
 
-<Popover.Root
-	open={open && suggestions.length > 0}
-	onOpenChange={(next) => {
-		if (!next) open = false;
+<ComboList
+	id={listId}
+	label={field.label}
+	options={suggestions.map((suggestion) => ({
+		key: suggestion.value,
+		label: suggestion.label,
+		description: suggestion.description,
+		title: [
+			suggestion.description ?? suggestion.title,
+			tagText(suggestion.value),
+		]
+			.filter(Boolean)
+			.join("\n"),
+		mono: !plain && suggestion.raw,
+	}))}
+	{combo}
+	anchor={wrap}
+	onchoose={(i) => {
+		const suggestion = suggestions[i];
+		if (suggestion) choose(suggestion);
 	}}
->
-	<Popover.Content
-		customAnchor={wrap}
-		side="bottom"
-		align="start"
-		trapFocus={false}
-		onOpenAutoFocus={(event) => event.preventDefault()}
-		onCloseAutoFocus={(event) => event.preventDefault()}
-		onInteractOutside={(event) => {
-			if (wrap?.contains(event.target as Node)) event.preventDefault();
-		}}
-		class="max-h-64 w-(--bits-popover-anchor-width) gap-0 overflow-y-auto p-1"
-	>
-		<div id={listId} role="listbox" aria-label={field.label}>
-			{#each suggestions as suggestion, i (suggestion.value)}
-				<div
-					id={`${listId}-${i}`}
-					role="option"
-					aria-selected={i === highlighted}
-					tabindex="-1"
-					title={[
-						suggestion.description ?? suggestion.title,
-						tagText(suggestion.value),
-					]
-						.filter(Boolean)
-						.join("\n")}
-					class={[
-						"flex cursor-default flex-col rounded-sm px-2 py-1.5 text-sm",
-						i === highlighted ? "bg-muted" : "hover:bg-muted/60",
-					]}
-					onmousedown={(event) => event.preventDefault()}
-					onclick={() => choose(suggestion)}
-					onkeydown={() => {}}
-				>
-					<span class={[!plain && suggestion.raw && "font-mono text-xs"]}
-						>{suggestion.label}</span
-					>
-					{#if suggestion.description}
-						<span class="text-xs text-muted-foreground"
-							>{suggestion.description}</span
-						>
-					{/if}
-				</div>
-			{/each}
-		</div>
-	</Popover.Content>
-</Popover.Root>
+/>

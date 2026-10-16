@@ -9,7 +9,8 @@
 </script>
 
 <script lang="ts">
-	import * as Popover from "#lib/components/shadcn/popover/index.ts";
+	import ComboList from "#lib/ui/ComboList.svelte";
+	import { Combobox } from "#lib/ui/combobox.svelte.ts";
 	import { cn } from "#lib/utils.ts";
 
 	interface Props {
@@ -49,42 +50,26 @@
 	const listId = $derived(`${id}-list`);
 	let input = $state<HTMLInputElement>();
 	let wrap = $state<HTMLDivElement>();
-	let open = $state(false);
-	let items = $state.raw<readonly SearchItem[]>([]);
-	let highlighted = $state(-1);
+	const combo = new Combobox<readonly SearchItem[]>({
+		search: (query) => search(query),
+		failed: [],
+		onresult: () => (combo.highlighted = -1),
+	});
+	const items = $derived(combo.result ?? []);
 	/** Whether the text was typed since the field got focus. */
 	let dirty = false;
-	let pending: ReturnType<typeof setTimeout> | undefined;
-	/** The last query asked: older answers are dropped. */
-	let asked: string | null = null;
 
-	/** Searches, after a pause while typing (as iD's services). */
-	function find(query: string, wait: boolean) {
-		clearTimeout(pending);
-		asked = query;
-		const run = async () => {
-			try {
-				const found = await search(query);
-				if (asked !== query) return;
-				items = found;
-				highlighted = -1;
-			} catch {
-				if (asked === query) items = [];
-			}
-		};
-		if (wait) pending = setTimeout(run, 300);
-		else void run();
-	}
+	$effect(() => () => combo.dispose());
 
 	function choose(item: SearchItem) {
 		dirty = false;
-		open = false;
+		combo.open = false;
 		onchoose(item);
 		if (input) input.value = item.label;
 	}
 
 	function commit() {
-		open = false;
+		combo.open = false;
 		if (!input || !dirty) return;
 		dirty = false;
 		oncommit?.(input.value.trim());
@@ -95,26 +80,18 @@
 		if (readonly) return;
 		switch (event.key) {
 			case "ArrowDown":
-			case "ArrowUp": {
+			case "ArrowUp":
 				event.preventDefault();
-				if (!open) {
-					open = true;
-					find(dirty && input ? input.value : "", false);
+				if (!combo.open) {
+					combo.open = true;
+					combo.find(dirty && input ? input.value : "", { wait: false });
 					return;
 				}
-				const step = event.key === "ArrowDown" ? 1 : -1;
-				highlighted = Math.max(
-					0,
-					Math.min(highlighted + step, items.length - 1),
-				);
-				document
-					.getElementById(`${listId}-${highlighted}`)
-					?.scrollIntoView({ block: "nearest" });
+				combo.move(event.key === "ArrowDown" ? 1 : -1, items.length);
 				break;
-			}
 			case "Enter":
 			case "Tab": {
-				const item = open ? items[highlighted] : undefined;
+				const item = combo.open ? items[combo.highlighted] : undefined;
 				if (event.key === "Enter") {
 					event.preventDefault();
 					event.stopPropagation();
@@ -124,10 +101,7 @@
 				break;
 			}
 			case "Escape":
-				if (open) {
-					event.stopPropagation();
-					open = false;
-				}
+				if (combo.escape()) event.stopPropagation();
 				break;
 		}
 	}
@@ -144,10 +118,10 @@
 		{lang}
 		aria-label={ariaLabel}
 		aria-autocomplete="list"
-		aria-expanded={open && items.length > 0}
+		aria-expanded={combo.open && items.length > 0}
 		aria-controls={listId}
-		aria-activedescendant={open && highlighted >= 0
-			? `${listId}-${highlighted}`
+		aria-activedescendant={combo.open && combo.highlighted >= 0
+			? `${listId}-${combo.highlighted}`
 			: undefined}
 		{value}
 		{placeholder}
@@ -161,56 +135,28 @@
 		oninput={(event) => {
 			dirty = true;
 			const text = event.currentTarget.value;
-			open = text !== "";
-			find(text, text !== "");
+			combo.open = text !== "";
+			combo.find(text);
 		}}
 		{onkeydown}
 		onblur={commit}
 	>
 </div>
 
-<Popover.Root
-	open={open && items.length > 0}
-	onOpenChange={(next) => {
-		if (!next) open = false;
+<ComboList
+	id={listId}
+	label={ariaLabel ?? placeholder}
+	options={items.map((item) => ({
+		key: item.key,
+		label: item.label,
+		description: item.description,
+		title: item.title,
+	}))}
+	{combo}
+	anchor={wrap}
+	onchoose={(i) => {
+		const item = items[i];
+		if (item) choose(item);
 	}}
->
-	<Popover.Content
-		customAnchor={wrap}
-		side="bottom"
-		align="start"
-		trapFocus={false}
-		onOpenAutoFocus={(event) => event.preventDefault()}
-		onCloseAutoFocus={(event) => event.preventDefault()}
-		onInteractOutside={(event) => {
-			if (wrap?.contains(event.target as Node)) event.preventDefault();
-		}}
-		class="max-h-64 w-(--bits-popover-anchor-width) min-w-56 gap-0 overflow-y-auto p-1"
-	>
-		<div id={listId} role="listbox" aria-label={ariaLabel ?? placeholder}>
-			{#each items as item, i (item.key)}
-				<div
-					id={`${listId}-${i}`}
-					role="option"
-					aria-selected={i === highlighted}
-					tabindex="-1"
-					title={item.title}
-					class={[
-						"flex cursor-default flex-col rounded-sm px-2 py-1.5 text-sm",
-						i === highlighted ? "bg-muted" : "hover:bg-muted/60",
-					]}
-					onmousedown={(event) => event.preventDefault()}
-					onclick={() => choose(item)}
-					onkeydown={() => {}}
-				>
-					<span>{item.label}</span>
-					{#if item.description}
-						<span class="text-xs text-muted-foreground"
-							>{item.description}</span
-						>
-					{/if}
-				</div>
-			{/each}
-		</div>
-	</Popover.Content>
-</Popover.Root>
+	class="min-w-56"
+/>

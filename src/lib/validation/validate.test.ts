@@ -152,6 +152,18 @@ describe("validate: levels", () => {
 	});
 });
 
+describe("validate: issue ids", () => {
+	it("gives each issue its own id, also for two unreadable level keys", () => {
+		const issues = issuesOf(
+			roomWith({ indoor: "room", level: "G", repeat_on: "G" }),
+			"w1",
+		);
+		const ids = issues.map((i) => i.id);
+		expect(ids).toHaveLength(2);
+		expect(new Set(ids).size).toBe(2);
+	});
+});
+
 describe("validate: doors", () => {
 	it("flags a door that is not on a wall or room outline", () => {
 		expect(

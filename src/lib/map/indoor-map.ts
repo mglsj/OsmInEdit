@@ -10,6 +10,7 @@ import type {
 	GeoJSONSource,
 	Map as MapLibreMap,
 } from "./maplibre.ts";
+import { styleReady } from "./ready.ts";
 import { loadIconsOnDemand } from "./style/icons.ts";
 import {
 	INDOOR_SOURCE,
@@ -36,6 +37,8 @@ const CLICK_TOLERANCE = 4;
 export class IndoorMap {
 	readonly #map: MapLibreMap;
 	#ready = false;
+	/** Removed before the style was ready: never installed. */
+	#removed = false;
 	/** The features last given, and those the source holds (by entity id). */
 	#features: StoredFeatures | null = null;
 	#sent = new Map<string, IndoorFeature>();
@@ -47,8 +50,9 @@ export class IndoorMap {
 	constructor(map: MapLibreMap) {
 		this.#map = map;
 		loadIconsOnDemand(map);
-		if (map.isStyleLoaded()) this.#install();
-		else map.once("load", () => this.#install());
+		void styleReady(map).then(() => {
+			if (!this.#removed) this.#install();
+		});
 	}
 
 	/**
@@ -168,6 +172,7 @@ export class IndoorMap {
 	}
 
 	remove(): void {
+		this.#removed = true;
 		if (!this.#ready) return;
 		for (const { id } of [
 			...indoorLayers(this.#level),

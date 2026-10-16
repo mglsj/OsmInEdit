@@ -60,6 +60,16 @@ describe("History", () => {
 		});
 	});
 
+	it("adds no undo step for an action that changes nothing", () => {
+		const history = new History(Graph.fromEntities([bench]));
+		const before = history.graph;
+		expect(history.perform((graph) => graph, "Nothing")).toBe(before);
+		expect(history.canUndo).toBe(false);
+		history.perform(retag({ amenity: "bench" }), "Tag as bench");
+		history.perform(retag({ amenity: "bench" }), "Tag as bench again");
+		expect(history.undo()).toBe("Tag as bench");
+	});
+
 	it("keeps the base graph to compare edits against", () => {
 		const history = new History(Graph.fromEntities([bench]));
 		history.perform(retag({ amenity: "bench" }), "Tag as bench");

@@ -10,6 +10,7 @@
 		NavigationControl,
 		ScaleControl,
 	} from "#lib/map/maplibre.ts";
+	import { styleReady } from "#lib/map/ready.ts";
 
 	type Camera = Omit<MapView, "level">;
 
@@ -49,6 +50,8 @@
 				return;
 			}
 
+			// Remember the first load now, for layers added later (see `styleReady`).
+			void styleReady(instance);
 			instance.addControl(
 				new NavigationControl({ visualizePitch: true }),
 				"bottom-right",

@@ -1,4 +1,4 @@
-import type { Entity, EntityId } from "./entity.ts";
+import { type Entity, type EntityId, sameContent } from "./entity.ts";
 import type { Graph } from "./graph.ts";
 
 /** A change to the graph. Actions are pure: they return a new graph. */
@@ -42,6 +42,8 @@ export class History {
 	/** Applies an action, labelled for the undo button, and drops anything that could be redone. */
 	perform(action: Action, annotation: string): Graph {
 		const graph = this.graph.update(action);
+		// An action that changed nothing makes no step to undo.
+		if (sameGraph(graph, this.graph)) return this.graph;
 		this.#steps = this.#steps.slice(0, this.#index + 1);
 		this.#steps.push({ graph, annotation });
 		this.#index++;
@@ -116,4 +118,13 @@ export class History {
 	get #first(): Step {
 		return this.#steps[0] as Step;
 	}
+}
+
+/** Whether two graphs hold the same entities, as copies or as the same objects. */
+function sameGraph(a: Graph, b: Graph): boolean {
+	for (const id of a.changedSince(b)) {
+		const [x, y] = [a.entity(id), b.entity(id)];
+		if (!x || !y || x.version !== y.version || !sameContent(x, y)) return false;
+	}
+	return true;
 }

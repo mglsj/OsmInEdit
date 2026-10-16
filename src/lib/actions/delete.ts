@@ -9,7 +9,9 @@ import { hasInterestingTags } from "#lib/osm/tags.ts";
  * - a deleted node is removed from its ways; lines left with one node and areas left with
  *   fewer than three corners are deleted;
  * - a deleted way takes its nodes with it, unless they are tagged (POIs, doors), used by
- *   another way, or members of a relation.
+ *   another way, or members of a relation;
+ * - a deleted relation takes its members with it, unless they are tagged, used by a way or
+ *   members of another relation.
  */
 export function deleteEntities(ids: readonly EntityId[]): Action {
 	return (graph: Graph) => ids.reduce(deleteEntity, graph);
@@ -37,9 +39,26 @@ function deleteEntity(graph: Graph, id: EntityId): Graph {
 			}
 			return g;
 		}
-		case "relation":
-			return g.remove(id);
+		case "relation": {
+			// Members left untagged and unused go too (iD's actionDeleteRelation).
+			g = g.remove(id);
+			for (const ref of new Set(entity.members.map((m) => m.ref))) {
+				if (isUnused(g, ref)) g = deleteEntity(g, ref);
+			}
+			return g;
+		}
 	}
+}
+
+/** Whether nothing holds or describes the entity any more: no tags, ways or relations. */
+function isUnused(graph: Graph, id: EntityId): boolean {
+	const entity = graph.entity(id);
+	return (
+		entity !== undefined &&
+		!hasInterestingTags(entity.tags) &&
+		(entity.type !== "node" || graph.parentWays(entity.id).length === 0) &&
+		graph.parentRelations(id).length === 0
+	);
 }
 
 function removeMember(

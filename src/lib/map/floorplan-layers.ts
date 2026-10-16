@@ -25,6 +25,7 @@ import type {
 	ImageSource,
 	Map as MapLibreMap,
 } from "./maplibre.ts";
+import { styleReady } from "./ready.ts";
 
 const EARTH_RADIUS = 6378137;
 
@@ -41,6 +42,8 @@ interface Shown {
 export class FloorPlanLayers {
 	readonly #map: MapLibreMap;
 	#ready = false;
+	/** Removed before the style was ready: never installed. */
+	#removed = false;
 	#layers: readonly LayerEntry[] = [];
 	#plans: readonly FloorPlan[] = [];
 	#level = 0;
@@ -56,8 +59,9 @@ export class FloorPlanLayers {
 			// Zooming may call for another level of the plans' pyramids.
 			map.on("zoom", this.#onZoom);
 		};
-		if (map.isStyleLoaded()) install();
-		else map.once("load", install);
+		void styleReady(map).then(() => {
+			if (!this.#removed) install();
+		});
 	}
 
 	/** Shows the plans of this stack, bottom first, the building outlines in their place. */
@@ -74,6 +78,7 @@ export class FloorPlanLayers {
 	}
 
 	remove(): void {
+		this.#removed = true;
 		this.#map.off("zoom", this.#onZoom);
 		for (const id of [...this.#shown.keys()]) this.#hide(id);
 	}
@@ -324,6 +329,8 @@ export class PlanToolLayer {
 	readonly #map: MapLibreMap;
 	#data: FeatureCollection = { type: "FeatureCollection", features: [] };
 	#ready = false;
+	/** Removed before the style was ready: never installed. */
+	#removed = false;
 
 	constructor(map: MapLibreMap) {
 		this.#map = map;
@@ -380,8 +387,9 @@ export class PlanToolLayer {
 			});
 			this.#ready = true;
 		};
-		if (map.isStyleLoaded()) install();
-		else map.once("load", install);
+		void styleReady(map).then(() => {
+			if (!this.#removed) install();
+		});
 	}
 
 	setData(data: FeatureCollection): void {
@@ -392,6 +400,7 @@ export class PlanToolLayer {
 	}
 
 	remove(): void {
+		this.#removed = true;
 		if (!this.#ready) return;
 		for (const id of [
 			HANDLES_LAYER,

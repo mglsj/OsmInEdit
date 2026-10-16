@@ -630,7 +630,7 @@ release, the pattern node dragging needs); field inputs taking `tags` and emitti
 ARIA combobox and listbox patterns; the network-blocking e2e fixture and pixel checks; lazy
 pdf.js and presets (the bundle is fine: 421 KB gzipped plus MapLibre's worker).
 
-## Roadmap from here (proposed, to agree with the user)
+## Roadmap from here (agreed with the user ✔)
 
 Order: fix what's broken and make tests fast (R0), lay the foundations that editing and plans
 share (R1), move floor plans to a content model (R2), then the features: vector and light
@@ -643,7 +643,7 @@ slice still agrees its test seams first.
 1. The six bugs above that are small: duplicate issue ids, readiness race (`whenStyleReady`
    plus an `AbortSignal` per layer owner), `newIds(type, n)`, no empty undo steps, relation
    delete cleanup, the store keeping image-less plans (behind R2's schema).
-2. CI on every push to a branch, with Bun and Playwright caches, `concurrency:
+2. CI (still on `master` and pull requests only ✔): Bun and Playwright caches, `concurrency:
    cancel-in-progress`, a sharded e2e job, and flaky tests reported instead of hidden.
 3. E2E: `fullyParallel`; a map readiness signal (`data-idle` once the source has data) so a
    test clicks once instead of looping; `clickMap()`, `lngLatAt()` and an `inspector(page)`
@@ -760,14 +760,14 @@ On R1's modes, drag, selection and geometry. Slices:
 - Release: an e2e checklist of 1.x features, `LICENSE` (ISC notice for ported code), the
   `legacy-v1.0.16` tag.
 
-### Decisions to take with the user
+### Decisions taken with the user ✔
 
-- The order above, and vector plans (P4.2) before geometry editing (P5.3).
-- The custom WebGL layer rather than deck.gl (`@deck.gl/maplibre` supports MapLibre 6, but its
+- The order above: R0, R1 and R2 now; vector plans (P4.2) before geometry editing (P5.3).
+- A custom WebGL layer rather than deck.gl (`@deck.gl/maplibre` supports MapLibre 6, but its
   model matrix is affine only, and it adds a large dependency).
-- Vector plan text as labels or as a light image layer.
-- Component tests in Vitest browser mode (a new dev dependency).
-- CI on every branch push (uses more Actions minutes).
+- Vector plan text as map labels from pdf.js's text content.
+- Component tests in Vitest browser mode.
+- CI stays on `master` and pull requests (no runs on branch pushes).
 
 ## Testing strategy
 

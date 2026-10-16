@@ -48,14 +48,16 @@ export function validate(
 	return issues;
 }
 
+/** An issue; `key` tells apart issues of one rule on one entity (`level` and `repeat_on`). */
 function issue(
 	rule: IssueRule,
 	entity: Entity,
 	message: string,
 	fix?: Issue["fix"],
+	key?: string,
 ): Issue {
 	return {
-		id: `${rule}:${entity.id}`,
+		id: `${rule}:${entity.id}${key ? `:${key}` : ""}`,
 		rule,
 		severity: "warning",
 		entityId: entity.id,
@@ -107,6 +109,8 @@ function levelIssues(entity: Entity): Issue[] {
 				"unreadable-level",
 				entity,
 				`${key}=${value} can't be read.${hint}`,
+				undefined,
+				key,
 			),
 		);
 	}

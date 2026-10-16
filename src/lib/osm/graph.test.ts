@@ -78,7 +78,15 @@ describe("Graph", () => {
 		expect(second).toBe("w-2");
 
 		// Ids are not reused after the entity is removed.
-		expect(graph.remove(first).newId("node")).toBe("n-2");
+		expect(graph.remove(first).newId("node")).toBe("n-3");
+	});
+
+	it("never gives the same id twice, even before the entities are added", () => {
+		const graph = fixture();
+		const [a, b] = [graph.newId("node"), graph.newId("node")];
+		expect(a).not.toBe(b);
+		const both = graph.replace(node(a)).replace(node(b));
+		expect([a, b]).not.toContain(both.newId("node"));
 	});
 });
 

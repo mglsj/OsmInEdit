@@ -139,13 +139,18 @@ export class Graph {
 		return new Graph(this.#base, local, this.#nextId);
 	}
 
-	/** An id that no entity of this graph, or of the graphs it derives from, has used. */
+	/**
+	 * An id that no entity of this graph, or of the graphs it derives from, has used, and that
+	 * no other call gives again (only the counter moves: the entities stay as they were).
+	 */
 	newId(type: "node"): NodeId;
 	newId(type: "way"): WayId;
 	newId(type: "relation"): RelationId;
 	newId(type: EntityType): EntityId;
 	newId(type: EntityType): EntityId {
-		return makeId(type, this.#nextId);
+		const id = makeId(type, this.#nextId);
+		this.#nextId--;
+		return id;
 	}
 
 	/** Whether the entity was created, modified or deleted locally. */

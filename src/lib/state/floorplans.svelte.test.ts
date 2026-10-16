@@ -10,12 +10,8 @@ import {
 import type { PlanImage } from "#lib/floorplans/import.ts";
 import { distance, offset, RENNES } from "#lib/floorplans/test-geometry.ts";
 import { msg } from "#lib/i18n/messages.ts";
-import type {
-	PlanStore,
-	StoredBuildings,
-	StoredPlan,
-} from "#lib/persist/plan-store.ts";
 import { type FloorPlan, FloorPlans } from "./floorplans.svelte.ts";
+import { fakeCodec, fakeImage, memoryStore } from "./testing/plan-store.ts";
 
 const pixels: PlanImage = {
 	width: 400,
@@ -170,18 +166,10 @@ describe("plan colours", () => {
 			visible: true,
 			order: 0,
 		};
-		const floorplans = new FloorPlans({
-			store: {
-				load: async () => [{ plan: stored, image: new Blob() }],
-				saveImage: async () => {},
-				save: async () => {},
-				delete: async () => {},
-				loadBuildings: async () => undefined,
-				saveBuildings: async () => {},
-				saveStack: async () => {},
-			},
-			decode: async () => pixels,
-		});
+		const { store, plans, contents } = memoryStore();
+		plans.set(stored.id, stored);
+		contents.set(stored.id, { kind: "legacy", image: new Blob() });
+		const floorplans = new FloorPlans({ store, codec: fakeCodec });
 		await floorplans.restore();
 		expect(PLAN_COLORS.map((p) => p.value)).toContain(
 			floorplans.plans[0]?.color,
@@ -195,23 +183,6 @@ describe("plan colours", () => {
 		expect(floorplans.editing?.color).toBe("#78350f");
 	});
 });
-
-/** A store keeping what was saved, in order. */
-function memoryStore() {
-	const saved: StoredPlan[] = [];
-	const store: PlanStore = {
-		load: async () => [],
-		saveImage: async () => {},
-		save: async (plan) => {
-			saved.push(plan);
-		},
-		delete: async () => {},
-		loadBuildings: async () => undefined,
-		saveBuildings: async () => {},
-		saveStack: async () => {},
-	};
-	return { store, saved };
-}
 
 const view = { center: RENNES, heightMetres: 25 };
 
@@ -386,34 +357,6 @@ describe("whenSaved", () => {
 	});
 });
 
-/** A store keeping the latest of each record, like IndexedDB, to restore from. */
-function lastingStore() {
-	const plans = new Map<string, StoredPlan>();
-	let buildings: StoredBuildings | undefined;
-	const store: PlanStore = {
-		load: async () =>
-			[...plans.values()]
-				.sort((a, b) => a.order - b.order)
-				.map((plan) => ({ plan, image: new Blob() })),
-		saveImage: async () => {},
-		save: async (plan) => {
-			plans.set(plan.id, plan);
-		},
-		delete: async (id) => {
-			plans.delete(id);
-		},
-		loadBuildings: async () => buildings,
-		saveBuildings: async (b) => {
-			buildings = b;
-		},
-		saveStack: async (stack, b) => {
-			for (const plan of stack) plans.set(plan.id, plan);
-			buildings = b;
-		},
-	};
-	return { store, plans };
-}
-
 /** The layer stack, bottom to top, by plan name. */
 function stack(floorplans: FloorPlans): string[] {
 	return floorplans.layers.map((l) =>
@@ -469,8 +412,8 @@ describe("layer stack", () => {
 	});
 
 	it("brings back the stack, and hidden buildings, after a reload", async () => {
-		const { store } = lastingStore();
-		const before = new FloorPlans({ store, decode: async () => pixels });
+		const { store } = memoryStore();
+		const before = new FloorPlans({ store, codec: fakeCodec });
 		for (const name of ["a", "b", "c"]) before.add(image, name, view, "0");
 		before.done();
 		before.move("buildings", 1);
@@ -479,7 +422,7 @@ describe("layer stack", () => {
 		expect(stack(before)).toEqual(["c", "a", "buildings", "b"]);
 		await settled();
 
-		const after = new FloorPlans({ store, decode: async () => pixels });
+		const after = new FloorPlans({ store, codec: fakeCodec });
 		await after.restore();
 
 		expect(stack(after)).toEqual(["c", "a", "buildings", "b"]);
@@ -487,14 +430,14 @@ describe("layer stack", () => {
 	});
 
 	it("puts the buildings on top of plans saved before they were in the list", async () => {
-		const { store } = lastingStore();
-		const before = new FloorPlans({ store, decode: async () => pixels });
+		const { store } = memoryStore();
+		const before = new FloorPlans({ store, codec: fakeCodec });
 		for (const name of ["a", "b"]) before.add(image, name, view, "0");
 		await settled();
 		// No buildings record: as saved before P4.1.
 		const after = new FloorPlans({
 			store: { ...store, loadBuildings: async () => undefined },
-			decode: async () => pixels,
+			codec: fakeCodec,
 		});
 		await after.restore();
 
@@ -503,7 +446,7 @@ describe("layer stack", () => {
 	});
 
 	it("saves a plan in Edit at its new place without its unsaved changes", async () => {
-		const { store, plans } = lastingStore();
+		const { store, plans } = memoryStore();
 		const floorplans = new FloorPlans({ store });
 		for (const name of ["a", "b"]) floorplans.add(image, name, view, "0");
 		floorplans.edit(idOf(floorplans, "a"));
@@ -518,5 +461,91 @@ describe("layer stack", () => {
 		expect((a?.order ?? 0) > (b?.order ?? 0)).toBe(true);
 		// Still in Edit, with its changes.
 		expect(floorplans.editing?.opacity).toBe(0.9);
+	});
+});
+
+describe("FloorPlans: content kept for the level shown", () => {
+	/** Plans "a" on level 0 and "b" on level 1, saved with their content, then reloaded. */
+	async function reloaded() {
+		const { store, contents } = memoryStore();
+		const before = new FloorPlans({ store, codec: fakeCodec });
+		before.add(rasterContent(fakeImage()), "a", view, "0");
+		before.add(rasterContent(fakeImage()), "b", view, "1");
+		before.done();
+		await settled();
+		const after = new FloorPlans({ store, codec: fakeCodec });
+		await after.restore();
+		return { after, contents };
+	}
+
+	it("saves a new plan's content encoded, with the file and a thumbnail", async () => {
+		const { after, contents } = await reloaded();
+		const id = idOf(after, "a");
+		const saved = contents.get(id);
+		if (saved?.kind !== "raster") throw new Error("no raster saved");
+		expect(await saved.raster.levels[0]?.tiles[0]?.blob.text()).toBe(
+			"tile 400×300",
+		);
+		expect(await saved.original?.text()).toBe("image");
+		expect(after.thumbnails.get(id)).toBeInstanceOf(Blob);
+	});
+
+	it("restores plans without content, then loads only the shown level's", async () => {
+		const { after } = await reloaded();
+		expect(after.plans.map((p) => p.name)).toEqual(["a", "b"]);
+		expect(after.contents.size).toBe(0);
+
+		after.showLevel(0);
+		await settled();
+		const a = after.contents.get(idOf(after, "a"));
+		expect(a?.raster?.image.width).toBe(400);
+		expect(after.contents.has(idOf(after, "b"))).toBe(false);
+
+		// Another level: the first plan's bitmaps are freed.
+		after.showLevel(1);
+		await settled();
+		expect(after.contents.has(idOf(after, "a"))).toBe(false);
+		const bitmap = a?.raster?.image.levels[0]?.tiles[0]?.bitmap as unknown as {
+			closed: boolean;
+		};
+		expect(bitmap.closed).toBe(true);
+		expect(after.contents.has(idOf(after, "b"))).toBe(true);
+	});
+
+	it("keeps the plan in Edit's content on any level", async () => {
+		const { after } = await reloaded();
+		after.showLevel(1);
+		after.edit(idOf(after, "a"));
+		await settled();
+		expect(after.contents.has(idOf(after, "a"))).toBe(true);
+	});
+
+	it("converts a plan saved as one image (schema 2), measured in its pixels", async () => {
+		const { store, plans, contents } = memoryStore();
+		plans.set("old", {
+			id: "old",
+			name: "old",
+			transform: place(
+				{ center: RENNES, metresPerPixel: 0.05, bearing: 0 },
+				400,
+				300,
+			),
+			controlPoints: [],
+			fitKind: "similarity",
+			opacity: 0.5,
+			level: "0",
+			visible: true,
+			color: "#2563eb",
+			order: 0,
+		});
+		contents.set("old", { kind: "legacy", image: new Blob(["png"]) });
+		const floorplans = new FloorPlans({ store, codec: fakeCodec });
+		await floorplans.restore();
+		await settled();
+		expect(floorplans.plans[0]?.size).toEqual({ width: 400, height: 300 });
+		expect(plans.get("old")?.size).toEqual({ width: 400, height: 300 });
+		const converted = contents.get("old");
+		if (converted?.kind !== "raster") throw new Error("not converted");
+		expect(await converted.original?.text()).toBe("png");
 	});
 });

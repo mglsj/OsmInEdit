@@ -300,12 +300,16 @@
 
 	/** Downloads every plan, images included, as an IndoorID plan file. */
 	async function exportFile() {
+		// Plans off the shown level have no content loaded: their file comes from storage.
+		const files = await Promise.all(
+			floorplans.plans.map(async (plan) => ({
+				plan,
+				image: await floorplans.originalOf(plan.id),
+			})),
+		);
 		const entries = await Promise.all(
-			floorplans.plans
-				.flatMap((plan) => {
-					const image = floorplans.contents.get(plan.id)?.raster?.image.blob;
-					return image ? [{ plan, image }] : [];
-				})
+			files
+				.flatMap(({ plan, image }) => (image ? [{ plan, image }] : []))
 				.map(async ({ plan, image }) => ({
 					name: plan.name,
 					image: await dataUrl(image),
@@ -568,9 +572,7 @@
 							{/if}
 							{#if editing}
 								<img
-									{@attach thumbnail(
-										floorplans.contents.get(plan.id)?.raster?.image.blob,
-									)}
+									{@attach thumbnail(floorplans.thumbnails.get(plan.id))}
 									alt=""
 									class="size-10 shrink-0 rounded-sm border object-contain"
 								>
@@ -600,9 +602,7 @@
 									onclick={() => showLevelOf(plan)}
 								>
 									<img
-										{@attach thumbnail(
-											floorplans.contents.get(plan.id)?.raster?.image.blob,
-										)}
+										{@attach thumbnail(floorplans.thumbnails.get(plan.id))}
 										alt=""
 										class="size-10 shrink-0 rounded-sm border object-contain"
 									>

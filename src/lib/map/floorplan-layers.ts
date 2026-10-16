@@ -13,12 +13,12 @@ import {
 	project,
 } from "#lib/floorplans/georef.ts";
 import { pyramidLevel, tileCorners } from "#lib/floorplans/tiling.ts";
-import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
 import { EARTH_RADIUS } from "#lib/osm/geometry.ts";
-import type {
-	FloorPlan,
-	LayerEntry,
-	Tool,
+import {
+	type FloorPlan,
+	isPlanOnLevel,
+	type LayerEntry,
+	type Tool,
 } from "#lib/state/floorplans.svelte.ts";
 import { BUILDINGS_LAYER } from "./indoor-map.ts";
 import { slotId, slotsReady } from "./layer-slots.ts";
@@ -449,12 +449,3 @@ export class PlanToolLayer {
 
 /** Each mark is drawn in the colour of its plan. */
 const PLAN_COLOR: ExpressionSpecification = ["get", "color"];
-
-/**
- * Whether a plan shows on a level: plans without a level, or with one that can't be read, show
- * everywhere rather than vanish.
- */
-function isPlanOnLevel(plan: FloorPlan, level: number): boolean {
-	const levels = plan.level === null ? null : parseLevels(plan.level);
-	return levels === null || isOnLevel(levels, level);
-}

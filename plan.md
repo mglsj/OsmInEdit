@@ -790,6 +790,17 @@ replaces `image`, content in `FloorPlans.contents` (a `SvelteMap`, values not pr
 `FloorPlanLayers.setContents`; tiles placed at `unit` plan units per pixel (`tileCorners`);
 importers return content: photos in their own pixels (even when drawn smaller), SVG in user
 units, PDF pages in points; restore uses the stored `size`, else the image's pixels).
+R2.2: `persist/plan-store.ts` schema 3 (`plans`, `rasters`, `tiles` keyed `[plan, level, x,
+y]`, `originals`, `thumbnails`, `settings`; `images` of schemas 1–2 kept until converted):
+`load()` gives settings only, `loadContent`/`saveContent`/`loadThumbnails`; tested on
+fake-indexeddb, a version 2 database upgraded in the test. `FloorPlans` takes a `codec`
+(`floorplans/codec.ts`: encode and decode tiles, thumbnails, old images), saves new content
+encoded with its thumbnail and file, keeps content only for `showLevel(level)` and the plan in
+Edit (others' bitmaps closed), converts a plan saved as one image the first time it loads (at
+restore when it has no size), and exports read the stored original (`originalOf`). Tile
+format chosen ✔: JPEG XL where the browser decodes it (encoded by a WASM encoder: canvases
+don't write JXL), else lossless WebP, else PNG; R2.2 encodes lossless WebP or PNG on the main
+thread, R2.3 adds JXL and the worker. The e2e `untilSaved` also waits for each plan's content.
 
 ### P4.2: Vector and light raster plans — M–L
 

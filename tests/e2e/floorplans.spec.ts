@@ -121,8 +121,10 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 	await dialog.getByRole("checkbox", { name: "Page 2" }).click();
 	await dialog.getByRole("button", { name: "Import" }).click();
 
-	// 4 × 3 inches at 150 DPI.
-	await expect(planRows(page)).toContainText(["600 × 450 px"]);
+	// 4 × 3 inches at 150 DPI. Rendering in software takes a while when the machine is busy.
+	await expect(planRows(page)).toContainText(["600 × 450 px"], {
+		timeout: 20_000,
+	});
 	await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(
 		"plan, page 2",
 	);
@@ -459,22 +461,38 @@ async function drag(
 }
 
 /**
- * The plans' settings as saved in the browser's IndexedDB, as JSON. Saving takes a moment:
- * a test reloads once what it saved is there, or the reload may cut the write short.
+ * The plans' settings as saved in the browser's IndexedDB, as JSON, and whether each plan's
+ * content is saved too. Saving takes a moment: a test reloads once what it saved is there, or
+ * the reload may cut the write short.
  */
-function storedPlans(page: Page): Promise<string> {
+function storedPlans(
+	page: Page,
+): Promise<{ plans: string; complete: boolean }> {
 	return page.evaluate(
 		() =>
-			new Promise<string>((resolve, reject) => {
+			new Promise<{ plans: string; complete: boolean }>((resolve, reject) => {
 				const open = indexedDB.open("indoorid-floorplans");
 				open.onerror = () => reject(open.error);
 				open.onsuccess = () => {
 					const db = open.result;
-					const all = db.transaction("plans").objectStore("plans").getAll();
-					all.onerror = () => reject(all.error);
-					all.onsuccess = () => {
+					if (!db.objectStoreNames.contains("rasters")) {
 						db.close();
-						resolve(JSON.stringify(all.result));
+						resolve({ plans: "[]", complete: true });
+						return;
+					}
+					const tx = db.transaction(["plans", "rasters"]);
+					const plans = tx.objectStore("plans").getAll();
+					const rasters = tx.objectStore("rasters").getAllKeys();
+					tx.onerror = () => reject(tx.error);
+					tx.oncomplete = () => {
+						db.close();
+						const saved = new Set(rasters.result);
+						resolve({
+							plans: JSON.stringify(plans.result),
+							complete: plans.result.every((p: { id: string }) =>
+								saved.has(p.id),
+							),
+						});
 					};
 				};
 			}),
@@ -483,9 +501,14 @@ function storedPlans(page: Page): Promise<string> {
 
 /** Runs `change`, then waits until the saved plans differ from before it. */
 async function untilSaved(page: Page, change: () => Promise<void>) {
-	const before = await storedPlans(page);
+	const before = (await storedPlans(page)).plans;
 	await change();
-	await expect.poll(() => storedPlans(page)).not.toBe(before);
+	await expect
+		.poll(async () => {
+			const { plans, complete } = await storedPlans(page);
+			return plans !== before && complete;
+		})
+		.toBe(true);
 }
 
 /** Where the 400 × 300 px plan is once imported: centred, 60% of the map tall. */

@@ -77,7 +77,9 @@ runs the same commands.
   transforms map plan units; `georef.ts` transforms fitted in Web Mercator, `plan-file.ts`
   JSON and 1.x files, `tiling.ts`, `import.ts` raster/SVG/PDF), `map/floorplan-layers.ts`,
   `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),
-  `persist/plan-store.ts` (IndexedDB), `ui/FloorPlansPanel.svelte`. Import pdf.js only from its
+  `persist/plan-store.ts` (IndexedDB schema 3: settings, tiles, originals, thumbnails; tested on
+  fake-indexeddb; content loads for the shown level only, `FloorPlans.showLevel`; tests use
+  `state/testing/plan-store.ts`), `floorplans/codec.ts`, `ui/FloorPlansPanel.svelte`. Import pdf.js only from its
   legacy build, lazily. E2E tests that reload after saving a plan wait for IndexedDB first
   (`untilSaved` in `floorplans.spec.ts`): a reload can cut a write short.
 - Editing (R1): `edit/mode-manager.ts` is the only listener on the map's mouse events; it hands

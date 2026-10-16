@@ -4,6 +4,7 @@
  */
 
 import { SvelteMap } from "svelte/reactivity";
+import type { PlanCodec } from "#lib/floorplans/codec.ts";
 import { pickColor } from "#lib/floorplans/colors.ts";
 import {
 	closeContent,
@@ -26,8 +27,8 @@ import {
 	translateTo,
 	unproject,
 } from "#lib/floorplans/georef.ts";
-import type { PlanImage } from "#lib/floorplans/import.ts";
 import { type Message, msg } from "#lib/i18n/messages.ts";
+import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
 import type { PlanStore, StoredPlan } from "#lib/persist/plan-store.ts";
 
 export interface FloorPlan {
@@ -93,14 +94,16 @@ export interface View {
 export interface FloorPlansOptions {
 	/** Where plans are saved; without it they last until the page is closed. */
 	readonly store?: PlanStore;
-	/** Decodes a saved image. */
-	readonly decode?: (image: Blob) => Promise<PlanImage>;
+	/** Encodes content for the store and decodes it back; needed to save or restore. */
+	readonly codec?: PlanCodec;
 }
 
 export class FloorPlans {
 	plans = $state.raw<readonly FloorPlan[]>([]);
 	/** Each plan's content, by id: large, so kept out of the plans (values aren't proxied). */
 	readonly contents = new SvelteMap<string, PlanContent>();
+	/** Each plan's thumbnail, by id, for the list. */
+	readonly thumbnails = new SvelteMap<string, Blob>();
 	/** Set when plans could not be saved or restored. */
 	storageError = $state.raw<Message | null>(null);
 	/** The building outlines' entry in the layer stack: how many plans are drawn under them. */
@@ -141,56 +144,87 @@ export class FloorPlans {
 	});
 
 	readonly #store: PlanStore | undefined;
-	readonly #decode: FloorPlansOptions["decode"];
+	readonly #codec: PlanCodec | undefined;
+	/** The level the map shows; null until told (everything loaded is kept). */
+	#shownLevel: number | null = null;
+	/** Plans whose content is loading. */
+	readonly #loading = new Set<string>();
+	/** Plans whose content is being saved: their bitmaps are in use. */
+	readonly #saving = new Set<string>();
 
-	constructor({ store, decode }: FloorPlansOptions = {}) {
+	constructor({ store, codec }: FloorPlansOptions = {}) {
 		this.#store = store;
-		this.#decode = decode;
+		this.#codec = codec;
+	}
+
+	/**
+	 * Keeps content only for the plans the map shows on `level` (and the one in Edit), loading
+	 * theirs from the store and dropping the others' bitmaps.
+	 */
+	showLevel(level: number): void {
+		this.#shownLevel = level;
+		this.#syncContent();
+	}
+
+	/** The file a plan was imported from (or its image), for exports; loaded if not shown. */
+	async originalOf(id: string): Promise<Blob | undefined> {
+		const shown = this.contents.get(id)?.raster?.image.blob;
+		if (shown) return shown;
+		const stored = await this.#store?.loadContent(id);
+		if (stored?.kind === "legacy") return stored.image;
+		return stored?.original;
 	}
 
 	/** Brings back the plans saved in earlier visits. */
 	async restore(): Promise<void> {
-		const decode = this.#decode;
-		if (!this.#store || !decode) return;
+		const store = this.#store;
+		if (!store || !this.#codec) return;
 		try {
-			const [saved, buildings] = await Promise.all([
-				this.#store.load(),
-				this.#store.loadBuildings(),
+			const [stored, buildings, thumbnails] = await Promise.all([
+				store.load(),
+				store.loadBuildings(),
+				store.loadThumbnails(),
 			]);
-			const contents = new Map<string, PlanContent>();
-			const decoded = await Promise.all(
-				saved.map(async ({ plan: { order: _order, size, ...plan }, image }) => {
-					// Plans saved before plan units are measured in their pixels.
-					const content = rasterContent(await decode(image), size);
-					contents.set(plan.id, content);
-					return { ...plan, size: content.size };
+			for (const [id, blob] of thumbnails) this.thumbnails.set(id, blob);
+			// Plans saved before plan units are measured by their image, converted now; one
+			// without any content is left out.
+			const sized = await Promise.all(
+				stored.map(async ({ order: _order, size, ...plan }) => {
+					if (size) return { plan: { ...plan, size }, resave: false };
+					const content = await this.#loadContent({ id: plan.id });
+					if (!content) return null;
+					this.contents.set(plan.id, content);
+					return { plan: { ...plan, size: content.size }, resave: true };
 				}),
 			);
-			for (const [id, content] of contents) this.contents.set(id, content);
+			const saved = stored.filter((_, i) => sized[i]);
+			const decoded = sized.flatMap((s) => (s ? [s.plan] : []));
+			const resaved = new Set(
+				sized.flatMap((s) => (s?.resave ? [s.plan.id] : [])),
+			);
 			// Plans saved before they had colours get one, kept from then on.
 			const used = [...this.plans, ...decoded].flatMap((p) =>
 				p.color ? [p.color] : [],
 			);
-			const recolored: FloorPlan[] = [];
 			const restored = decoded.map((plan): FloorPlan => {
 				if (plan.color) return { ...plan, color: plan.color };
 				const color = pickColor(used);
 				used.push(color);
-				const withColor = { ...plan, color };
-				recolored.push(withColor);
-				return withColor;
+				resaved.add(plan.id);
+				return { ...plan, color };
 			});
 			// Plans added while restoring stay on top. Without a saved place (saved before the
 			// outlines were in the list), the outlines go on top of the plans.
 			const below = buildings
-				? saved.filter(({ plan }) => plan.order < buildings.order).length
+				? saved.filter((plan) => plan.order < buildings.order).length
 				: restored.length;
 			this.plans = [...restored, ...this.plans];
 			this.buildings = {
 				below,
 				visible: buildings?.visible ?? true,
 			};
-			for (const plan of recolored) this.#save(plan);
+			for (const plan of restored) if (resaved.has(plan.id)) this.#save(plan);
+			this.#syncContent();
 		} catch (e) {
 			this.storageError = msg("plan_storage_restore_failed", {
 				error: (e as Error).message,
@@ -251,10 +285,142 @@ export class FloorPlans {
 			this.#saveBuildings();
 		}
 		this.contents.set(plan.id, content);
-		const image = content.raster?.image.blob;
-		if (image) this.#persist(this.#store?.saveImage(plan.id, image));
 		this.#save(plan);
 		this.edit(plan.id);
+		this.#persist(this.#saveContent(plan.id, content));
+	}
+
+	/** Whether the map shows a plan now: its content is kept. */
+	#wanted(plan: FloorPlan): boolean {
+		const level = this.#shownLevel;
+		return (
+			level === null ||
+			plan.id === this.editingId ||
+			(plan.visible && isPlanOnLevel(plan, level))
+		);
+	}
+
+	#syncContent(): void {
+		const wanted = new Set(
+			this.plans.filter((p) => this.#wanted(p)).map((p) => p.id),
+		);
+		for (const id of [...this.contents.keys()]) {
+			if (wanted.has(id) || this.#saving.has(id)) continue;
+			closeContent(this.contents.get(id));
+			this.contents.delete(id);
+		}
+		for (const id of wanted) {
+			if (!this.contents.has(id) && !this.#loading.has(id)) void this.#load(id);
+		}
+	}
+
+	async #load(id: string): Promise<void> {
+		this.#loading.add(id);
+		try {
+			const plan = this.plans.find((p) => p.id === id);
+			const content = plan && (await this.#loadContent(plan));
+			const now = this.plans.find((p) => p.id === id);
+			if (content && now && this.#wanted(now) && !this.contents.has(id)) {
+				this.contents.set(id, content);
+			} else {
+				closeContent(content);
+			}
+		} catch (e) {
+			this.storageError = msg("plan_storage_restore_failed", {
+				error: (e as Error).message,
+			});
+		} finally {
+			this.#loading.delete(id);
+		}
+	}
+
+	/**
+	 * A plan's content from the store, decoded. An image saved before schema 3 is converted:
+	 * cut, encoded and saved as content, measured in its pixels unless `size` says otherwise.
+	 */
+	async #loadContent(plan: {
+		readonly id: string;
+		readonly size?: PlanSize;
+	}): Promise<PlanContent | undefined> {
+		const codec = this.#codec;
+		const stored = await this.#store?.loadContent(plan.id);
+		if (!stored || !codec) return undefined;
+		if (stored.kind === "legacy") {
+			const content = rasterContent(
+				await codec.decodeImage(stored.image),
+				plan.size,
+			);
+			this.#persist(this.#saveContent(plan.id, content, stored.image));
+			return content;
+		}
+		const { raster, original } = stored;
+		const levels = await Promise.all(
+			raster.levels.map(async ({ scale, tiles }) => ({
+				scale,
+				tiles: await Promise.all(
+					tiles.map(async ({ tile, blob }) => ({
+						tile,
+						bitmap: await codec.decode(blob),
+					})),
+				),
+			})),
+		);
+		return {
+			size: plan.size ?? {
+				width: raster.width * raster.unit,
+				height: raster.height * raster.unit,
+			},
+			raster: {
+				unit: raster.unit,
+				image: {
+					width: raster.width,
+					height: raster.height,
+					blob: original ?? new Blob(),
+					levels,
+				},
+			},
+		};
+	}
+
+	/** Saves a plan's content encoded, with its thumbnail and the file it came from. */
+	async #saveContent(
+		id: string,
+		content: PlanContent,
+		original?: Blob,
+	): Promise<void> {
+		const store = this.#store;
+		const codec = this.#codec;
+		const raster = content.raster;
+		if (!store || !codec || !raster) return;
+		const { image, unit } = raster;
+		this.#saving.add(id);
+		try {
+			const [levels, thumbnail] = await Promise.all([
+				Promise.all(
+					image.levels.map(async ({ scale, tiles }) => ({
+						scale,
+						tiles: await Promise.all(
+							tiles.map(async ({ tile, bitmap }) => ({
+								tile,
+								blob: await codec.encode(bitmap),
+							})),
+						),
+					})),
+				),
+				codec.thumbnail(image),
+			]);
+			if (!this.plans.some((p) => p.id === id)) return;
+			this.thumbnails.set(id, thumbnail);
+			await store.saveContent(id, {
+				kind: "raster",
+				raster: { unit, width: image.width, height: image.height, levels },
+				original: original ?? image.blob,
+				thumbnail,
+			});
+		} finally {
+			this.#saving.delete(id);
+			this.#syncContent();
+		}
 	}
 
 	/**
@@ -267,6 +433,7 @@ export class FloorPlans {
 		if (!plan) return;
 		this.editingId = id;
 		this.#before = plan;
+		this.#syncContent();
 	}
 
 	/** Saves the plan in Edit and locks it again. */
@@ -289,6 +456,7 @@ export class FloorPlans {
 		this.editingId = null;
 		this.#before = null;
 		this.tool = null;
+		this.#syncContent();
 	}
 
 	/**
@@ -329,6 +497,7 @@ export class FloorPlans {
 			this.#save(shown);
 		}
 		this.plans = this.plans.map((p) => (p.id === id ? shown : p));
+		this.#syncContent();
 	}
 
 	setTool(kind: Tool["kind"] | null): void {
@@ -477,12 +646,13 @@ export class FloorPlans {
 	/** A change to the plan in Edit, saved by Done. */
 	#replace(plan: FloorPlan): void {
 		this.plans = this.plans.map((p) => (p.id === plan.id ? plan : p));
+		this.#syncContent();
 	}
 
 	/** Changes the plan in Edit; locked plans are left alone. */
 	update(
 		id: string,
-		changes: Partial<Omit<FloorPlan, "id" | "image" | "visible">>,
+		changes: Partial<Omit<FloorPlan, "id" | "size" | "visible">>,
 	): void {
 		const plan = this.editing;
 		if (plan?.id === id) this.#replace({ ...plan, ...changes });
@@ -498,6 +668,7 @@ export class FloorPlans {
 		if (this.editingId === id) this.#endEdit();
 		closeContent(this.contents.get(id));
 		this.contents.delete(id);
+		this.thumbnails.delete(id);
 		this.#persist(this.#store?.delete(id));
 	}
 
@@ -579,4 +750,13 @@ function pixelOn(plan: FloorPlan, position: LngLat): Pixel | null {
 		if (e instanceof GeorefError) return null;
 		throw e;
 	}
+}
+
+/**
+ * Whether a plan shows on a level: plans without a level, or with one that can't be read, show
+ * everywhere rather than vanish.
+ */
+export function isPlanOnLevel(plan: FloorPlan, level: number): boolean {
+	const levels = plan.level === null ? null : parseLevels(plan.level);
+	return levels === null || isOnLevel(levels, level);
 }

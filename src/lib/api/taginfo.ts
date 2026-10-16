@@ -159,6 +159,46 @@ export class Taginfo {
 		);
 	}
 
+	/**
+	 * Roles used in relations of `type` by members of `geometry` (iD's `roles`): without empty
+	 * ones or those with capitals, `*`, `;` or `,`; those starting with `query` first.
+	 */
+	async roles({
+		type,
+		query,
+		geometry,
+	}: {
+		type: string;
+		query: string;
+		geometry: PresetGeometry;
+	}): Promise<TaginfoValue[]> {
+		const members =
+			geometry === "point" || geometry === "vertex"
+				? "node"
+				: geometry === "relation"
+					? "relation"
+					: "way";
+		const found = await this.#get<Record<string, unknown> & { role: string }>(
+			"relation/roles",
+			{ rtype: type, query, sortname: `count_${members}_members` },
+			geometry,
+			false,
+			(data) =>
+				data
+					.filter(
+						(d) =>
+							d.role !== "" &&
+							!/[A-Z*;,]/.test(d.role) &&
+							Number(d[`count_${members}_members_fraction`]) > 0,
+					)
+					.map((d) => ({ value: d.role, title: d.role })),
+		);
+		return [
+			...found.filter((r) => r.value.startsWith(query)),
+			...found.filter((r) => !r.value.startsWith(query)),
+		];
+	}
+
 	#popularKeys(): Promise<Set<string>> {
 		this.#popular ??= this.#json<{ key: string }>(
 			this.#url("keys/all", {
@@ -192,7 +232,7 @@ export class Taginfo {
 			this.#url(path, {
 				...params,
 				query,
-				sortname: SORT[geometry] ?? "count_all",
+				sortname: params.sortname ?? SORT[geometry] ?? "count_all",
 				sortorder: "desc",
 				page: "1",
 				rp: String(page),

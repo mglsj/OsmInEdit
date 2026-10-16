@@ -178,3 +178,54 @@ describe("Taginfo.keys", () => {
 		expect(url.searchParams.get("rp")).toBe("10");
 	});
 });
+
+describe("Taginfo.roles, as iD's", () => {
+	it("asks for the roles used in a type of relation by members of the geometry", async () => {
+		const { taginfo, requests } = fakeTaginfo([
+			{ role: "inner", count_way_members_fraction: 0.2 },
+			{ role: "outer", count_way_members_fraction: 0.8 },
+			{ role: "", count_way_members_fraction: 0.1 },
+			{ role: "Outer", count_way_members_fraction: 0.1 },
+			{ role: "a;b", count_way_members_fraction: 0.1 },
+			{ role: "label", count_way_members_fraction: 0 },
+		]);
+		expect(
+			await taginfo.roles({
+				type: "multipolygon",
+				query: "o",
+				geometry: "area",
+			}),
+		).toEqual([
+			// Those starting with what was typed first.
+			{ value: "outer", title: "outer" },
+			{ value: "inner", title: "inner" },
+		]);
+		const url = requests()[0] as URL;
+		expect(url.pathname).toBe("/api/4/relation/roles");
+		expect(Object.fromEntries(url.searchParams)).toEqual({
+			rtype: "multipolygon",
+			query: "o",
+			sortname: "count_way_members",
+			sortorder: "desc",
+			page: "1",
+			rp: "25",
+			lang: "en",
+		});
+	});
+
+	it("counts points and vertices as node members, relations as relation members", async () => {
+		const { taginfo, requests } = fakeTaginfo([
+			{ role: "label", count_node_members_fraction: 0.5 },
+			{ role: "subarea", count_relation_members_fraction: 0.5 },
+		]);
+		expect(
+			await taginfo.roles({ type: "site", query: "", geometry: "vertex" }),
+		).toEqual([{ value: "label", title: "label" }]);
+		expect(
+			await taginfo.roles({ type: "site", query: "", geometry: "relation" }),
+		).toEqual([{ value: "subarea", title: "subarea" }]);
+		expect(requests()[1]?.searchParams.get("sortname")).toBe(
+			"count_relation_members",
+		);
+	});
+});

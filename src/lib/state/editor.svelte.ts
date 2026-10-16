@@ -3,15 +3,28 @@
  * map, and the loading status of the visible area.
  */
 import { changeTags } from "#lib/actions/change-tags.ts";
+import {
+	addMember,
+	addToNewRelation,
+	changeMemberRoles,
+	moveMember,
+	removeMembers,
+} from "#lib/actions/members.ts";
 import { MapLoader } from "#lib/api/map-loader.ts";
 import type { Bbox, OsmApi } from "#lib/api/osm-api.ts";
 import type { OsmWikibase } from "#lib/api/osm-wikibase.ts";
 import type { Taginfo } from "#lib/api/taginfo.ts";
 import type { Wikidata } from "#lib/api/wikidata.ts";
+import { labelFor } from "#lib/map/classify.ts";
 import { buildFeatures } from "#lib/map/features.ts";
 import { AVAILABLE_ICONS } from "#lib/map/style/icons.ts";
 import { entityGeometry } from "#lib/osm/area.ts";
-import type { Entity, EntityId } from "#lib/osm/entity.ts";
+import type {
+	Entity,
+	EntityId,
+	Relation,
+	RelationId,
+} from "#lib/osm/entity.ts";
 import { Graph } from "#lib/osm/graph.ts";
 import { type Action, History } from "#lib/osm/history.ts";
 import type { Tags } from "#lib/osm/tags.ts";
@@ -38,11 +51,11 @@ export type LoadStatus =
 	| { readonly kind: "error"; readonly failed: number };
 
 export interface EditorOptions {
-	readonly api: Pick<OsmApi, "loadMap" | "upload">;
+	readonly api: Pick<OsmApi, "loadMap" | "loadRelation" | "upload">;
 	/** Data is only downloaded from this zoom level. */
 	readonly minZoom: number;
 	/** Value suggestions for combo fields; none without it. */
-	readonly taginfo?: Pick<Taginfo, "values" | "multikeys" | "keys">;
+	readonly taginfo?: Pick<Taginfo, "values" | "multikeys" | "keys" | "roles">;
 	/** Tag documentation for the ⓘ buttons; none without it. */
 	readonly wikibase?: Pick<OsmWikibase, "docs">;
 	/** Wikidata items, for the wikidata and wikipedia fields. */
@@ -252,6 +265,54 @@ export class Editor {
 			) ?? entity.tags;
 		this.perform(changeTags(entity.id, tags), `Change to ${preset.name}`);
 		this.recentPresets.add(preset.id, geometry);
+	}
+
+	/** How a relation reads in lists: its type, then its name (iD's `baseDisplayValue`). */
+	relationLabel(relation: Relation): string {
+		const type = this.presetOf(relation)?.name ?? "Relation";
+		return `${type} ${labelFor(relation.tags) ?? ""}`;
+	}
+
+	/**
+	 * Adds a feature to a relation with `role`, or to a new relation (null), and returns the
+	 * relation's id.
+	 */
+	addToRelation(
+		id: EntityId,
+		relationId: RelationId | null,
+		role: string,
+	): RelationId {
+		const member = { ref: id, role };
+		if (relationId) {
+			this.perform(addMember(relationId, member), "Add to relation");
+			return relationId;
+		}
+		const created = this.graph.newId("relation");
+		this.perform(addToNewRelation(created, member), "Add a relation");
+		return created;
+	}
+
+	changeMemberRoles(
+		relationId: RelationId,
+		indexes: readonly number[],
+		role: string,
+	): void {
+		this.perform(changeMemberRoles(relationId, indexes, role), "Change role");
+	}
+
+	/** Takes members out of a relation; a relation left empty is deleted. */
+	removeMembers(relationId: RelationId, indexes: readonly number[]): void {
+		this.perform(removeMembers(relationId, indexes), "Remove from relation");
+	}
+
+	moveMember(relationId: RelationId, from: number, to: number): void {
+		if (from === to) return;
+		this.perform(moveMember(relationId, from, to), "Reorder members");
+	}
+
+	/** Downloads the members of an incomplete relation. */
+	async loadRelation(id: RelationId): Promise<void> {
+		this.#receive(await this.#api.loadRelation(id));
 	}
 
 	#receive(entities: Entity[]): void {

@@ -43,6 +43,35 @@ function api(fetch: typeof globalThis.fetch, token: string | null = "secret") {
 	});
 }
 
+describe("loadRelation", () => {
+	it("downloads a relation with its members, as iD's download button", async () => {
+		const { fetch, requests } = fakeFetch({
+			"GET /api/0.6/relation/7/full.json": () =>
+				Response.json({
+					version: "0.6",
+					elements: [
+						{ type: "node", id: 1, lat: 48.85, lon: 2.35, version: 1 },
+						{
+							type: "relation",
+							id: 7,
+							version: 4,
+							members: [{ type: "node", ref: 1, role: "label" }],
+							tags: { type: "site" },
+						},
+					],
+				}),
+		});
+		const entities = await api(fetch).loadRelation("r7");
+		expect(requests.map((r) => r.url)).toEqual([
+			"https://api.example.org/api/0.6/relation/7/full.json",
+		]);
+		expect(entities.map((e) => e.id)).toEqual(["n1", "r7"]);
+		expect(entities[1]).toMatchObject({
+			members: [{ ref: "n1", role: "label" }],
+		});
+	});
+});
+
 describe("loadMap", () => {
 	it("keeps who last edited each element, and when", async () => {
 		const { fetch } = fakeFetch({

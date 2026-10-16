@@ -43,17 +43,21 @@ export interface Changes {
 /**
  * An immutable set of OSM entities: the server data (base) plus local edits. Every change
  * returns a new graph, so history is a list of graphs and undo never has to revert anything.
+ * An action changing many entities runs on one copy instead (`update`, iD's unfrozen graph).
  */
 export class Graph {
 	readonly #base: BaseData;
-	readonly #local: ReadonlyMap<EntityId, Entity | null>;
-	readonly #nextId: number;
-	#localParentWays?: ParentIndex;
-	#localParentRelations?: ParentIndex;
+	/** Only ever changed in place by a graph that `update` hasn't given out yet. */
+	readonly #local: Map<EntityId, Entity | null>;
+	#nextId: number;
+	/** False while `update` runs an action on this copy: changes are then made in place. */
+	#frozen = true;
+	#localParentWays?: Map<EntityId, Set<EntityId>>;
+	#localParentRelations?: Map<EntityId, Set<EntityId>>;
 
 	private constructor(
 		base: BaseData,
-		local: ReadonlyMap<EntityId, Entity | null>,
+		local: Map<EntityId, Entity | null>,
 		nextId: number,
 	) {
 		this.#base = base;
@@ -87,16 +91,50 @@ export class Graph {
 		}
 	}
 
+	/**
+	 * Runs an action on one copy of this graph, whose `replace` and `remove` change it in place
+	 * rather than copying every local edit each time (deleting 1,000 rooms was quadratic). The
+	 * graph returned is immutable again; this one is left as it was.
+	 */
+	update(action: (graph: Graph) => Graph): Graph {
+		const draft = new Graph(this.#base, new Map(this.#local), this.#nextId);
+		draft.#frozen = false;
+		const result = action(draft);
+		draft.#frozen = true;
+		result.#frozen = true;
+		return result;
+	}
+
 	/** Adds or updates an entity. */
 	replace(entity: Entity): Graph {
-		const local = new Map(this.#local).set(entity.id, entity);
 		const nextId = isNewId(entity.id)
 			? Math.min(this.#nextId, osmId(entity.id) - 1)
 			: this.#nextId;
+		if (!this.#frozen) {
+			this.#local.set(entity.id, entity);
+			this.#nextId = nextId;
+			// Links are only added: lookups check that a parent still holds the child.
+			if (entity.type === "way" && this.#localParentWays) {
+				for (const node of entity.nodes) {
+					addTo(this.#localParentWays, node, entity.id);
+				}
+			}
+			if (entity.type === "relation" && this.#localParentRelations) {
+				for (const m of entity.members) {
+					addTo(this.#localParentRelations, m.ref, entity.id);
+				}
+			}
+			return this;
+		}
+		const local = new Map(this.#local).set(entity.id, entity);
 		return new Graph(this.#base, local, nextId);
 	}
 
 	remove(id: EntityId): Graph {
+		if (!this.#frozen) {
+			this.#local.set(id, null);
+			return this;
+		}
 		const local = new Map(this.#local).set(id, null);
 		return new Graph(this.#base, local, this.#nextId);
 	}
@@ -208,10 +246,15 @@ export class Graph {
 		return parents;
 	}
 
-	#localIndexes(): { ways: ParentIndex; relations: ParentIndex } {
-		const entities = [...this.#local.values()].filter((e) => e !== null);
-		this.#localParentWays ??= buildParentWays(entities);
-		this.#localParentRelations ??= buildParentRelations(entities);
+	#localIndexes(): {
+		ways: Map<EntityId, Set<EntityId>>;
+		relations: Map<EntityId, Set<EntityId>>;
+	} {
+		if (!this.#localParentWays || !this.#localParentRelations) {
+			const entities = [...this.#local.values()].filter((e) => e !== null);
+			this.#localParentWays = buildParentWays(entities);
+			this.#localParentRelations = buildParentRelations(entities);
+		}
 		return {
 			ways: this.#localParentWays,
 			relations: this.#localParentRelations,
@@ -219,7 +262,9 @@ export class Graph {
 	}
 }
 
-function buildParentWays(entities: Iterable<Entity>): ParentIndex {
+function buildParentWays(
+	entities: Iterable<Entity>,
+): Map<EntityId, Set<EntityId>> {
 	const index = new Map<EntityId, Set<EntityId>>();
 	for (const entity of entities) {
 		if (entity.type !== "way") continue;
@@ -228,7 +273,9 @@ function buildParentWays(entities: Iterable<Entity>): ParentIndex {
 	return index;
 }
 
-function buildParentRelations(entities: Iterable<Entity>): ParentIndex {
+function buildParentRelations(
+	entities: Iterable<Entity>,
+): Map<EntityId, Set<EntityId>> {
 	const index = new Map<EntityId, Set<EntityId>>();
 	for (const entity of entities) {
 		if (entity.type !== "relation") continue;

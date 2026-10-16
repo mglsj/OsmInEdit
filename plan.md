@@ -472,10 +472,11 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
 Slices agreed with the user ✔: (1) ✅ `bun run bench` (`scripts/bench-core.ts`, 10,000 synthetic
 rooms; targets: a tag edit to the map under 16 ms, deleting 1,000 rooms under 150 ms, a snap
 under 1 ms, the full build no slower); (2) ✅ incremental map updates (`map/feature-store.ts`,
-`Graph.changedSince`; a new level set redraws everything, as agreed); (3) batched graph
-edits; (4) rbush index per level, floor plan snapping to nodes on the shown level only ✔;
+`Graph.changedSince`; a new level set redraws everything, as agreed); (3) ✅ batched graph
+edits (`Graph.update`, used by `History`); (4) rbush index per level, floor plan snapping to nodes on the shown level only ✔;
 (5) live typing without the pause. The drag overlay source waits for P5.3. Measured under
-Bun: a tag edit 46 → 4.5 ms.
+Bun: a tag edit 46 → 4.5 ms; deleting 1,000 rooms 1,296 → 9 ms (the local parent index was
+also copied on every lookup).
 
 - **Incremental map updates** ✅ (then drop the 150 ms pause of live typing, `LIVE_DELAY`): every
   edit rebuilds all features and re-sends them to the map
@@ -484,7 +485,7 @@ Bun: a tag edit 46 → 4.5 ms.
   changed nodes) and send only those with `updateData`. Make `@lv` independent of the levels
   in the whole dataset (or fall back to `setData` when they change), and draw drags on a
   small overlay source, committed on release.
-- **Batched graph edits**: `replace`/`remove` copy all local edits and parent indexes are
+- **Batched graph edits** ✅: `replace`/`remove` copy all local edits and parent indexes are
   rebuilt per graph, so changing many entities is quadratic (deleting 1,000 rooms: 1.6 s).
   Add a batch API with a mutable draft frozen at the end.
 - **Spatial index**: snapping walks every node in the graph; use `rbush` per level for

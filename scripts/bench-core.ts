@@ -113,8 +113,14 @@ report(
 
 const thousand = ways.slice(0, 1000).map((w) => w.id);
 report(
-	"Delete 1,000 rooms",
+	"Delete 1,000 rooms, one by one",
 	time(3, () => deleteEntities(thousand)(graph)),
+	"before P5.2",
+);
+// As History.perform runs actions: on one copy of the graph.
+report(
+	"Delete 1,000 rooms",
+	time(3, () => graph.update(deleteEntities(thousand))),
 	"< 150 ms",
 );
 

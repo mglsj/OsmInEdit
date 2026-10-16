@@ -110,3 +110,61 @@ describe("Graph.changedSince", () => {
 		expect([...loaded.changedSince(edited)].sort()).toEqual(["n3", "n4"]);
 	});
 });
+
+describe("Graph.update: many changes on one copy (iD's unfrozen graph)", () => {
+	const base = () =>
+		Graph.fromEntities([
+			node("n1"),
+			node("n2"),
+			node("n3"),
+			way("w1", ["n1", "n2"]),
+		]);
+
+	it("applies an action's changes, leaving the graph it started from as it was", () => {
+		const graph = base();
+		const after = graph.update((g) =>
+			g
+				.replace(way("w1", ["n1", "n3"]))
+				.replace(node("n-1"))
+				.remove("n2"),
+		);
+		expect(after.entity("w1")).toEqual(way("w1", ["n1", "n3"]));
+		expect(after.entity("n-1")).toBeDefined();
+		expect(after.entity("n2")).toBeUndefined();
+		expect(graph.entity("w1")).toEqual(way("w1", ["n1", "n2"]));
+		expect(graph.entity("n2")).toBeDefined();
+		expect(graph.entity("n-1")).toBeUndefined();
+	});
+
+	it("keeps parents up to date while the action runs", () => {
+		const seen: string[][] = [];
+		base().update((g) => {
+			const next = g
+				.replace(way("w1", ["n1", "n3"]))
+				.replace(relation("r1", [{ ref: "n3", role: "" }]));
+			seen.push(next.parentWays("n3").map((w) => w.id));
+			seen.push(next.parentWays("n2").map((w) => w.id));
+			seen.push(next.parentRelations("n3").map((r) => r.id));
+			return next;
+		});
+		expect(seen).toEqual([["w1"], [], ["r1"]]);
+	});
+
+	it("gives a graph that is immutable again", () => {
+		const after = base().update((g) => g.replace(node("n1", { door: "yes" })));
+		const again = after.replace(node("n1", { door: "no" }));
+		expect(after.entity("n1")?.tags).toEqual({ door: "yes" });
+		expect(again.entity("n1")?.tags).toEqual({ door: "no" });
+		expect(again.changedSince(after)).toEqual(new Set(["n1"]));
+	});
+
+	it("gives new ids that no entity of the copy uses", () => {
+		const graph = base();
+		const after = graph.update((g) => {
+			const a = g.newId("node");
+			const withA = g.replace(node(a));
+			return withA.replace(node(withA.newId("node")));
+		});
+		expect([...after.changedSince(graph)].sort()).toEqual(["n-1", "n-2"]);
+	});
+});

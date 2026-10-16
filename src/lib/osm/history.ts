@@ -41,7 +41,7 @@ export class History {
 
 	/** Applies an action, labelled for the undo button, and drops anything that could be redone. */
 	perform(action: Action, annotation: string): Graph {
-		const graph = action(this.graph);
+		const graph = this.graph.update(action);
 		this.#steps = this.#steps.slice(0, this.#index + 1);
 		this.#steps.push({ graph, annotation });
 		this.#index++;
@@ -58,7 +58,7 @@ export class History {
 		if (this.#index === 0 || step.annotation === null) {
 			return this.perform(action, "Change tags");
 		}
-		const graph = action(step.graph);
+		const graph = step.graph.update(action);
 		this.#steps = [
 			...this.#steps.slice(0, this.#index),
 			{ graph, annotation: step.annotation },

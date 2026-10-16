@@ -22,7 +22,7 @@ export type CutImage = Omit<PlanImage, "encoded">;
 
 /**
  * Decodes a PNG, JPEG or WebP file, at most `MAX_IMAGE_SIZE` pixels wide or tall, into its
- * pyramid (the file kept as the image's); with the size of the file's own pixels.
+ * pyramid; with the size of the file's own pixels.
  */
 export async function pyramidOfFile(
 	file: Blob,
@@ -33,7 +33,7 @@ export async function pyramidOfFile(
 	const { width, height } = full;
 	const scale = Math.min(1, MAX_IMAGE_SIZE / Math.max(width, height));
 	if (scale === 1) {
-		return { image: await buildPyramid(full, file), width, height };
+		return { image: await buildPyramid(full), width, height };
 	}
 	const scaled = await createImageBitmap(full, {
 		resizeWidth: Math.max(1, Math.round(width * scale)),
@@ -41,30 +41,16 @@ export async function pyramidOfFile(
 		resizeQuality: "high",
 	});
 	full.close();
-	const png = await pngOf(scaled);
-	return { image: await buildPyramid(scaled, png), width, height };
+	return { image: await buildPyramid(scaled), width, height };
 }
 
-/** The pyramid of a rendered drawing (an SVG, a PDF page), kept as a PNG. */
-export async function pyramidOfRendering(
-	bitmap: ImageBitmap,
-): Promise<CutImage> {
-	return buildPyramid(bitmap, await pngOf(bitmap));
-}
-
-async function pngOf(bitmap: ImageBitmap): Promise<Blob> {
-	const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-	canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
-	return canvas.convertToBlob({ type: "image/png" }).catch(() => {
-		throw new MessageError(msg("plan_import_encode_failed"));
-	});
+/** The pyramid of a rendered drawing (an SVG, a PDF page). */
+export function pyramidOfRendering(bitmap: ImageBitmap): Promise<CutImage> {
+	return buildPyramid(bitmap);
 }
 
 /** Builds the pyramid of a decoded image (`bitmap` is used up). */
-async function buildPyramid(
-	bitmap: ImageBitmap,
-	blob: Blob,
-): Promise<CutImage> {
+async function buildPyramid(bitmap: ImageBitmap): Promise<CutImage> {
 	const { width, height } = bitmap;
 	const levels: PlanLevel[] = [];
 	let level: ImageBitmap | null = bitmap;
@@ -80,7 +66,7 @@ async function buildPyramid(
 				: null;
 		levels.push({ scale, tiles: cutLevel(current, width, height) });
 	}
-	return { width, height, blob, levels };
+	return { width, height, levels };
 }
 
 /** Encodes every tile of an image, one at a time, and draws its thumbnail. */

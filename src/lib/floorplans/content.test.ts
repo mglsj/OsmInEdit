@@ -5,7 +5,6 @@ import { type PlanImage, rasterContent } from "./content.ts";
 const page: PlanImage = {
 	width: 1240,
 	height: 1754,
-	blob: new Blob(),
 	levels: [],
 	encoded: Promise.resolve({ levels: [] }),
 };

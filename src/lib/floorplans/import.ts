@@ -15,14 +15,18 @@ export type PlanFileKind = "raster" | "svg" | "pdf" | "plans";
 
 /** Accepted by the import file picker. */
 export const ACCEPTED_FILES =
-	"image/png,image/jpeg,image/webp,image/svg+xml,application/pdf,.json";
+	"image/png,image/jpeg,image/webp,image/svg+xml,application/pdf,.zip,.json";
 
 export function kindOf(file: File): PlanFileKind | null {
 	const name = file.name.toLowerCase();
 	if (file.type === "image/svg+xml" || name.endsWith(".svg")) return "svg";
 	if (file.type === "application/pdf" || name.endsWith(".pdf")) return "pdf";
 	if (file.type.startsWith("image/")) return "raster";
-	if (file.type === "application/json" || name.endsWith(".json")) {
+	if (
+		["application/zip", "application/json"].includes(file.type) ||
+		name.endsWith(".zip") ||
+		name.endsWith(".json")
+	) {
 		return "plans";
 	}
 	return null;

@@ -3,6 +3,7 @@ import { PLAN_COLORS } from "#lib/floorplans/colors.ts";
 import {
 	type EncodedImage,
 	type PlanImage,
+	type PlanOrigin,
 	rasterContent,
 } from "#lib/floorplans/content.ts";
 import {
@@ -19,7 +20,6 @@ import { fakeCodec, fakeImage, memoryStore } from "./testing/plan-store.ts";
 const pixels: PlanImage = {
 	width: 400,
 	height: 300,
-	blob: new Blob(),
 	levels: [],
 	encoded: Promise.resolve({ levels: [] }),
 };
@@ -32,7 +32,13 @@ const image = rasterContent(pixels);
  */
 function withPlan() {
 	const floorplans = new FloorPlans();
-	floorplans.add(image, "plan", { center: RENNES, heightMetres: 25 }, "0");
+	floorplans.add(
+		image,
+		"plan",
+		{ center: RENNES, heightMetres: 25 },
+		"0",
+		photo(),
+	);
 	return floorplans;
 }
 
@@ -40,7 +46,13 @@ describe("FloorPlans: plans and their content", () => {
 	it("gives a plan its size in plan units, its content kept apart", () => {
 		const floorplans = new FloorPlans();
 		const content = rasterContent(pixels, { width: 200, height: 150 });
-		floorplans.add(content, "plan", { center: RENNES, heightMetres: 25 }, "0");
+		floorplans.add(
+			content,
+			"plan",
+			{ center: RENNES, heightMetres: 25 },
+			"0",
+			photo(),
+		);
 		const plan = floorplans.plans[0];
 		expect(plan?.size).toEqual({ width: 200, height: 150 });
 		expect(plan && "image" in plan).toBe(false);
@@ -120,8 +132,14 @@ describe("plan colours", () => {
 	it("gives each new plan a colour no other plan has", () => {
 		const floorplans = new FloorPlans();
 		const view = { center: RENNES, heightMetres: 25 };
+
+		/** A photo's origin: a file of its own. */
+		const photo = (): PlanOrigin => ({
+			source: { kind: "raster", file: crypto.randomUUID() },
+			file: new Blob(["photo"]),
+		});
 		for (let i = 0; i < PLAN_COLORS.length; i++) {
-			floorplans.add(image, `plan ${i}`, view, "0");
+			floorplans.add(image, `plan ${i}`, view, "0", photo());
 		}
 		const colors = floorplans.plans.map((p) => p.color);
 		expect(new Set(colors).size).toBe(PLAN_COLORS.length);
@@ -145,9 +163,10 @@ describe("plan colours", () => {
 			opacity: 0.5,
 			level: "0",
 			visible: true,
+			source: photo().source,
 		};
-		floorplans.insert({ ...fields, color: "#16a34a" }, image);
-		floorplans.insert(fields, image);
+		floorplans.insert({ ...fields, color: "#16a34a" }, image, new Blob());
+		floorplans.insert(fields, image, new Blob());
 		const [kept, given] = floorplans.plans;
 		expect(kept?.color).toBe("#16a34a");
 		expect(given?.color).not.toBe("#16a34a");
@@ -190,12 +209,18 @@ describe("plan colours", () => {
 
 const view = { center: RENNES, heightMetres: 25 };
 
+/** A photo's origin: a file of its own. */
+const photo = (): PlanOrigin => ({
+	source: { kind: "raster", file: crypto.randomUUID() },
+	file: new Blob(["photo"]),
+});
+
 /** Two plans, `a` then `b`, neither in Edit, and the store they were saved in. */
 function twoPlans() {
 	const { store, saved } = memoryStore();
 	const floorplans = new FloorPlans({ store });
-	floorplans.add(image, "a", view, "0");
-	floorplans.add(image, "b", view, "0");
+	floorplans.add(image, "a", view, "0", photo());
+	floorplans.add(image, "b", view, "0", photo());
 	floorplans.done();
 	const [a, b] = floorplans.plans;
 	if (!a || !b) throw new Error("No plans");
@@ -220,7 +245,7 @@ describe("editing a plan", () => {
 	it("opens a new plan in Edit, saved as imported", () => {
 		const { store, saved } = memoryStore();
 		const floorplans = new FloorPlans({ store });
-		floorplans.add(image, "plan", view, "0");
+		floorplans.add(image, "plan", view, "0", photo());
 		const [plan] = floorplans.plans;
 		expect(floorplans.editingId).toBe(plan?.id);
 		expect(floorplans.dirty).toBe(false);
@@ -381,18 +406,19 @@ describe("layer stack", () => {
 	it("starts with the buildings on top, and adds plans above the other plans", () => {
 		const floorplans = new FloorPlans();
 		expect(stack(floorplans)).toEqual(["buildings"]);
-		floorplans.add(image, "a", view, "0");
-		floorplans.add(image, "b", view, "0");
+		floorplans.add(image, "a", view, "0", photo());
+		floorplans.add(image, "b", view, "0", photo());
 		expect(stack(floorplans)).toEqual(["a", "b", "buildings"]);
 
 		floorplans.move("buildings", 0);
-		floorplans.add(image, "c", view, "0");
+		floorplans.add(image, "c", view, "0", photo());
 		expect(stack(floorplans)).toEqual(["buildings", "a", "b", "c"]);
 	});
 
 	it("moves a plan or the buildings to a place in the stack", () => {
 		const floorplans = new FloorPlans();
-		for (const name of ["a", "b", "c"]) floorplans.add(image, name, view, "0");
+		for (const name of ["a", "b", "c"])
+			floorplans.add(image, name, view, "0", photo());
 
 		floorplans.move(idOf(floorplans, "c"), 0);
 		expect(stack(floorplans)).toEqual(["c", "a", "b", "buildings"]);
@@ -407,7 +433,8 @@ describe("layer stack", () => {
 
 	it("keeps the buildings in place among the plans left when one is removed", () => {
 		const floorplans = new FloorPlans();
-		for (const name of ["a", "b"]) floorplans.add(image, name, view, "0");
+		for (const name of ["a", "b"])
+			floorplans.add(image, name, view, "0", photo());
 		floorplans.move("buildings", 1);
 		expect(stack(floorplans)).toEqual(["a", "buildings", "b"]);
 
@@ -418,7 +445,8 @@ describe("layer stack", () => {
 	it("brings back the stack, and hidden buildings, after a reload", async () => {
 		const { store } = memoryStore();
 		const before = new FloorPlans({ store, codec: fakeCodec });
-		for (const name of ["a", "b", "c"]) before.add(image, name, view, "0");
+		for (const name of ["a", "b", "c"])
+			before.add(image, name, view, "0", photo());
 		before.done();
 		before.move("buildings", 1);
 		before.move(idOf(before, "c"), 0);
@@ -436,7 +464,7 @@ describe("layer stack", () => {
 	it("puts the buildings on top of plans saved before they were in the list", async () => {
 		const { store } = memoryStore();
 		const before = new FloorPlans({ store, codec: fakeCodec });
-		for (const name of ["a", "b"]) before.add(image, name, view, "0");
+		for (const name of ["a", "b"]) before.add(image, name, view, "0", photo());
 		await settled();
 		// No buildings record: as saved before P4.1.
 		const after = new FloorPlans({
@@ -451,7 +479,7 @@ describe("layer stack", () => {
 
 	it("adds a plan file's plans on top, the outlines placed among them as in the file", () => {
 		const floorplans = new FloorPlans();
-		floorplans.add(image, "x", view, "0");
+		floorplans.add(image, "x", view, "0", photo());
 		const imported = (name: string) => ({
 			name,
 			size: image.size,
@@ -462,6 +490,7 @@ describe("layer stack", () => {
 			level: "1",
 			visible: true,
 			content: image,
+			...photo(),
 		});
 		floorplans.insertPlans({
 			plans: [imported("p"), imported("q")],
@@ -479,7 +508,8 @@ describe("layer stack", () => {
 	it("saves a plan in Edit at its new place without its unsaved changes", async () => {
 		const { store, plans } = memoryStore();
 		const floorplans = new FloorPlans({ store });
-		for (const name of ["a", "b"]) floorplans.add(image, name, view, "0");
+		for (const name of ["a", "b"])
+			floorplans.add(image, name, view, "0", photo());
 		floorplans.edit(idOf(floorplans, "a"));
 		floorplans.update(idOf(floorplans, "a"), { opacity: 0.9 });
 
@@ -500,8 +530,8 @@ describe("FloorPlans: content kept for the level shown", () => {
 	async function reloaded() {
 		const { store, contents } = memoryStore();
 		const before = new FloorPlans({ store, codec: fakeCodec });
-		before.add(rasterContent(fakeImage()), "a", view, "0");
-		before.add(rasterContent(fakeImage()), "b", view, "1");
+		before.add(rasterContent(fakeImage()), "a", view, "0", photo());
+		before.add(rasterContent(fakeImage()), "b", view, "1", photo());
 		before.done();
 		await settled();
 		const after = new FloorPlans({ store, codec: fakeCodec });
@@ -511,14 +541,60 @@ describe("FloorPlans: content kept for the level shown", () => {
 
 	it("saves a new plan's encoded tiles, its file and its thumbnail", async () => {
 		const { after, contents } = await reloaded();
-		const id = idOf(after, "a");
-		const saved = contents.get(id);
+		const plan = after.plans.find((p) => p.name === "a");
+		if (!plan) throw new Error("no plan");
+		const saved = contents.get(plan.id);
 		if (saved?.kind !== "raster") throw new Error("no raster saved");
 		expect(await saved.raster.levels[0]?.tiles[0]?.blob.text()).toBe(
 			"tile 400×300",
 		);
-		expect(await saved.original?.text()).toBe("image");
-		expect(await after.thumbnails.get(id)?.text()).toBe("thumbnail");
+		expect(await (await after.fileOf(plan))?.text()).toBe("photo");
+		expect(await after.thumbnails.get(plan.id)?.text()).toBe("thumbnail");
+	});
+
+	it("saves a PDF once for its pages, and keeps it until the last of them goes", async () => {
+		const { store, files } = memoryStore();
+		const writes: string[] = [];
+		const floorplans = new FloorPlans({
+			store: {
+				...store,
+				saveFile: (id, file) => {
+					writes.push(id);
+					return store.saveFile(id, file);
+				},
+			},
+			codec: fakeCodec,
+		});
+		const file = new Blob(["%PDF"]);
+		const page = (n: number): PlanOrigin => ({
+			source: { kind: "pdf", file: "mall", page: n, dpi: 150 },
+			file,
+		});
+		floorplans.add(rasterContent(fakeImage()), "1", view, "0", page(1));
+		floorplans.add(rasterContent(fakeImage()), "2", view, "1", page(2));
+		const [one, two] = floorplans.plans;
+		if (!one || !two) throw new Error("no plans");
+		// Its file is there before it is written.
+		expect(await (await floorplans.fileOf(two))?.text()).toBe("%PDF");
+		await settled();
+		expect(writes).toEqual(["mall"]);
+		expect(two.source).toEqual({
+			kind: "pdf",
+			file: "mall",
+			page: 2,
+			dpi: 150,
+		});
+
+		floorplans.remove(one.id);
+		await settled();
+		expect(files.has("mall")).toBe(true);
+		floorplans.remove(two.id);
+		await settled();
+		expect(files.has("mall")).toBe(false);
+		// A page imported again from the same PDF saves it again.
+		floorplans.add(rasterContent(fakeImage()), "3", view, "0", page(3));
+		await settled();
+		expect(writes).toEqual(["mall", "mall"]);
 	});
 
 	it("shows a new plan at once, saving its content once its tiles are encoded", async () => {
@@ -531,7 +607,7 @@ describe("FloorPlans: content kept for the level shown", () => {
 				finish = resolve;
 			}),
 		});
-		floorplans.add(rasterContent(slow()), "a", view, "0");
+		floorplans.add(rasterContent(slow()), "a", view, "0", photo());
 		const a = idOf(floorplans, "a");
 		await settled();
 		expect(floorplans.contents.has(a)).toBe(true);
@@ -543,7 +619,7 @@ describe("FloorPlans: content kept for the level shown", () => {
 		expect(await floorplans.thumbnails.get(a)?.text()).toBe("thumbnail");
 
 		// Removed before its tiles are encoded: nothing is saved.
-		floorplans.add(rasterContent(slow()), "b", view, "0");
+		floorplans.add(rasterContent(slow()), "b", view, "0", photo());
 		const b = idOf(floorplans, "b");
 		floorplans.remove(b);
 		finish(await fakeImage().encoded);
@@ -583,7 +659,7 @@ describe("FloorPlans: content kept for the level shown", () => {
 	});
 
 	it("converts a plan saved as one image (schema 2), measured in its pixels", async () => {
-		const { store, plans, contents } = memoryStore();
+		const { store, plans, contents, files } = memoryStore();
 		plans.set("old", {
 			id: "old",
 			name: "old",
@@ -608,6 +684,11 @@ describe("FloorPlans: content kept for the level shown", () => {
 		expect(plans.get("old")?.size).toEqual({ width: 400, height: 300 });
 		const converted = contents.get("old");
 		if (converted?.kind !== "raster") throw new Error("not converted");
-		expect(await converted.original?.text()).toBe("png");
+		// The image is kept as its file, under its id.
+		expect(await files.get("old")?.text()).toBe("png");
+		expect(floorplans.plans[0]?.source).toEqual({
+			kind: "raster",
+			file: "old",
+		});
 	});
 });

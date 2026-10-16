@@ -22,14 +22,14 @@
 	"plan_tool_pivot_on_plan": "Click on the plan to pick the centre of rotation.",
 	"plan_storage_restore_failed": "Saved floor plans could not be restored: {error}",
 	"plan_storage_save_failed": "Floor plans could not be saved in this browser: {error}",
-	"plan_import_unsupported": "IndoorID can import PNG, JPEG, WebP, SVG and PDF plans, and plan files (.json).",
+	"plan_import_unsupported": "IndoorID can import PNG, JPEG, WebP, SVG and PDF plans, and plan files (.zip, or .json from earlier versions).",
 	"plan_import_map_not_ready": "The map is not ready yet.",
 	"plan_import_image_unreadable": "This image could not be read.",
 	"plan_import_svg_unreadable": "This SVG drawing could not be read.",
 	"plan_import_pdf_unreadable": "This PDF could not be read.",
-	"plan_import_encode_failed": "The plan could not be encoded.",
 	"plan_file_not_json": "This file is not a floor plan file (not JSON).",
 	"plan_file_unknown": "This file is not an IndoorID or OsmInEdit floor plan file.",
 	"plan_file_no_image": "A floor plan in this file has no image.",
-	"plan_file_damaged": "A floor plan in this file is damaged or incomplete."
+	"plan_file_damaged": "A floor plan in this file is damaged or incomplete.",
+	"plan_file_newer": "This floor plan file was made by a newer version of IndoorID: update IndoorID to open it."
 }

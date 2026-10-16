@@ -1,10 +1,17 @@
 /**
  * Floor plans in and out of files: a picked file opened as a plan, a PDF to pick pages from,
- * or a plan file's plans; and every plan written to a plan file. Files are decoded through
- * `PlanDecoders`, so this runs in tests without a browser.
+ * or a plan file's plans; and plans written to a plan file (version 2, an archive carrying
+ * the files they come from). Files are decoded through `PlanDecoders`, so this runs in tests
+ * without a browser.
  */
 import { MessageError, msg } from "#lib/i18n/messages.ts";
-import { type PlanContent, type PlanSize, rasterContent } from "./content.ts";
+import {
+	type PlanContent,
+	type PlanOrigin,
+	type PlanSize,
+	type PlanSource,
+	rasterContent,
+} from "./content.ts";
 import type { ControlPoint, Transform, TransformKind } from "./georef.ts";
 import {
 	kindOf,
@@ -13,15 +20,18 @@ import {
 	planName,
 } from "./import.ts";
 import {
-	exportPlans,
+	type ArchivedPlan,
+	isPlanArchive,
 	type PlanFileBuildings,
 	type PlanFileEntry,
 	parsePlanFile,
+	readPlanArchive,
 	transformOf,
+	writePlanArchive,
 } from "./plan-file.ts";
 
-/** A plan read from a plan file, placed as saved, with its content. */
-export interface ImportedPlan {
+/** A plan's settings, as files carry them. */
+interface PlanFields {
 	readonly name: string;
 	readonly size: PlanSize;
 	readonly transform: Transform;
@@ -30,6 +40,10 @@ export interface ImportedPlan {
 	readonly opacity: number;
 	readonly level: string | null;
 	readonly visible: boolean;
+}
+
+/** A plan read from a plan file, placed as saved, with its content and the file it is from. */
+export interface ImportedPlan extends PlanFields, PlanOrigin {
 	/** Files from before colours have none. */
 	readonly color?: string;
 	readonly content: PlanContent;
@@ -41,17 +55,22 @@ export interface ImportedPlans {
 	readonly buildings?: PlanFileBuildings;
 }
 
+/** A PDF opened for its pages to be picked. */
+export interface OpenedPdf {
+	readonly name: string;
+	readonly document: PdfDocument;
+	/** The PDF and its id: its pages' plans share it. */
+	readonly origin: { readonly file: Blob; readonly id: string };
+}
+
 export type OpenedFile =
 	| {
 			readonly kind: "plan";
 			readonly name: string;
 			readonly content: PlanContent;
+			readonly origin: PlanOrigin;
 	  }
-	| {
-			readonly kind: "pdf";
-			readonly name: string;
-			readonly document: PdfDocument;
-	  }
+	| ({ readonly kind: "pdf" } & OpenedPdf)
 	| { readonly kind: "plans"; readonly plans: ImportedPlans };
 
 /** Opens a file picked for import. */
@@ -60,52 +79,133 @@ export async function openPlanFile(
 	decoders: PlanDecoders,
 ): Promise<OpenedFile> {
 	const name = planName(file);
+	const id = crypto.randomUUID();
 	switch (kindOf(file)) {
 		case "raster":
-			return { kind: "plan", name, content: await decoders.raster(file) };
-		case "svg":
-			return { kind: "plan", name, content: await decoders.svg(file) };
-		case "pdf":
-			return { kind: "pdf", name, document: await decoders.pdf(file) };
-		case "plans":
+		case "svg": {
+			const kind = kindOf(file) as "raster" | "svg";
 			return {
-				kind: "plans",
-				plans: await readPlanFile(await file.text(), decoders),
+				kind: "plan",
+				name,
+				content: await decoders[kind](file),
+				origin: { source: { kind, file: id }, file },
 			};
+		}
+		case "pdf":
+			return {
+				kind: "pdf",
+				name,
+				document: await decoders.pdf(file),
+				origin: { file, id },
+			};
+		case "plans":
+			return { kind: "plans", plans: await readPlans(file, decoders) };
 		default:
 			throw new MessageError(msg("plan_import_unsupported"));
 	}
 }
 
-/** A PDF page's plan name: the file's, with the page number when it has several. */
-export function pageName(
-	name: string,
+/** A page of an opened PDF, rendered at `dpi`, as a new plan's content. */
+export async function pdfPage(
+	{ name, document, origin }: OpenedPdf,
 	page: number,
-	pageCount: number,
-): string {
-	return pageCount > 1 ? `${name}, page ${page}` : name;
+	dpi: number,
+): Promise<{ name: string; content: PlanContent; origin: PlanOrigin }> {
+	return {
+		name: document.pageCount > 1 ? `${name}, page ${page}` : name,
+		content: await document.render(page, dpi),
+		origin: {
+			source: { kind: "pdf", file: origin.id, page, dpi },
+			file: origin.file,
+		},
+	};
 }
 
-/** Reads the plans of an IndoorID or OsmInEdit 1.x plan file, their images decoded. */
-export async function readPlanFile(
+/** Reads a plan file: an archive (version 2), or JSON (version 1, OsmInEdit 1.x). */
+export async function readPlans(
+	file: Blob,
+	decoders: PlanDecoders,
+): Promise<ImportedPlans> {
+	const bytes = new Uint8Array(await file.arrayBuffer());
+	return isPlanArchive(bytes)
+		? readArchive(bytes, decoders)
+		: readJson(new TextDecoder().decode(bytes), decoders);
+}
+
+async function readArchive(
+	bytes: Uint8Array,
+	decoders: PlanDecoders,
+): Promise<ImportedPlans> {
+	const { plans, files, buildings } = readPlanArchive(bytes);
+	// Each file gets a new id here: its plans share it, other plans don't.
+	const blobs = new Map(
+		[...files].map(([path, data]) => [
+			path,
+			{
+				id: crypto.randomUUID(),
+				blob: new Blob([new Uint8Array(data)], { type: typeOf(path) }),
+			},
+		]),
+	);
+	const pdfs = new Map<string, Promise<PdfDocument>>();
+	try {
+		const imported: ImportedPlan[] = [];
+		for (const plan of plans) {
+			const file = blobs.get(plan.source.file);
+			if (!file) continue;
+			const source = { ...plan.source, file: file.id };
+			imported.push({
+				...plan,
+				source,
+				file: file.blob,
+				content: await contentOf(plan, file.blob, decoders, pdfs),
+			});
+		}
+		return { plans: imported, ...(buildings ? { buildings } : {}) };
+	} finally {
+		for (const pdf of pdfs.values()) void pdf.then((d) => d.close());
+	}
+}
+
+/** A plan's content drawn from its file again, measured as saved. */
+async function contentOf(
+	plan: ArchivedPlan,
+	file: Blob,
+	decoders: PlanDecoders,
+	pdfs: Map<string, Promise<PdfDocument>>,
+): Promise<PlanContent> {
+	const { source, size } = plan;
+	let decoded: PlanContent;
+	if (source.kind === "pdf") {
+		let pdf = pdfs.get(source.file);
+		if (!pdf) {
+			pdf = decoders.pdf(file);
+			pdfs.set(source.file, pdf);
+		}
+		decoded = await (await pdf).render(source.page, source.dpi);
+	} else {
+		decoded = await decoders[source.kind](file);
+	}
+	return decoded.raster ? rasterContent(decoded.raster.image, size) : decoded;
+}
+
+async function readJson(
 	text: string,
 	decoders: PlanDecoders,
 ): Promise<ImportedPlans> {
 	const { plans, buildings } = parsePlanFile(text);
 	const imported: ImportedPlan[] = [];
-	for (const entry of plans) imported.push(await readPlan(entry, decoders));
+	for (const entry of plans) imported.push(await readEntry(entry, decoders));
 	return { plans: imported, ...(buildings ? { buildings } : {}) };
 }
 
-async function readPlan(
+async function readEntry(
 	entry: PlanFileEntry,
 	decoders: PlanDecoders,
 ): Promise<ImportedPlan> {
-	const blob = await (await fetch(entry.image)).blob();
-	const decoded =
-		blob.type === "image/svg+xml"
-			? await decoders.svg(blob)
-			: await decoders.raster(blob);
+	const file = await (await fetch(entry.image)).blob();
+	const kind = file.type === "image/svg+xml" ? "svg" : "raster";
+	const decoded = await decoders[kind](file);
 	// Measured as saved: files from before plan units give the image's pixels.
 	const size =
 		entry.width && entry.height
@@ -124,6 +224,8 @@ async function readPlan(
 		level: entry.level,
 		visible: entry.visible,
 		...(entry.color ? { color: entry.color } : {}),
+		source: { kind, file: crypto.randomUUID() },
+		file,
 		content: decoded.raster
 			? rasterContent(decoded.raster.image, size)
 			: decoded,
@@ -131,57 +233,61 @@ async function readPlan(
 }
 
 /** What a plan file keeps of a plan. */
-export interface ExportedPlan {
+export interface ExportedPlan extends PlanFields {
 	readonly id: string;
-	readonly name: string;
-	readonly size: PlanSize;
-	readonly transform: Transform;
-	readonly controlPoints: readonly ControlPoint[];
-	readonly opacity: number;
-	readonly level: string | null;
-	readonly visible: boolean;
+	readonly source: PlanSource;
 	readonly color: string;
 }
 
 /**
- * An IndoorID plan file of `plans` (bottom first) with their files, from `originalOf`; a plan
- * without one (its saving failed) is left out.
+ * A plan file (version 2) of `plans`, bottom first, with the files they come from (each once),
+ * from `fileOf`; a plan without one (its saving failed) is left out.
  */
 export async function writePlanFile(
 	plans: readonly ExportedPlan[],
 	buildings: PlanFileBuildings,
-	originalOf: (id: string) => Promise<Blob | undefined>,
-): Promise<string> {
-	const files = await Promise.all(plans.map((plan) => originalOf(plan.id)));
-	const entries: PlanFileEntry[] = [];
+	fileOf: (plan: ExportedPlan) => Promise<Blob | undefined>,
+): Promise<Blob> {
+	const blobs = await Promise.all(plans.map(fileOf));
+	const paths = new Map<string, string>();
+	const files = new Map<string, Uint8Array>();
+	const archived: ArchivedPlan[] = [];
 	let below = 0;
 	for (const [index, plan] of plans.entries()) {
-		const file = files[index];
-		if (!file) continue;
+		const blob = blobs[index];
+		if (!blob) continue;
 		if (index < buildings.below) below++;
-		entries.push({
-			name: plan.name,
-			image: await dataUrl(file),
-			// Plan units: the transform's.
-			width: plan.size.width,
-			height: plan.size.height,
-			level: plan.level,
-			opacity: plan.opacity,
-			visible: plan.visible,
-			color: plan.color,
-			placement: { transform: plan.transform },
-			controlPoints: plan.controlPoints,
-		});
+		let path = paths.get(plan.source.file);
+		if (!path) {
+			path = `files/${paths.size + 1}.${extensionOf(blob, plan.source)}`;
+			paths.set(plan.source.file, path);
+			files.set(path, new Uint8Array(await blob.arrayBuffer()));
+		}
+		const { id: _, source, ...fields } = plan;
+		archived.push({ ...fields, source: { ...source, file: path } });
 	}
-	return exportPlans(entries, { below, visible: buildings.visible });
+	const bytes = writePlanArchive({
+		plans: archived,
+		files,
+		buildings: { below, visible: buildings.visible },
+	});
+	return new Blob([new Uint8Array(bytes)], { type: "application/zip" });
 }
 
-async function dataUrl(blob: Blob): Promise<string> {
-	const bytes = new Uint8Array(await blob.arrayBuffer());
-	let binary = "";
-	// In chunks: spreading megabytes of arguments overflows the stack.
-	for (let i = 0; i < bytes.length; i += 0x8000) {
-		binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-	}
-	return `data:${blob.type || "application/octet-stream"};base64,${btoa(binary)}`;
+const TYPES: Record<string, string> = {
+	pdf: "application/pdf",
+	svg: "image/svg+xml",
+	png: "image/png",
+	jpg: "image/jpeg",
+	webp: "image/webp",
+};
+
+function extensionOf(blob: Blob, source: PlanSource): string {
+	if (source.kind !== "raster") return source.kind;
+	const known = Object.entries(TYPES).find(([, type]) => type === blob.type);
+	return known?.[0] ?? "img";
+}
+
+function typeOf(path: string): string {
+	return TYPES[path.slice(path.lastIndexOf(".") + 1)] ?? "";
 }

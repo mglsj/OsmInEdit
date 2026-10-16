@@ -7,6 +7,27 @@
  */
 import type { Tile } from "./tiling.ts";
 
+/**
+ * The file a plan was imported from, by id (stored once, shared by the pages of one PDF):
+ * the plan's content is drawn from it again when a plan file is read.
+ */
+export type PlanSource =
+	| { readonly kind: "raster" | "svg"; readonly file: string }
+	| {
+			readonly kind: "pdf";
+			readonly file: string;
+			/** From 1. */
+			readonly page: number;
+			/** Dots per inch it was rendered at. */
+			readonly dpi: number;
+	  };
+
+/** A new plan's source, with its file (saved once per file id). */
+export interface PlanOrigin {
+	readonly source: PlanSource;
+	readonly file: Blob;
+}
+
 /** A size in plan units. */
 export interface PlanSize {
 	readonly width: number;
@@ -17,8 +38,6 @@ export interface PlanSize {
 export interface PlanImage {
 	readonly width: number;
 	readonly height: number;
-	/** The image to store and export: the original raster file, or a PNG rendering. */
-	readonly blob: Blob;
 	/**
 	 * The image at full size, then halved again and again: the map draws the level matching the
 	 * zoom. MapLibre doesn't mipmap image sources, so a large plan drawn small would otherwise

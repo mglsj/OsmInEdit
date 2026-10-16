@@ -813,6 +813,16 @@ send a bitmap. `floorplans/plan-io.ts`: `openPlanFile` (a plan, a PDF to pick pa
 plan file's plans), `readPlanFile`, `writePlanFile` (a plan without its file is left out, from
 under the outlines too), `pageName`; `FloorPlans.insertPlans` places the outlines. Tested in
 Node with fake decoders, the worker and codecs in Chromium (`*.browser.test.ts`).
+R2.4 (decided ✔: a PDF is stored once for its pages; the file is a ZIP archive):
+`PlanSource` (`raster`/`svg` file, or `pdf` file with page and DPI) on every plan; files are
+stored by file id in `originals` (`saveFile`/`loadFile`), deleted with the last plan from them
+(plans saved before have theirs under their own id); `PlanImage` no longer carries a PNG of
+renderings. Plan file version 2 (`plan-file.ts`, fflate): `plans.json` (size and source
+required, `fitKind` kept) and `files/n.ext` stored uncompressed; a version above 2 is refused
+("made by a newer version"); version 1 JSON and 1.x files are still read. `plan-io.ts`:
+`readPlans` (archive or JSON) draws each plan again from its file, a PDF opened once with its
+pages rendered at their DPI, files given new ids; `writePlanFile` gives a `.zip` Blob; `pdfPage`
+names and sources a picked page. E2E: exported archive read back, the PDF stored once.
 
 ### P4.2: Vector and light raster plans — M–L
 

@@ -74,10 +74,12 @@ runs the same commands.
   `bun run presets` after changing the overlay or the schema version.
 - Floor plans (P4, R2): `floorplans/` (`content.ts`: a plan's size in plan units (PDF points, SVG
   units, photo pixels) and its content, kept in `FloorPlans.contents`, out of the reactive plans;
-  transforms map plan units; `georef.ts` transforms fitted in Web Mercator, `plan-file.ts`
-  JSON and 1.x files, `tiling.ts`, `import.ts` raster/SVG/PDF), `map/floorplan-layers.ts`,
+  transforms map plan units; a plan's `source` names the file it came from, stored once by
+  file id (a PDF shared by its pages); `georef.ts` transforms fitted in Web Mercator,
+  `plan-file.ts` plan files (version 2: a ZIP of `plans.json` and the source files; version 1
+  JSON and 1.x read), `tiling.ts`, `import.ts` raster/SVG/PDF), `map/floorplan-layers.ts`,
   `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),
-  `persist/plan-store.ts` (IndexedDB schema 3: settings, tiles, originals, thumbnails; tested on
+  `persist/plan-store.ts` (IndexedDB schema 3: settings, tiles, files, thumbnails; tested on
   fake-indexeddb; content loads for the shown level only, `FloorPlans.showLevel`; tests use
   `state/testing/plan-store.ts`), `ui/FloorPlansPanel.svelte`. Pixels go through a `PlanCodec`
   (`codec.ts`; `workerCodec()` runs `plan-worker.ts`: `pyramid.ts` cuts, then `tile-codec.ts`

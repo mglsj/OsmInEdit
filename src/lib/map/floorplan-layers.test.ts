@@ -16,6 +16,7 @@ const plan: FloorPlan = {
 	id: "p",
 	name: "plan",
 	size: { width: 400, height: 300 },
+	source: { kind: "raster", file: "p" },
 	transform: place(
 		{ center: truth(200, 150), metresPerPixel: 0.05, bearing: 0 },
 		400,

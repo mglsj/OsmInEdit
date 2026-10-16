@@ -5,12 +5,14 @@
  * user's browser.
  *
  * Schema 3: `plans` (settings), `rasters` (a plan's raster: unit, size, the tiles of each
- * pyramid level), `tiles` (`[plan, level, x, y]` → the encoded tile), `originals` (the file
- * imported), `thumbnails`, `settings` (the building outlines' place). `images` holds the whole
- * images of schemas 1 and 2 until each plan is converted, the first time its content loads.
+ * pyramid level), `tiles` (`[plan, level, x, y]` → the encoded tile), `originals` (the files
+ * plans were imported from, by file id: a PDF once for all its pages; a plan saved without a
+ * `source` has its file under its own id), `thumbnails`, `settings` (the building outlines'
+ * place). `images` holds the whole images of schemas 1 and 2 until each plan is converted, the
+ * first time its content loads.
  */
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
-import type { PlanSize } from "#lib/floorplans/content.ts";
+import type { PlanSize, PlanSource } from "#lib/floorplans/content.ts";
 import type {
 	ControlPoint,
 	Transform,
@@ -24,6 +26,8 @@ export interface StoredPlan {
 	readonly name: string;
 	/** Size in plan units; plans saved before plan units have none (their image's pixels). */
 	readonly size?: PlanSize;
+	/** The file it was imported from; plans saved before R2.4 have none (see `fileOf`). */
+	readonly source?: PlanSource;
 	readonly transform: Transform;
 	readonly controlPoints: readonly ControlPoint[];
 	readonly fitKind: TransformKind;
@@ -77,9 +81,13 @@ export interface PlanStore {
 		id: string,
 		content: Extract<StoredContent, { kind: "raster" }>,
 	): Promise<void>;
+	/** Saves a file plans were imported from, by its id. */
+	saveFile(id: string, file: Blob): Promise<void>;
+	loadFile(id: string): Promise<Blob | undefined>;
 	/** Every plan's thumbnail, by id. */
 	loadThumbnails(): Promise<Map<string, Blob>>;
 	save(plan: StoredPlan): Promise<void>;
+	/** Deletes a plan, its content, and its file unless another plan comes from it. */
 	delete(id: string): Promise<void>;
 	/** Undefined until the outlines were first moved or hidden. */
 	loadBuildings(): Promise<StoredBuildings | undefined>;
@@ -112,16 +120,15 @@ interface Schema extends DBSchema {
 	images: { key: string; value: Blob };
 }
 
+/** The id of the file a plan comes from: its own id when saved without a source. */
+export function fileOf(plan: StoredPlan): string {
+	return plan.source?.file ?? plan.id;
+}
+
 /** Every tile key of a plan: arrays sort after numbers, so `[id, []]` is past them all. */
 const tilesOf = (id: string) => IDBKeyRange.bound([id], [id, []]);
 
-const CONTENT_STORES = [
-	"rasters",
-	"tiles",
-	"originals",
-	"thumbnails",
-	"images",
-] as const;
+const CONTENT_STORES = ["rasters", "tiles", "thumbnails", "images"] as const;
 
 export class IndexedDbPlanStore implements PlanStore {
 	readonly #name: string;
@@ -164,7 +171,7 @@ export class IndexedDbPlanStore implements PlanStore {
 	async loadContent(id: string): Promise<StoredContent | undefined> {
 		const db = await this.#open();
 		const tx = db.transaction(
-			["rasters", "tiles", "originals", "thumbnails", "images"],
+			["rasters", "tiles", "thumbnails", "images"],
 			"readonly",
 		);
 		const record = await tx.objectStore("rasters").get(id);
@@ -184,21 +191,17 @@ export class IndexedDbPlanStore implements PlanStore {
 				),
 			})),
 		);
-		const [original, thumbnail] = await Promise.all([
-			tx.objectStore("originals").get(id),
-			tx.objectStore("thumbnails").get(id),
-		]);
+		const thumbnail = await tx.objectStore("thumbnails").get(id);
 		return {
 			kind: "raster",
 			raster: { ...record, levels },
-			...(original ? { original } : {}),
 			...(thumbnail ? { thumbnail } : {}),
 		};
 	}
 
 	async saveContent(
 		id: string,
-		{ raster, original, thumbnail }: Extract<StoredContent, { kind: "raster" }>,
+		{ raster, thumbnail }: Extract<StoredContent, { kind: "raster" }>,
 	): Promise<void> {
 		const db = await this.#open();
 		const tx = db.transaction(CONTENT_STORES, "readwrite");
@@ -225,9 +228,16 @@ export class IndexedDbPlanStore implements PlanStore {
 				);
 			}
 		});
-		if (original) writes.push(tx.objectStore("originals").put(original, id));
 		if (thumbnail) writes.push(tx.objectStore("thumbnails").put(thumbnail, id));
 		await Promise.all([...writes, tx.done]);
+	}
+
+	async saveFile(id: string, file: Blob): Promise<void> {
+		await (await this.#open()).put("originals", file, id);
+	}
+
+	async loadFile(id: string): Promise<Blob | undefined> {
+		return (await this.#open()).get("originals", id);
 	}
 
 	async loadThumbnails(): Promise<Map<string, Blob>> {
@@ -267,13 +277,23 @@ export class IndexedDbPlanStore implements PlanStore {
 
 	async delete(id: string): Promise<void> {
 		const db = await this.#open();
-		const tx = db.transaction(["plans", ...CONTENT_STORES], "readwrite");
+		const tx = db.transaction(
+			["plans", "originals", ...CONTENT_STORES],
+			"readwrite",
+		);
+		const plans = tx.objectStore("plans");
+		const deleting = await plans.get(id);
+		const others = (await plans.getAll()).filter((plan) => plan.id !== id);
+		const file = deleting ? fileOf(deleting) : id;
 		await Promise.all([
-			tx.objectStore("plans").delete(id),
+			plans.delete(id),
 			tx.objectStore("tiles").delete(tilesOf(id)),
-			...(["rasters", "originals", "thumbnails", "images"] as const).map(
-				(store) => tx.objectStore(store).delete(id),
+			...(["rasters", "thumbnails", "images"] as const).map((store) =>
+				tx.objectStore(store).delete(id),
 			),
+			...(others.some((plan) => fileOf(plan) === file)
+				? []
+				: [tx.objectStore("originals").delete(file)]),
 			tx.done,
 		]);
 	}

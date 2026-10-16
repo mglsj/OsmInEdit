@@ -26,15 +26,13 @@
 	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
 	import * as ToggleGroup from "#lib/components/shadcn/toggle-group/index.ts";
 	import { BUILDING_COLOR, PLAN_COLORS } from "#lib/floorplans/colors.ts";
+	import type { PlanContent, PlanOrigin } from "#lib/floorplans/content.ts";
 	import type { TransformKind } from "#lib/floorplans/georef.ts";
+	import { ACCEPTED_FILES, type PlanDecoders } from "#lib/floorplans/import.ts";
 	import {
-		ACCEPTED_FILES,
-		type PdfDocument,
-		type PlanDecoders,
-	} from "#lib/floorplans/import.ts";
-	import {
+		type OpenedPdf,
 		openPlanFile,
-		pageName,
+		pdfPage,
 		writePlanFile,
 	} from "#lib/floorplans/plan-io.ts";
 	import { type Message, MessageError, msg, t } from "#lib/i18n/messages.ts";
@@ -181,7 +179,7 @@
 	let choosingColor = $state<string | null>(null);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
-	let pdf = $state.raw<{ document: PdfDocument; name: string } | null>(null);
+	let pdf = $state.raw<OpenedPdf | null>(null);
 	let input = $state<HTMLInputElement>();
 
 	/** The plan in Edit, whose settings and tools show. */
@@ -199,10 +197,10 @@
 			const opened = await openPlanFile(file, decoders);
 			switch (opened.kind) {
 				case "plan":
-					add(opened.content, opened.name);
+					add(opened);
 					break;
 				case "pdf":
-					pdf = { document: opened.document, name: opened.name };
+					pdf = opened;
 					break;
 				case "plans":
 					floorplans.insertPlans(opened.plans);
@@ -215,23 +213,26 @@
 	}
 
 	/** Adds a plan in the middle of the view, on the level shown. */
-	function add(image: Parameters<FloorPlans["add"]>[0], name: string) {
+	function add({
+		content,
+		name,
+		origin,
+	}: {
+		content: PlanContent;
+		name: string;
+		origin: PlanOrigin;
+	}) {
 		const view = getView();
 		if (!view) throw new MessageError(msg("plan_import_map_not_ready"));
-		floorplans.add(image, name, view, String(level));
+		floorplans.add(content, name, view, String(level), origin);
 	}
 
 	/** Each page becomes a plan, all in the same spot on the level shown. */
 	async function importPdfPages(pages: number[], dpi: number) {
 		if (!pdf) return;
-		const { document, name } = pdf;
+		const opened = pdf;
 		try {
-			for (const page of pages) {
-				add(
-					await document.render(page, dpi),
-					pageName(name, page, document.pageCount),
-				);
-			}
+			for (const page of pages) add(await pdfPage(opened, page, dpi));
 		} catch (e) {
 			error = (e as Error).message;
 		}
@@ -247,17 +248,15 @@
 	/** Downloads every plan, images included, as an IndoorID plan file. */
 	async function exportFile() {
 		// Plans off the shown level have no content loaded: their file comes from storage.
-		const text = await writePlanFile(
+		const archive = await writePlanFile(
 			floorplans.plans,
 			floorplans.buildings,
-			(id) => floorplans.originalOf(id),
+			(plan) => floorplans.fileOf(plan),
 		);
-		const url = URL.createObjectURL(
-			new Blob([text], { type: "application/json" }),
-		);
+		const url = URL.createObjectURL(archive);
 		const link = document.createElement("a");
 		link.href = url;
-		link.download = "indoorid-floorplans.json";
+		link.download = "indoorid-floorplans.zip";
 		link.click();
 		URL.revokeObjectURL(url);
 	}

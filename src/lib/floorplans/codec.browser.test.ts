@@ -50,8 +50,6 @@ describe("workerCodec (the plan worker, in Chromium)", () => {
 		expect([width, height, image.width, image.height]).toEqual([
 			2400, 300, 2400, 300,
 		]);
-		// The file itself, kept for exports (a copy: it came back from the worker).
-		expect(await image.blob.text()).toBe(await file.text());
 		// 2400, 1200, 600, 300 and 150 px wide: halved until 256 px or less.
 		expect(scales(image)).toEqual([1, 2, 4, 8, 16]);
 		const [left, right] = image.levels[0]?.tiles ?? [];
@@ -92,22 +90,17 @@ describe("workerCodec (the plan worker, in Chromium)", () => {
 		);
 		expect([width, height]).toEqual([9000, 90]);
 		expect([image.width, image.height]).toEqual([8192, 82]);
-		expect(image.blob.type).toBe("image/png");
 		expect(image.levels[0]?.tiles.length).toBe(4);
 	});
 
-	it("cuts a rendering, kept as a PNG", async () => {
+	it("cuts a rendering", async () => {
 		const bitmap = canvasOf(400, 300).transferToImageBitmap();
 		const image = await codec.fromRendering(bitmap);
 		expect([image.width, image.height]).toEqual([400, 300]);
 		expect(scales(image)).toEqual([1, 2]);
-		expect(image.blob.type).toBe("image/png");
-		expect(
-			same(
-				pixels(await createImageBitmap(image.blob)),
-				pixels(canvasOf(400, 300)),
-			),
-		).toBe(true);
+		const tile = image.levels[0]?.tiles[0]?.bitmap;
+		if (!tile) throw new Error("no tile");
+		expect(same(pixels(tile), pixels(canvasOf(400, 300)))).toBe(true);
 	});
 
 	it("reports a file it can't read with its message", async () => {

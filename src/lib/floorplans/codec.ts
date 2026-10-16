@@ -19,7 +19,7 @@ export interface PlanCodec {
 	decodeFile(
 		file: Blob,
 	): Promise<{ image: PlanImage; width: number; height: number }>;
-	/** A rendered drawing (an SVG, a PDF page) cut, kept as a PNG; `bitmap` is used up. */
+	/** A rendered drawing (an SVG, a PDF page) cut; `bitmap` is used up. */
 	fromRendering(bitmap: ImageBitmap): Promise<PlanImage>;
 	/** A stored tile, decoded. */
 	decode(blob: Blob): Promise<ImageBitmap>;

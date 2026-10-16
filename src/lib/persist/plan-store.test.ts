@@ -72,7 +72,6 @@ const content: StoredContent = {
 			},
 		],
 	},
-	original: new Blob(["%PDF"]),
 	thumbnail: new Blob(["thumb"]),
 };
 
@@ -87,7 +86,7 @@ describe("IndexedDbPlanStore (schema 3)", () => {
 		expect(plans[0]).toEqual(plan("a", 0));
 	});
 
-	it("gives a plan's content when asked: tiles by level, in place, with the original", async () => {
+	it("gives a plan's content when asked: tiles by level, in place, with its thumbnail", async () => {
 		const store = freshStore();
 		await store.save(plan("a", 0));
 		await store.saveContent("a", content);
@@ -104,7 +103,6 @@ describe("IndexedDbPlanStore (schema 3)", () => {
 				raster.levels.flatMap((l) => l.tiles.map((t) => text(t.blob))),
 			),
 		).toEqual(["0-0", "0-1", "1-0"]);
-		expect(await text(loaded.original)).toBe("%PDF");
 		expect(await text(loaded.thumbnail)).toBe("thumb");
 		expect(await store.loadThumbnails()).toEqual(
 			new Map([["a", expect.any(Blob)]]),
@@ -119,6 +117,30 @@ describe("IndexedDbPlanStore (schema 3)", () => {
 		expect(await store.load()).toEqual([]);
 		expect(await store.loadContent("a")).toBeUndefined();
 		expect((await store.loadThumbnails()).size).toBe(0);
+	});
+
+	it("keeps a file shared by plans (a PDF's pages) until the last of them goes", async () => {
+		const store = freshStore();
+		const page = (id: string, n: number): StoredPlan => ({
+			...plan(id, n),
+			source: { kind: "pdf", file: "mall", page: n, dpi: 150 },
+		});
+		await store.save(page("a", 1));
+		await store.save(page("b", 2));
+		await store.saveFile("mall", new Blob(["%PDF"]));
+		expect(await text(await store.loadFile("mall"))).toBe("%PDF");
+		await store.delete("a");
+		expect(await text(await store.loadFile("mall"))).toBe("%PDF");
+		await store.delete("b");
+		expect(await store.loadFile("mall")).toBeUndefined();
+	});
+
+	it("deletes the file of a plan saved without a source: kept under its id", async () => {
+		const store = freshStore();
+		await store.save(plan("a", 0));
+		await store.saveFile("a", new Blob(["png"]));
+		await store.delete("a");
+		expect(await store.loadFile("a")).toBeUndefined();
 	});
 
 	it("upgrades a version 2 database: its plans load, their images as legacy content", async () => {

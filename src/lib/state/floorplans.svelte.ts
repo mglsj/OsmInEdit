@@ -9,7 +9,9 @@ import { pickColor } from "#lib/floorplans/colors.ts";
 import {
 	closeContent,
 	type PlanContent,
+	type PlanOrigin,
 	type PlanSize,
+	type PlanSource,
 	rasterContent,
 } from "#lib/floorplans/content.ts";
 import {
@@ -30,13 +32,19 @@ import {
 import type { ImportedPlans } from "#lib/floorplans/plan-io.ts";
 import { type Message, msg } from "#lib/i18n/messages.ts";
 import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
-import type { PlanStore, StoredPlan } from "#lib/persist/plan-store.ts";
+import {
+	fileOf,
+	type PlanStore,
+	type StoredPlan,
+} from "#lib/persist/plan-store.ts";
 
 export interface FloorPlan {
 	readonly id: string;
 	readonly name: string;
 	/** Its size in plan units (the transform's units); its content is in `FloorPlans.contents`. */
 	readonly size: PlanSize;
+	/** The file it was imported from, stored apart (`FloorPlans.fileOf`). */
+	readonly source: PlanSource;
 	readonly transform: Transform;
 	readonly controlPoints: readonly ControlPoint[];
 	/** Transform fitted to the control points, once there are enough of them. */
@@ -152,6 +160,10 @@ export class FloorPlans {
 	readonly #loading = new Set<string>();
 	/** Plans removed: content still being encoded for one is not saved. */
 	readonly #removed = new Set<string>();
+	/** Files saved (or being saved) by id: the pages of a PDF save it once. */
+	readonly #savedFiles = new Set<string>();
+	/** Files not written to the store yet (or kept here without a store), by id. */
+	readonly #unwritten = new Map<string, Blob>();
 
 	constructor({ store, codec }: FloorPlansOptions = {}) {
 		this.#store = store;
@@ -167,13 +179,12 @@ export class FloorPlans {
 		this.#syncContent();
 	}
 
-	/** The file a plan was imported from (or its image), for exports; loaded if not shown. */
-	async originalOf(id: string): Promise<Blob | undefined> {
-		const shown = this.contents.get(id)?.raster?.image.blob;
-		if (shown) return shown;
-		const stored = await this.#store?.loadContent(id);
-		if (stored?.kind === "legacy") return stored.image;
-		return stored?.original;
+	/** The file a plan was imported from, for exports. */
+	async fileOf(plan: {
+		readonly source: PlanSource;
+	}): Promise<Blob | undefined> {
+		const { file } = plan.source;
+		return this.#unwritten.get(file) ?? (await this.#store?.loadFile(file));
 	}
 
 	/** Brings back the plans saved in earlier visits. */
@@ -190,7 +201,14 @@ export class FloorPlans {
 			// Plans saved before plan units are measured by their image, converted now; one
 			// without any content is left out.
 			const sized = await Promise.all(
-				stored.map(async ({ order: _order, size, ...plan }) => {
+				stored.map(async (record) => {
+					const { order: _order, size, ...rest } = record;
+					// Plans saved before sources have their file under their own id.
+					const source: PlanSource = rest.source ?? {
+						kind: "raster",
+						file: fileOf(record),
+					};
+					const plan = { ...rest, source };
 					if (size) return { plan: { ...plan, size }, resave: false };
 					const content = await this.#loadContent({ id: plan.id });
 					if (!content) return null;
@@ -224,7 +242,10 @@ export class FloorPlans {
 				below,
 				visible: buildings?.visible ?? true,
 			};
-			for (const plan of restored) if (resaved.has(plan.id)) this.#save(plan);
+			for (const plan of restored) {
+				this.#savedFiles.add(plan.source.file);
+				if (resaved.has(plan.id)) this.#save(plan);
+			}
 			this.#syncContent();
 		} catch (e) {
 			this.storageError = msg("plan_storage_restore_failed", {
@@ -233,12 +254,16 @@ export class FloorPlans {
 		}
 	}
 
-	/** Adds a plan north up in the middle of the view, 60% of its height tall, in Edit. */
+	/**
+	 * Adds a plan north up in the middle of the view, 60% of its height tall, in Edit, with the
+	 * file it comes from.
+	 */
 	add(
 		content: PlanContent,
 		name: string,
 		view: View,
 		level: string | null,
+		{ source, file }: PlanOrigin,
 	): void {
 		const { width, height } = content.size;
 		const transform = place(
@@ -254,6 +279,7 @@ export class FloorPlans {
 			{
 				name,
 				size: content.size,
+				source,
 				transform,
 				controlPoints: [],
 				fitKind: "similarity",
@@ -262,16 +288,19 @@ export class FloorPlans {
 				visible: true,
 			},
 			content,
+			file,
 		);
 	}
 
 	/**
 	 * Adds an already placed plan (from a file) on top of the others, saved as it is and opened in
-	 * Edit. Without a colour, it gets one no other plan has.
+	 * Edit, with `file`, its source's file, unless saved already. Without a colour, it gets one
+	 * no other plan has.
 	 */
 	insert(
 		fields: Omit<FloorPlan, "id" | "color"> & { readonly color?: string },
 		content: PlanContent,
+		file: Blob,
 	): void {
 		const plan: FloorPlan = {
 			id: crypto.randomUUID(),
@@ -286,9 +315,18 @@ export class FloorPlans {
 			this.#saveBuildings();
 		}
 		this.contents.set(plan.id, content);
+		this.#saveFile(plan.source.file, file);
 		this.#save(plan);
 		this.edit(plan.id);
 		this.#persist(this.#saveContent(plan.id, content));
+	}
+
+	#saveFile(id: string, file: Blob): void {
+		if (this.#savedFiles.has(id)) return;
+		this.#savedFiles.add(id);
+		this.#unwritten.set(id, file);
+		const write = this.#store?.saveFile(id, file);
+		this.#persist(write?.then(() => void this.#unwritten.delete(id)));
 	}
 
 	/**
@@ -297,7 +335,9 @@ export class FloorPlans {
 	 */
 	insertPlans({ plans, buildings }: ImportedPlans): void {
 		const existing = this.plans.length;
-		for (const { content, ...fields } of plans) this.insert(fields, content);
+		for (const { content, file, ...fields } of plans) {
+			this.insert(fields, content, file);
+		}
 		if (buildings) {
 			this.move(BUILDINGS, existing + Math.min(buildings.below, plans.length));
 			this.setBuildingsVisible(buildings.visible);
@@ -362,10 +402,16 @@ export class FloorPlans {
 		if (stored.kind === "legacy") {
 			const { image } = await codec.decodeFile(stored.image);
 			const content = rasterContent(image, plan.size);
-			this.#persist(this.#saveContent(plan.id, content, stored.image));
+			// The image is kept as the plan's file, under its id.
+			const store = this.#store;
+			this.#persist(
+				store
+					?.saveFile(plan.id, stored.image)
+					.then(() => this.#saveContent(plan.id, content)),
+			);
 			return content;
 		}
-		const { raster, original, thumbnail } = stored;
+		const { raster, thumbnail } = stored;
 		const levels = await Promise.all(
 			raster.levels.map(async ({ scale, tiles }) => ({
 				scale,
@@ -387,7 +433,6 @@ export class FloorPlans {
 				image: {
 					width: raster.width,
 					height: raster.height,
-					blob: original ?? new Blob(),
 					levels,
 					encoded: Promise.resolve({
 						levels: raster.levels,
@@ -400,13 +445,9 @@ export class FloorPlans {
 
 	/**
 	 * Saves a plan's content once its tiles are encoded (the plan shows meanwhile), with its
-	 * thumbnail and the file it came from.
+	 * thumbnail.
 	 */
-	async #saveContent(
-		id: string,
-		content: PlanContent,
-		original?: Blob,
-	): Promise<void> {
+	async #saveContent(id: string, content: PlanContent): Promise<void> {
 		const store = this.#store;
 		const raster = content.raster;
 		if (!store || !raster) return;
@@ -418,7 +459,6 @@ export class FloorPlans {
 		await store.saveContent(id, {
 			kind: "raster",
 			raster: { unit, width: image.width, height: image.height, levels },
-			original: original ?? image.blob,
 			...(thumbnail ? { thumbnail } : {}),
 		});
 	}
@@ -661,7 +701,13 @@ export class FloorPlans {
 	remove(id: string): void {
 		this.#removed.add(id);
 		const index = this.plans.findIndex((p) => p.id === id);
+		const file = this.plans[index]?.source.file;
 		this.plans = this.plans.filter((p) => p.id !== id);
+		// The store deletes a file with the last plan from it: imported again, it is saved again.
+		if (file && !this.plans.some((p) => p.source.file === file)) {
+			this.#savedFiles.delete(file);
+			this.#unwritten.delete(file);
+		}
 		if (index >= 0 && index < this.buildings.below) {
 			// Saved places keep their order: nothing to save.
 			this.buildings = { ...this.buildings, below: this.buildings.below - 1 };

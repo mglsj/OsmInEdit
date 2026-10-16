@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
+import { strFromU8, unzipSync } from "fflate";
 import { PLAN_COLORS } from "../../src/lib/floorplans/colors.ts";
 import {
 	BACKGROUND,
@@ -158,6 +160,68 @@ test("imports several PDF pages as plans, all on the level shown", async ({
 		cy,
 		blend([0, 0, 255], 0.5, blend([255, 0, 0], 0.5, BACKGROUND)),
 	);
+});
+
+/** How many files plans were imported from are stored in IndexedDB. */
+function storedFiles(page: Page): Promise<number> {
+	return page.evaluate(
+		() =>
+			new Promise<number>((resolve, reject) => {
+				const open = indexedDB.open("indoorid-floorplans");
+				open.onerror = () => reject(open.error);
+				open.onsuccess = () => {
+					const count = open.result
+						.transaction("originals")
+						.objectStore("originals")
+						.count();
+					count.onsuccess = () => {
+						open.result.close();
+						resolve(count.result);
+					};
+				};
+			}),
+	);
+}
+
+test("exports plans in an archive with their PDF once, read back drawn again", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.pdf");
+	const dialog = page.getByRole("dialog", { name: "Import PDF pages" });
+	await dialog.getByRole("checkbox", { name: "Page 2" }).click();
+	await dialog.getByRole("button", { name: "Import 2 pages" }).click();
+	await expect(dialog).toBeHidden({ timeout: 20_000 });
+	await expect.poll(() => storedFiles(page)).toBe(1);
+
+	const [download] = await Promise.all([
+		page.waitForEvent("download"),
+		page.getByRole("button", { name: "Export floor plans" }).click(),
+	]);
+	expect(download.suggestedFilename()).toBe("indoorid-floorplans.zip");
+	const bytes = readFileSync(await download.path());
+	const archive = unzipSync(bytes);
+	expect(Object.keys(archive).sort()).toEqual(["files/1.pdf", "plans.json"]);
+	const { version, plans } = JSON.parse(
+		strFromU8(archive["plans.json"] ?? new Uint8Array()),
+	);
+	expect(version).toBe(2);
+	expect(plans.map((p: { source: unknown }) => p.source)).toEqual([
+		{ kind: "pdf", file: "files/1.pdf", page: 1, dpi: 150 },
+		{ kind: "pdf", file: "files/1.pdf", page: 2, dpi: 150 },
+	]);
+
+	// Imported back: both pages drawn again from the PDF, stored once more (a copy of its own).
+	await page.getByLabel("Import a floor plan").setInputFiles({
+		name: download.suggestedFilename(),
+		mimeType: "application/zip",
+		buffer: bytes,
+	});
+	await expect(planRows(page)).toHaveCount(4, { timeout: 20_000 });
+	await expect(planRows(page).first()).toContainText("600 × 450 px");
+	await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(
+		"plan, page 2",
+	);
+	await expect.poll(() => storedFiles(page)).toBe(2);
 });
 
 /** A mall 0.0008° (~600 px at zoom 19) wide around (LON, LAT), tagged as the one in Rennes. */

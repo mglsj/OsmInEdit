@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { PLAN_COLORS } from "#lib/floorplans/colors.ts";
-import { rasterContent } from "#lib/floorplans/content.ts";
+import {
+	type EncodedImage,
+	type PlanImage,
+	rasterContent,
+} from "#lib/floorplans/content.ts";
 import {
 	place,
 	project,
 	type Transform,
 	translateTo,
 } from "#lib/floorplans/georef.ts";
-import type { PlanImage } from "#lib/floorplans/import.ts";
 import { distance, offset, RENNES } from "#lib/floorplans/test-geometry.ts";
 import { msg } from "#lib/i18n/messages.ts";
 import { type FloorPlan, FloorPlans } from "./floorplans.svelte.ts";
@@ -18,6 +21,7 @@ const pixels: PlanImage = {
 	height: 300,
 	blob: new Blob(),
 	levels: [],
+	encoded: Promise.resolve({ levels: [] }),
 };
 /** A 400 × 300 px photo: measured in its pixels. */
 const image = rasterContent(pixels);
@@ -445,6 +449,33 @@ describe("layer stack", () => {
 		expect(after.buildings.visible).toBe(true);
 	});
 
+	it("adds a plan file's plans on top, the outlines placed among them as in the file", () => {
+		const floorplans = new FloorPlans();
+		floorplans.add(image, "x", view, "0");
+		const imported = (name: string) => ({
+			name,
+			size: image.size,
+			transform: place({ center: RENNES, metresPerPixel: 1, bearing: 0 }, 1, 1),
+			controlPoints: [],
+			fitKind: "similarity" as const,
+			opacity: 0.4,
+			level: "1",
+			visible: true,
+			content: image,
+		});
+		floorplans.insertPlans({
+			plans: [imported("p"), imported("q")],
+			buildings: { below: 1, visible: false },
+		});
+		expect(stack(floorplans)).toEqual(["x", "p", "buildings", "q"]);
+		expect(floorplans.buildings.visible).toBe(false);
+		expect(floorplans.plans[1]).toMatchObject({ name: "p", opacity: 0.4 });
+
+		// A file without outlines leaves them where they are.
+		floorplans.insertPlans({ plans: [imported("r")] });
+		expect(stack(floorplans)).toEqual(["x", "p", "buildings", "q", "r"]);
+	});
+
 	it("saves a plan in Edit at its new place without its unsaved changes", async () => {
 		const { store, plans } = memoryStore();
 		const floorplans = new FloorPlans({ store });
@@ -478,7 +509,7 @@ describe("FloorPlans: content kept for the level shown", () => {
 		return { after, contents };
 	}
 
-	it("saves a new plan's content encoded, with the file and a thumbnail", async () => {
+	it("saves a new plan's encoded tiles, its file and its thumbnail", async () => {
 		const { after, contents } = await reloaded();
 		const id = idOf(after, "a");
 		const saved = contents.get(id);
@@ -487,7 +518,38 @@ describe("FloorPlans: content kept for the level shown", () => {
 			"tile 400×300",
 		);
 		expect(await saved.original?.text()).toBe("image");
-		expect(after.thumbnails.get(id)).toBeInstanceOf(Blob);
+		expect(await after.thumbnails.get(id)?.text()).toBe("thumbnail");
+	});
+
+	it("shows a new plan at once, saving its content once its tiles are encoded", async () => {
+		const { store, contents } = memoryStore();
+		const floorplans = new FloorPlans({ store, codec: fakeCodec });
+		let finish = (_: EncodedImage) => {};
+		const slow = (): PlanImage => ({
+			...fakeImage(),
+			encoded: new Promise((resolve) => {
+				finish = resolve;
+			}),
+		});
+		floorplans.add(rasterContent(slow()), "a", view, "0");
+		const a = idOf(floorplans, "a");
+		await settled();
+		expect(floorplans.contents.has(a)).toBe(true);
+		expect(contents.has(a)).toBe(false);
+
+		finish(await fakeImage().encoded);
+		await settled();
+		expect(contents.get(a)?.kind).toBe("raster");
+		expect(await floorplans.thumbnails.get(a)?.text()).toBe("thumbnail");
+
+		// Removed before its tiles are encoded: nothing is saved.
+		floorplans.add(rasterContent(slow()), "b", view, "0");
+		const b = idOf(floorplans, "b");
+		floorplans.remove(b);
+		finish(await fakeImage().encoded);
+		await settled();
+		expect(contents.has(b)).toBe(false);
+		expect(floorplans.thumbnails.has(b)).toBe(false);
 	});
 
 	it("restores plans without content, then loads only the shown level's", async () => {

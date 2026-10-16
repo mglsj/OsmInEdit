@@ -1,49 +1,131 @@
 /**
- * How plan content is turned into stored blobs and back: tiles encoded for IndexedDB, tiles
- * decoded for the map, thumbnails for the list, and the whole images plans were saved as before
- * schema 3. An interface, so state is tested without a browser; R2.3 moves the work to a worker.
+ * How plan pixels become content and stored tiles become bitmaps again. An interface, so state
+ * is tested without a browser; in the app, the work runs in the plan worker (`plan-worker.ts`).
  */
-import { decodeRaster, type PlanImage } from "./import.ts";
+import { MessageError } from "#lib/i18n/messages.ts";
+import type { EncodedImage, PlanImage } from "./content.ts";
+import type {
+	WorkerError,
+	WorkerRequest,
+	WorkerResponse,
+} from "./plan-worker.ts";
+import type { CutImage } from "./pyramid.ts";
 
 export interface PlanCodec {
-	/** A tile as stored: a format this browser reads back, lossless. */
-	encode(bitmap: ImageBitmap): Promise<Blob>;
+	/**
+	 * A PNG, JPEG or WebP file decoded (at most `MAX_IMAGE_SIZE` pixels) and cut, its tiles
+	 * encoded after; with the size of the file's own pixels.
+	 */
+	decodeFile(
+		file: Blob,
+	): Promise<{ image: PlanImage; width: number; height: number }>;
+	/** A rendered drawing (an SVG, a PDF page) cut, kept as a PNG; `bitmap` is used up. */
+	fromRendering(bitmap: ImageBitmap): Promise<PlanImage>;
+	/** A stored tile, decoded. */
 	decode(blob: Blob): Promise<ImageBitmap>;
-	/** A small picture of the plan for the list, at most `THUMBNAIL_SIZE` pixels. */
-	thumbnail(image: PlanImage): Promise<Blob>;
-	/** A whole image saved before schema 3, as a pyramid of tiles. */
-	decodeImage(blob: Blob): Promise<PlanImage>;
 }
 
-export const THUMBNAIL_SIZE = 128;
+interface Deferred<T> {
+	resolve(value: T): void;
+	reject(error: Error): void;
+}
 
-/** The codec on this thread: lossless WebP where the canvas encodes it, else PNG. */
-export const browserCodec: PlanCodec = {
-	async encode(bitmap) {
-		const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-		canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
-		// Quality 1 asks for lossless WebP; a browser without it gives PNG.
-		return canvas.convertToBlob({ type: "image/webp", quality: 1 });
-	},
-	decode: (blob) => createImageBitmap(blob),
-	async thumbnail(image) {
-		const smallest = image.levels.at(-1);
-		const scale = THUMBNAIL_SIZE / Math.max(image.width, image.height);
-		const canvas = new OffscreenCanvas(
-			Math.max(1, Math.round(image.width * scale)),
-			Math.max(1, Math.round(image.height * scale)),
-		);
-		const context = canvas.getContext("2d");
-		for (const { tile, bitmap } of smallest?.tiles ?? []) {
-			context?.drawImage(
-				bitmap,
-				tile.x * scale,
-				tile.y * scale,
-				tile.width * scale,
-				tile.height * scale,
-			);
+type Request = WorkerRequest extends infer R
+	? R extends { id: number }
+		? Omit<R, "id">
+		: never
+	: never;
+
+/** A codec running in its own worker, started at the first call. */
+export function workerCodec(): PlanCodec & { terminate(): void } {
+	let worker: Worker | undefined;
+	let next = 0;
+	const answers = new Map<number, Deferred<unknown>>();
+	const encodings = new Map<number, Deferred<EncodedImage>>();
+
+	function failAll(error: Error) {
+		for (const call of [...answers.values(), ...encodings.values()]) {
+			call.reject(error);
 		}
-		return canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
-	},
-	decodeImage: decodeRaster,
-};
+		answers.clear();
+		encodings.clear();
+	}
+
+	function start(): Worker {
+		const started = new Worker(new URL("./plan-worker.ts", import.meta.url), {
+			type: "module",
+		});
+		started.onmessage = ({ data }: MessageEvent<WorkerResponse>) => {
+			const { id } = data;
+			if ("value" in data || "error" in data) {
+				const call = answers.get(id);
+				answers.delete(id);
+				if ("value" in data) call?.resolve(data.value);
+				else {
+					call?.reject(errorOf(data.error));
+					encodings.get(id)?.reject(errorOf(data.error));
+					encodings.delete(id);
+				}
+			} else {
+				const call = encodings.get(id);
+				encodings.delete(id);
+				if ("encoded" in data) call?.resolve(data.encoded);
+				else call?.reject(errorOf(data.encodeError));
+			}
+		};
+		started.onerror = (event) => {
+			event.preventDefault();
+			failAll(new Error(event.message || "Floor plan worker failed"));
+		};
+		return started;
+	}
+
+	function call<T>(request: Request, transfer: Transferable[] = []) {
+		worker ??= start();
+		const id = next++;
+		const running = worker;
+		const answer = new Promise<T>((resolve, reject) => {
+			answers.set(id, { resolve: resolve as (value: unknown) => void, reject });
+		});
+		const encoded = new Promise<EncodedImage>((resolve, reject) => {
+			if (request.op !== "decode") encodings.set(id, { resolve, reject });
+		});
+		// Handled where content is saved; a plan dropped before that leaves it unread.
+		encoded.catch(() => {});
+		running.postMessage({ id, ...request }, transfer);
+		return { answer, encoded };
+	}
+
+	const withEncoded = (image: CutImage, encoded: Promise<EncodedImage>) => ({
+		...image,
+		encoded,
+	});
+
+	return {
+		async decodeFile(file) {
+			const { answer, encoded } = call<{
+				image: CutImage;
+				width: number;
+				height: number;
+			}>({ op: "file", file });
+			const { image, width, height } = await answer;
+			return { image: withEncoded(image, encoded), width, height };
+		},
+		async fromRendering(bitmap) {
+			const { answer, encoded } = call<CutImage>({ op: "rendering", bitmap }, [
+				bitmap,
+			]);
+			return withEncoded(await answer, encoded);
+		},
+		decode: (blob) => call<ImageBitmap>({ op: "decode", blob }).answer,
+		terminate() {
+			worker?.terminate();
+			worker = undefined;
+			failAll(new Error("Floor plan worker stopped"));
+		},
+	};
+}
+
+function errorOf(error: WorkerError): Error {
+	return error.msg ? new MessageError(error.msg) : new Error(error.message);
+}

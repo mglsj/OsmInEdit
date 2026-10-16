@@ -1,39 +1,15 @@
 /**
- * Turns floor plan files into images the map can draw: raster files (PNG, JPEG, WebP), SVG
- * drawings and PDF pages. Every plan ends up as a pyramid of ImageBitmaps cut into tiles, plus a
- * PNG or the original file to store and export.
+ * Turns floor plan files into content the map can draw: raster files (PNG, JPEG, WebP), SVG
+ * drawings and PDF pages. SVG and PDF are rendered here (they need the page's `<img>` and
+ * canvas); decoding, cutting and encoding go to the codec (the plan worker).
  */
 import { MessageError, msg } from "#lib/i18n/messages.ts";
+import type { PlanCodec } from "./codec.ts";
 import { type PlanContent, rasterContent } from "./content.ts";
-import { type Tile, tiles } from "./tiling.ts";
+import { MAX_IMAGE_SIZE } from "./pyramid.ts";
 
-/** Longest side kept for a plan, in pixels; larger plans are scaled down on import. */
-export const MAX_IMAGE_SIZE = 8192;
 /** Longest side SVG drawings are rendered at: they have no resolution of their own. */
 const SVG_SIZE = 4096;
-
-export interface PlanImage {
-	readonly width: number;
-	readonly height: number;
-	/** The image to store and export: the original raster file, or a PNG rendering. */
-	readonly blob: Blob;
-	/**
-	 * The image at full size, then halved again and again: the map draws the level matching the
-	 * zoom. MapLibre doesn't mipmap image sources, so a large plan drawn small would otherwise
-	 * lose its thin lines between the pixels it samples.
-	 */
-	readonly levels: readonly PlanLevel[];
-}
-
-export interface PlanLevel {
-	/** Image pixels per pixel of this level: 1, 2, 4… */
-	readonly scale: number;
-	/** The level cut into GPU-sized tiles, placed in full-size image pixels. */
-	readonly tiles: readonly { tile: Tile; bitmap: ImageBitmap }[];
-}
-
-/** The pyramid stops once a level fits in this many pixels. */
-const SMALLEST_LEVEL = 256;
 
 export type PlanFileKind = "raster" | "svg" | "pdf" | "plans";
 
@@ -57,38 +33,37 @@ export function planName(file: File): string {
 	return file.name.replace(/\.[^.]+$/, "") || "Floor plan";
 }
 
-/** A PNG, JPEG or WebP plan, measured in its pixels (a large one is drawn smaller). */
-export async function importRaster(file: Blob): Promise<PlanContent> {
-	const { image, width, height } = await decodeImage(file);
-	return rasterContent(image, { width, height });
+/** Reads each kind of plan file; an interface so that plan files are read in tests. */
+export interface PlanDecoders {
+	/** A PNG, JPEG or WebP plan, measured in its pixels (a large one is drawn smaller). */
+	raster(file: Blob): Promise<PlanContent>;
+	/** An SVG drawing, measured in its user units. */
+	svg(file: Blob): Promise<PlanContent>;
+	pdf(file: Blob): Promise<PdfDocument>;
 }
 
-/** Decodes a PNG, JPEG or WebP image, at most `MAX_IMAGE_SIZE` pixels wide or tall. */
-export async function decodeRaster(file: Blob): Promise<PlanImage> {
-	return (await decodeImage(file)).image;
+/** The decoders of this page, cutting and encoding through `codec`. */
+export function planDecoders(codec: PlanCodec): PlanDecoders {
+	return {
+		raster: (file) => importRaster(file, codec),
+		svg: (file) => importSvg(file, codec),
+		pdf: (file) => openPdf(file, codec),
+	};
 }
 
-/** The decoded image, and the size of the file's own (before any downscaling). */
-async function decodeImage(
+async function importRaster(
 	file: Blob,
-): Promise<{ image: PlanImage; width: number; height: number }> {
-	const full = await createImageBitmap(file).catch(() => {
-		throw new MessageError(msg("plan_import_image_unreadable"));
-	});
-	const { width, height } = full;
-	const scale = Math.min(1, MAX_IMAGE_SIZE / Math.max(width, height));
-	if (scale === 1)
-		return { image: await fromBitmap(full, file), width, height };
-	const canvas = drawScaled(full, scale);
-	full.close();
-	return { image: await fromCanvas(canvas), width, height };
+	codec: PlanCodec,
+): Promise<PlanContent> {
+	const { image, width, height } = await codec.decodeFile(file);
+	return rasterContent(image, { width, height });
 }
 
 /**
  * Renders an SVG drawing through an `<img>`: images never run the scripts or load the
  * resources an SVG may contain.
  */
-export async function importSvg(file: Blob): Promise<PlanContent> {
+async function importSvg(file: Blob, codec: PlanCodec): Promise<PlanContent> {
 	const url = URL.createObjectURL(
 		file.type === "image/svg+xml"
 			? file
@@ -104,8 +79,15 @@ export async function importSvg(file: Blob): Promise<PlanContent> {
 		const width = image.naturalWidth || SVG_SIZE;
 		const height = image.naturalHeight || SVG_SIZE;
 		const scale = SVG_SIZE / Math.max(width, height);
+		const canvas = new OffscreenCanvas(
+			Math.max(1, Math.round(width * scale)),
+			Math.max(1, Math.round(height * scale)),
+		);
+		canvas
+			.getContext("2d")
+			?.drawImage(image, 0, 0, canvas.width, canvas.height);
 		return rasterContent(
-			await fromCanvas(drawScaled(image, scale, width, height)),
+			await codec.fromRendering(canvas.transferToImageBitmap()),
 			{ width, height },
 		);
 	} finally {
@@ -125,7 +107,7 @@ export interface PdfDocument {
 }
 
 /** Opens a PDF; pdf.js is only downloaded when a PDF is imported. */
-export async function openPdf(file: Blob): Promise<PdfDocument> {
+async function openPdf(file: Blob, codec: PlanCodec): Promise<PdfDocument> {
 	const [pdfjs, { default: workerUrl }] = await Promise.all([
 		// The legacy build polyfills recent JavaScript (Map.getOrInsertComputed…) that pdf.js
 		// 6 uses and many browsers still lack.
@@ -178,103 +160,15 @@ export async function openPdf(file: Blob): Promise<PdfDocument> {
 				dpi / 72,
 				MAX_IMAGE_SIZE / Math.max(width, height),
 			);
-			return rasterContent(await fromCanvas(await draw(page, scale)), {
-				width,
-				height,
-			});
+			const canvas = await draw(page, scale);
+			return rasterContent(
+				await codec.fromRendering(await createImageBitmap(canvas)),
+				{ width, height },
+			);
 		},
 		close() {
 			for (const url of urls) URL.revokeObjectURL(url);
 			void task.destroy();
 		},
 	};
-}
-
-/** Draws an image scaled by `scale` onto a new canvas. */
-function drawScaled(
-	image: CanvasImageSource,
-	scale: number,
-	width = (image as ImageBitmap).width,
-	height = (image as ImageBitmap).height,
-): HTMLCanvasElement {
-	const canvas = document.createElement("canvas");
-	canvas.width = Math.max(1, Math.round(width * scale));
-	canvas.height = Math.max(1, Math.round(height * scale));
-	const context = canvas.getContext("2d");
-	if (!context) throw new Error("No 2D canvas");
-	context.drawImage(image, 0, 0, canvas.width, canvas.height);
-	return canvas;
-}
-
-async function fromCanvas(canvas: HTMLCanvasElement): Promise<PlanImage> {
-	const blob = await new Promise<Blob | null>((resolve) =>
-		canvas.toBlob(resolve, "image/png"),
-	);
-	if (!blob) throw new MessageError(msg("plan_import_encode_failed"));
-	return fromBitmap(await createImageBitmap(canvas), blob);
-}
-
-/** Builds the pyramid of a decoded image, each level cut into tiles. */
-export async function fromBitmap(
-	bitmap: ImageBitmap,
-	blob: Blob,
-): Promise<PlanImage> {
-	const { width, height } = bitmap;
-	const levels: PlanLevel[] = [];
-	let level: ImageBitmap | null = bitmap;
-	for (let scale = 1; level; scale *= 2) {
-		const current: ImageBitmap = level;
-		level =
-			Math.max(current.width, current.height) > SMALLEST_LEVEL
-				? await createImageBitmap(current, {
-						resizeWidth: Math.max(1, Math.round(current.width / 2)),
-						resizeHeight: Math.max(1, Math.round(current.height / 2)),
-						resizeQuality: "high",
-					})
-				: null;
-		levels.push({ scale, tiles: cut(current, width, height) });
-	}
-	return { width, height, blob, levels };
-}
-
-/**
- * Cuts one level into tiles, placed in the pixels of the full image (`width` × `height`). The
- * level's bitmap is used as is when it fits in one tile, else closed once cut.
- */
-function cut(
-	bitmap: ImageBitmap,
-	width: number,
-	height: number,
-): { tile: Tile; bitmap: ImageBitmap }[] {
-	const fx = width / bitmap.width;
-	const fy = height / bitmap.height;
-	const parts = tiles(bitmap.width, bitmap.height);
-	const full = (tile: Tile): Tile => ({
-		x: tile.x * fx,
-		y: tile.y * fy,
-		width: tile.width * fx,
-		height: tile.height * fy,
-	});
-	if (parts.length === 1) return [{ tile: full(parts[0] as Tile), bitmap }];
-	// Each tile is copied through its own canvas: a cropped createImageBitmap may share the
-	// source's pixels on GPU-accelerated browsers, and the source is closed right after.
-	const result = parts.map((tile) => {
-		const canvas = new OffscreenCanvas(tile.width, tile.height);
-		const context = canvas.getContext("2d");
-		if (!context) throw new Error("No 2D canvas");
-		context.drawImage(
-			bitmap,
-			tile.x,
-			tile.y,
-			tile.width,
-			tile.height,
-			0,
-			0,
-			tile.width,
-			tile.height,
-		);
-		return { tile: full(tile), bitmap: canvas.transferToImageBitmap() };
-	});
-	bitmap.close();
-	return result;
 }

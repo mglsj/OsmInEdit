@@ -5,12 +5,51 @@
  * DPI moves nothing. Content (bitmaps, later vector geometry) stays out of the reactive plan
  * list: it is large, and loaded only for the plans shown.
  */
-import type { PlanImage } from "./import.ts";
+import type { Tile } from "./tiling.ts";
 
 /** A size in plan units. */
 export interface PlanSize {
 	readonly width: number;
 	readonly height: number;
+}
+
+/** A plan's pixels, cut into tiles at several scales. */
+export interface PlanImage {
+	readonly width: number;
+	readonly height: number;
+	/** The image to store and export: the original raster file, or a PNG rendering. */
+	readonly blob: Blob;
+	/**
+	 * The image at full size, then halved again and again: the map draws the level matching the
+	 * zoom. MapLibre doesn't mipmap image sources, so a large plan drawn small would otherwise
+	 * lose its thin lines between the pixels it samples.
+	 */
+	readonly levels: readonly PlanLevel[];
+	/**
+	 * The tiles as stored, and a thumbnail: encoded in the plan worker while the plan is already
+	 * shown (lossless JPEG XL takes about half a second a tile).
+	 */
+	readonly encoded: Promise<EncodedImage>;
+}
+
+export interface PlanLevel {
+	/** Image pixels per pixel of this level: 1, 2, 4… */
+	readonly scale: number;
+	/** The level cut into GPU-sized tiles, placed in full-size image pixels. */
+	readonly tiles: readonly {
+		readonly tile: Tile;
+		readonly bitmap: ImageBitmap;
+	}[];
+}
+
+/** A plan image's tiles encoded for storage (lossless), level by level as in `levels`. */
+export interface EncodedImage {
+	readonly levels: readonly {
+		readonly scale: number;
+		readonly tiles: readonly { readonly tile: Tile; readonly blob: Blob }[];
+	}[];
+	/** A small picture of the plan for the list; plans stored without one have none. */
+	readonly thumbnail?: Blob;
 }
 
 export interface RasterContent {

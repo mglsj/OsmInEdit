@@ -25,6 +25,12 @@ export default defineConfig({
 	define: {
 		__GIT_HASH__: JSON.stringify(gitHash()),
 	},
+	// The plan worker loads its JPEG XL encoder on demand, a split ES module workers allow.
+	worker: { format: "es" },
+	optimizeDeps: {
+		// Served as is: prebundling would move the codec away from its WASM files.
+		exclude: ["@jsquash/jxl"],
+	},
 	test: {
 		projects: [
 			{
@@ -32,16 +38,17 @@ export default defineConfig({
 				test: {
 					name: "unit",
 					include: ["src/**/*.test.ts"],
-					exclude: ["src/**/*.component.test.ts"],
+					exclude: ["src/**/*.component.test.ts", "src/**/*.browser.test.ts"],
 					environment: "node",
 				},
 			},
 			{
-				// Components rendered in Chromium (Playwright's, as the e2e tests use).
+				// Components rendered in Chromium (Playwright's, as the e2e tests use), and code
+				// needing browser APIs (workers, canvases).
 				extends: true,
 				test: {
 					name: "component",
-					include: ["src/**/*.component.test.ts"],
+					include: ["src/**/*.component.test.ts", "src/**/*.browser.test.ts"],
 					browser: {
 						enabled: true,
 						headless: true,

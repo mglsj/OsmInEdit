@@ -79,9 +79,14 @@ runs the same commands.
   `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),
   `persist/plan-store.ts` (IndexedDB schema 3: settings, tiles, originals, thumbnails; tested on
   fake-indexeddb; content loads for the shown level only, `FloorPlans.showLevel`; tests use
-  `state/testing/plan-store.ts`), `floorplans/codec.ts`, `ui/FloorPlansPanel.svelte`. Import pdf.js only from its
-  legacy build, lazily. E2E tests that reload after saving a plan wait for IndexedDB first
-  (`untilSaved` in `floorplans.spec.ts`): a reload can cut a write short.
+  `state/testing/plan-store.ts`), `ui/FloorPlansPanel.svelte`. Pixels go through a `PlanCodec`
+  (`codec.ts`; `workerCodec()` runs `plan-worker.ts`: `pyramid.ts` cuts, then `tile-codec.ts`
+  encodes lossless JPEG XL (`jxl.ts`, WASM, where the browser reads it), WebP or PNG
+  (`tile-format.ts`)); a plan shows once cut, its `encoded` tiles are saved after. Import and
+  export of files go through `plan-io.ts` (decoders from `planDecoders(codec)` in `import.ts`).
+  Import pdf.js only from its legacy build, lazily. E2E tests that reload after saving a plan
+  wait for IndexedDB first (`untilSaved` in `floorplans.spec.ts`): a reload can cut a write
+  short.
 - Editing (R1): `edit/mode-manager.ts` is the only listener on the map's mouse events; it hands
   hover (cursor), click, press (a `Drag`) and keys to one `Mode` (`edit/mode.ts`,
   `edit/modes/*`). Add map interactions as a mode, not as `map.on(...)` in a component.
@@ -135,7 +140,9 @@ runs the same commands.
   `render()` from `vitest-browser-svelte`, query with `page` and type with `userEvent` from
   `vitest/browser`; put the props under `props` when one is named `context` (a mount option).
   Render a component that calls `getEditor()` with `renderWithEditor()` (`ui/testing/render.ts`).
-  Test a component's behaviour here rather than in e2e when the map isn't involved.
+  Test a component's behaviour here rather than in e2e when the map isn't involved. Code that
+  needs browser APIs (workers, canvases, `createImageBitmap`) is tested the same way in
+  `*.browser.test.ts` files.
 - E2E tests use the `test` fixture from `tests/e2e/fixtures.ts`: it blocks all external requests
   and serves a blank basemap style. Override a route in the test when you need specific data.
   `camera()` reads the map's camera, `pixelAt()`/`expectPixel()` check rendered colours (WebGL

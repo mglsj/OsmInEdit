@@ -1,6 +1,6 @@
 /** Floor plan tests: a store in memory and a codec without a browser. */
 import type { PlanCodec } from "#lib/floorplans/codec.ts";
-import type { PlanImage } from "#lib/floorplans/import.ts";
+import type { PlanImage } from "#lib/floorplans/content.ts";
 import type {
 	PlanStore,
 	StoredBuildings,
@@ -58,30 +58,31 @@ export function fakeBitmap(width = 400, height = 300) {
 	return bitmap as unknown as ImageBitmap & { closed: boolean };
 }
 
-/** A 400 × 300 image in one tile. */
+/** A 400 × 300 image in one tile, encoded as its size in text, with a thumbnail. */
 export function fakeImage(blob = new Blob(["image"])): PlanImage {
+	const tile = { x: 0, y: 0, width: 400, height: 300 };
 	return {
 		width: 400,
 		height: 300,
 		blob,
-		levels: [
-			{
-				scale: 1,
-				tiles: [
-					{
-						tile: { x: 0, y: 0, width: 400, height: 300 },
-						bitmap: fakeBitmap(),
-					},
-				],
-			},
-		],
+		levels: [{ scale: 1, tiles: [{ tile, bitmap: fakeBitmap() }] }],
+		encoded: Promise.resolve({
+			levels: [
+				{ scale: 1, tiles: [{ tile, blob: new Blob(["tile 400×300"]) }] },
+			],
+			thumbnail: new Blob(["thumbnail"]),
+		}),
 	};
 }
 
-/** Tiles encoded as their size in text, decoded back into stand-in bitmaps. */
+/** Every file is a 400 × 300 image; stored tiles decode into stand-in bitmaps. */
 export const fakeCodec: PlanCodec = {
-	encode: async (bitmap) => new Blob([`tile ${bitmap.width}×${bitmap.height}`]),
+	decodeFile: async (file) => ({
+		image: fakeImage(file),
+		width: 400,
+		height: 300,
+	}),
+	fromRendering: async () =>
+		fakeImage(new Blob(["png"], { type: "image/png" })),
 	decode: async () => fakeBitmap(),
-	thumbnail: async () => new Blob(["thumbnail"]),
-	decodeImage: async (blob) => fakeImage(blob),
 };

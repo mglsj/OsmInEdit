@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rasterContent } from "./content.ts";
-import type { PlanImage } from "./import.ts";
+import { type PlanImage, rasterContent } from "./content.ts";
 
 /** An A4 page rendered at 150 DPI: 1240 × 1754 px. */
 const page: PlanImage = {
@@ -8,6 +7,7 @@ const page: PlanImage = {
 	height: 1754,
 	blob: new Blob(),
 	levels: [],
+	encoded: Promise.resolve({ levels: [] }),
 };
 
 describe("rasterContent: a plan drawn from pixels, measured in its own units", () => {

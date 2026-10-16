@@ -1,0 +1,163 @@
+/**
+ * Turns a decoded plan into what the map draws: the image at full size then halved again and
+ * again, each level cut into tiles; then into what the store keeps: each tile encoded, and a
+ * thumbnail for the list. Runs in the plan worker (`plan-worker.ts`); needs `OffscreenCanvas`
+ * and `createImageBitmap`, no DOM.
+ */
+import { MessageError, msg } from "#lib/i18n/messages.ts";
+import type { EncodedImage, PlanImage, PlanLevel } from "./content.ts";
+import { type Tile, tiles } from "./tiling.ts";
+
+/** Longest side kept for a plan, in pixels; larger plans are scaled down on import. */
+export const MAX_IMAGE_SIZE = 8192;
+/** The pyramid stops once a level fits in this many pixels. */
+const SMALLEST_LEVEL = 256;
+/** Longest side of a plan's thumbnail, in pixels. */
+export const THUMBNAIL_SIZE = 128;
+
+export type EncodeTile = (bitmap: ImageBitmap) => Promise<Blob>;
+
+/** A plan image before its tiles are encoded. */
+export type CutImage = Omit<PlanImage, "encoded">;
+
+/**
+ * Decodes a PNG, JPEG or WebP file, at most `MAX_IMAGE_SIZE` pixels wide or tall, into its
+ * pyramid (the file kept as the image's); with the size of the file's own pixels.
+ */
+export async function pyramidOfFile(
+	file: Blob,
+): Promise<{ image: CutImage; width: number; height: number }> {
+	const full = await createImageBitmap(file).catch(() => {
+		throw new MessageError(msg("plan_import_image_unreadable"));
+	});
+	const { width, height } = full;
+	const scale = Math.min(1, MAX_IMAGE_SIZE / Math.max(width, height));
+	if (scale === 1) {
+		return { image: await buildPyramid(full, file), width, height };
+	}
+	const scaled = await createImageBitmap(full, {
+		resizeWidth: Math.max(1, Math.round(width * scale)),
+		resizeHeight: Math.max(1, Math.round(height * scale)),
+		resizeQuality: "high",
+	});
+	full.close();
+	const png = await pngOf(scaled);
+	return { image: await buildPyramid(scaled, png), width, height };
+}
+
+/** The pyramid of a rendered drawing (an SVG, a PDF page), kept as a PNG. */
+export async function pyramidOfRendering(
+	bitmap: ImageBitmap,
+): Promise<CutImage> {
+	return buildPyramid(bitmap, await pngOf(bitmap));
+}
+
+async function pngOf(bitmap: ImageBitmap): Promise<Blob> {
+	const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+	canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+	return canvas.convertToBlob({ type: "image/png" }).catch(() => {
+		throw new MessageError(msg("plan_import_encode_failed"));
+	});
+}
+
+/** Builds the pyramid of a decoded image (`bitmap` is used up). */
+async function buildPyramid(
+	bitmap: ImageBitmap,
+	blob: Blob,
+): Promise<CutImage> {
+	const { width, height } = bitmap;
+	const levels: PlanLevel[] = [];
+	let level: ImageBitmap | null = bitmap;
+	for (let scale = 1; level; scale *= 2) {
+		const current: ImageBitmap = level;
+		level =
+			Math.max(current.width, current.height) > SMALLEST_LEVEL
+				? await createImageBitmap(current, {
+						resizeWidth: Math.max(1, Math.round(current.width / 2)),
+						resizeHeight: Math.max(1, Math.round(current.height / 2)),
+						resizeQuality: "high",
+					})
+				: null;
+		levels.push({ scale, tiles: cutLevel(current, width, height) });
+	}
+	return { width, height, blob, levels };
+}
+
+/** Encodes every tile of an image, one at a time, and draws its thumbnail. */
+export async function encodePyramid(
+	image: CutImage,
+	encode: EncodeTile,
+): Promise<EncodedImage> {
+	const levels: EncodedImage["levels"][number][] = [];
+	for (const { scale, tiles } of image.levels) {
+		const encoded: { tile: Tile; blob: Blob }[] = [];
+		for (const { tile, bitmap } of tiles) {
+			encoded.push({ tile, blob: await encode(bitmap) });
+		}
+		levels.push({ scale, tiles: encoded });
+	}
+	return { levels, thumbnail: await thumbnailOf(image) };
+}
+
+/**
+ * Cuts one level into tiles, placed in the pixels of the full image (`width` × `height`). The
+ * level's bitmap is used as is when it fits in one tile, else closed once cut.
+ */
+function cutLevel(
+	bitmap: ImageBitmap,
+	width: number,
+	height: number,
+): { tile: Tile; bitmap: ImageBitmap }[] {
+	const fx = width / bitmap.width;
+	const fy = height / bitmap.height;
+	const parts = tiles(bitmap.width, bitmap.height);
+	const full = (tile: Tile): Tile => ({
+		x: tile.x * fx,
+		y: tile.y * fy,
+		width: tile.width * fx,
+		height: tile.height * fy,
+	});
+	if (parts.length === 1) return [{ tile: full(parts[0] as Tile), bitmap }];
+	// Each tile is copied through its own canvas: a cropped createImageBitmap may share the
+	// source's pixels on GPU-accelerated browsers, and the source is closed right after.
+	const result = parts.map((tile) => {
+		const canvas = new OffscreenCanvas(tile.width, tile.height);
+		const context = canvas.getContext("2d");
+		if (!context) throw new Error("No 2D canvas");
+		context.drawImage(
+			bitmap,
+			tile.x,
+			tile.y,
+			tile.width,
+			tile.height,
+			0,
+			0,
+			tile.width,
+			tile.height,
+		);
+		return { tile: full(tile), bitmap: canvas.transferToImageBitmap() };
+	});
+	bitmap.close();
+	return result;
+}
+
+/** A plan at most `THUMBNAIL_SIZE` pixels, drawn from its smallest level. */
+async function thumbnailOf(image: CutImage): Promise<Blob> {
+	const smallest = image.levels.at(-1);
+	const scale = THUMBNAIL_SIZE / Math.max(image.width, image.height);
+	const canvas = new OffscreenCanvas(
+		Math.max(1, Math.round(image.width * scale)),
+		Math.max(1, Math.round(image.height * scale)),
+	);
+	const context = canvas.getContext("2d");
+	for (const { tile, bitmap } of smallest?.tiles ?? []) {
+		context?.drawImage(
+			bitmap,
+			tile.x * scale,
+			tile.y * scale,
+			tile.width * scale,
+			tile.height * scale,
+		);
+	}
+	return canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
+}

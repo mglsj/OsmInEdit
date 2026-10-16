@@ -801,6 +801,18 @@ restore when it has no size), and exports read the stored original (`originalOf`
 format chosen ✔: JPEG XL where the browser decodes it (encoded by a WASM encoder: canvases
 don't write JXL), else lossless WebP, else PNG; R2.2 encodes lossless WebP or PNG on the main
 thread, R2.3 adds JXL and the worker. The e2e `untilSaved` also waits for each plan's content.
+R2.3: one module worker (`floorplans/plan-worker.ts`, client `workerCodec()` in `codec.ts`)
+decodes photos (downscaled past 8192 px), cuts the pyramid (`pyramid.ts`) and answers twice:
+the cut tiles at once (the plan shows), then the tiles encoded and the thumbnail
+(`PlanImage.encoded`), which `FloorPlans` saves; stored tiles decode there too. Formats
+(`tile-format.ts`, `tile-codec.ts`): lossless JPEG XL through jSquash's WASM libjxl (`jxl.ts`,
+effort 2: about 0.6 s a 2048 px tile; loaded on demand) where the browser decodes a JPEG XL
+sample, else lossless WebP, else PNG; a stored JPEG XL tile the browser no longer reads is
+decoded through WASM. SVG and PDF still render on the page (they need `<img>` and canvas) and
+send a bitmap. `floorplans/plan-io.ts`: `openPlanFile` (a plan, a PDF to pick pages from, or a
+plan file's plans), `readPlanFile`, `writePlanFile` (a plan without its file is left out, from
+under the outlines too), `pageName`; `FloorPlans.insertPlans` places the outlines. Tested in
+Node with fake decoders, the worker and codecs in Chromium (`*.browser.test.ts`).
 
 ### P4.2: Vector and light raster plans — M–L
 

@@ -513,6 +513,10 @@ async function untilSaved(page: Page, change: () => Promise<void>) {
 
 /** Where the 400 × 300 px plan is once imported: centred, 60% of the map tall. */
 async function importedPlanBox(page: Page) {
+	// Imported in the plan worker: the plan is in Edit once it is there.
+	await expect(
+		page.getByRole("region", { name: "Editing plan" }),
+	).toBeVisible();
 	const { cx, cy, scale } = await initialLayout(page, 300);
 	const w = 400 * scale;
 	const h = 300 * scale;

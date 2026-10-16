@@ -23,8 +23,9 @@
 		floorPlanMode,
 		floorPlanToolMode,
 	} from "#lib/edit/modes/floorplan.ts";
-	import { browserCodec } from "#lib/floorplans/codec.ts";
+	import { workerCodec } from "#lib/floorplans/codec.ts";
 	import { groundDistance, type LngLat } from "#lib/floorplans/georef.ts";
+	import { planDecoders } from "#lib/floorplans/import.ts";
 	import type { Message } from "#lib/i18n/messages.ts";
 	import { setBackground } from "#lib/map/background.ts";
 	import {
@@ -132,9 +133,12 @@
 		floorplans.whenSaved(() => setPlanMode(false));
 	}
 
+	/** The plan worker, started the first time a plan is imported or loaded. */
+	const codec = workerCodec();
+	const decoders = planDecoders(codec);
 	const floorplans = new FloorPlans({
 		store: new IndexedDbPlanStore(),
-		codec: browserCodec,
+		codec,
 	});
 	void floorplans.restore();
 	/** The side panel's width, as the user left it, kept within the window. */
@@ -504,6 +508,7 @@
 		{:else}
 			<FloorPlansPanel
 				{floorplans}
+				{decoders}
 				getView={planView}
 				{level}
 				{toolMessage}

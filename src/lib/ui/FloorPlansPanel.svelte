@@ -26,22 +26,17 @@
 	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
 	import * as ToggleGroup from "#lib/components/shadcn/toggle-group/index.ts";
 	import { BUILDING_COLOR, PLAN_COLORS } from "#lib/floorplans/colors.ts";
-	import { rasterContent } from "#lib/floorplans/content.ts";
 	import type { TransformKind } from "#lib/floorplans/georef.ts";
 	import {
 		ACCEPTED_FILES,
-		importRaster,
-		importSvg,
-		kindOf,
-		openPdf,
 		type PdfDocument,
-		planName,
+		type PlanDecoders,
 	} from "#lib/floorplans/import.ts";
 	import {
-		exportPlans,
-		parsePlanFile,
-		transformOf,
-	} from "#lib/floorplans/plan-file.ts";
+		openPlanFile,
+		pageName,
+		writePlanFile,
+	} from "#lib/floorplans/plan-io.ts";
 	import { type Message, MessageError, msg, t } from "#lib/i18n/messages.ts";
 	import { levelToShow } from "#lib/levels/levels.ts";
 	import {
@@ -57,6 +52,8 @@
 
 	interface Props {
 		floorplans: FloorPlans;
+		/** Read the files picked for import. */
+		decoders: PlanDecoders;
 		/** The visible map, where new plans are placed. */
 		getView: () => View | undefined;
 		/** The level shown, which new plans are assigned to. */
@@ -71,6 +68,7 @@
 
 	let {
 		floorplans,
+		decoders,
 		getView,
 		level,
 		toolMessage = null,
@@ -198,22 +196,16 @@
 		error = null;
 		busy = true;
 		try {
-			const name = planName(file);
-			switch (kindOf(file)) {
-				case "raster":
-					add(await importRaster(file), name);
-					break;
-				case "svg":
-					add(await importSvg(file), name);
+			const opened = await openPlanFile(file, decoders);
+			switch (opened.kind) {
+				case "plan":
+					add(opened.content, opened.name);
 					break;
 				case "pdf":
-					pdf = { document: await openPdf(file), name };
+					pdf = { document: opened.document, name: opened.name };
 					break;
 				case "plans":
-					await importPlansFile(file);
-					break;
-				default:
-					error = t(msg("plan_import_unsupported"));
+					floorplans.insertPlans(opened.plans);
 			}
 		} catch (e) {
 			error = (e as Error).message;
@@ -237,57 +229,11 @@
 			for (const page of pages) {
 				add(
 					await document.render(page, dpi),
-					document.pageCount > 1 ? `${name}, page ${page}` : name,
+					pageName(name, page, document.pageCount),
 				);
 			}
 		} catch (e) {
 			error = (e as Error).message;
-		}
-	}
-
-	/** Adds the plans of an IndoorID or OsmInEdit 1.x plan file, placed as saved. */
-	async function importPlansFile(file: File) {
-		const { plans, buildings } = parsePlanFile(await file.text());
-		const existing = floorplans.plans.length;
-		for (const entry of plans) {
-			const blob = await (await fetch(entry.image)).blob();
-			const decoded =
-				blob.type === "image/svg+xml"
-					? await importSvg(blob)
-					: await importRaster(blob);
-			// Measured as saved: files from before plan units give the image's pixels.
-			const size =
-				entry.width && entry.height
-					? { width: entry.width, height: entry.height }
-					: decoded.size;
-			const content = decoded.raster
-				? rasterContent(decoded.raster.image, size)
-				: decoded;
-			floorplans.insert(
-				{
-					name: entry.name,
-					size,
-					transform: transformOf(entry, size.width, size.height),
-					controlPoints: entry.controlPoints,
-					fitKind:
-						"transform" in entry.placement
-							? entry.placement.transform.kind
-							: "projective",
-					opacity: entry.opacity,
-					level: entry.level,
-					visible: entry.visible,
-					...(entry.color ? { color: entry.color } : {}),
-				},
-				content,
-			);
-		}
-		// The outlines go where the file had them among its plans.
-		if (buildings) {
-			floorplans.move(
-				BUILDINGS,
-				existing + Math.min(buildings.below, plans.length),
-			);
-			floorplans.setBuildingsVisible(buildings.visible);
 		}
 	}
 
@@ -301,48 +247,19 @@
 	/** Downloads every plan, images included, as an IndoorID plan file. */
 	async function exportFile() {
 		// Plans off the shown level have no content loaded: their file comes from storage.
-		const files = await Promise.all(
-			floorplans.plans.map(async (plan) => ({
-				plan,
-				image: await floorplans.originalOf(plan.id),
-			})),
-		);
-		const entries = await Promise.all(
-			files
-				.flatMap(({ plan, image }) => (image ? [{ plan, image }] : []))
-				.map(async ({ plan, image }) => ({
-					name: plan.name,
-					image: await dataUrl(image),
-					// Plan units: the transform's.
-					width: plan.size.width,
-					height: plan.size.height,
-					level: plan.level,
-					opacity: plan.opacity,
-					visible: plan.visible,
-					color: plan.color,
-					placement: { transform: plan.transform },
-					controlPoints: plan.controlPoints,
-				})),
+		const text = await writePlanFile(
+			floorplans.plans,
+			floorplans.buildings,
+			(id) => floorplans.originalOf(id),
 		);
 		const url = URL.createObjectURL(
-			new Blob([exportPlans(entries, floorplans.buildings)], {
-				type: "application/json",
-			}),
+			new Blob([text], { type: "application/json" }),
 		);
 		const link = document.createElement("a");
 		link.href = url;
 		link.download = "indoorid-floorplans.json";
 		link.click();
 		URL.revokeObjectURL(url);
-	}
-
-	function dataUrl(blob: Blob): Promise<string> {
-		return new Promise((resolve, reject) => {
-			const reader = new FileReader();
-			reader.onload = () => resolve(reader.result as string);
-			reader.onerror = () => reject(reader.error);
-			reader.readAsDataURL(blob);
-		});
 	}
 
 	function closePdf() {

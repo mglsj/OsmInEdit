@@ -27,6 +27,7 @@ import {
 	translateTo,
 	unproject,
 } from "#lib/floorplans/georef.ts";
+import type { ImportedPlans } from "#lib/floorplans/plan-io.ts";
 import { type Message, msg } from "#lib/i18n/messages.ts";
 import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
 import type { PlanStore, StoredPlan } from "#lib/persist/plan-store.ts";
@@ -94,7 +95,7 @@ export interface View {
 export interface FloorPlansOptions {
 	/** Where plans are saved; without it they last until the page is closed. */
 	readonly store?: PlanStore;
-	/** Encodes content for the store and decodes it back; needed to save or restore. */
+	/** Decodes stored tiles and plans saved as one image; needed to restore. */
 	readonly codec?: PlanCodec;
 }
 
@@ -149,8 +150,8 @@ export class FloorPlans {
 	#shownLevel: number | null = null;
 	/** Plans whose content is loading. */
 	readonly #loading = new Set<string>();
-	/** Plans whose content is being saved: their bitmaps are in use. */
-	readonly #saving = new Set<string>();
+	/** Plans removed: content still being encoded for one is not saved. */
+	readonly #removed = new Set<string>();
 
 	constructor({ store, codec }: FloorPlansOptions = {}) {
 		this.#store = store;
@@ -290,6 +291,19 @@ export class FloorPlans {
 		this.#persist(this.#saveContent(plan.id, content));
 	}
 
+	/**
+	 * Adds a plan file's plans on top of the others, as `insert` does, and puts the building
+	 * outlines where the file had them among its plans.
+	 */
+	insertPlans({ plans, buildings }: ImportedPlans): void {
+		const existing = this.plans.length;
+		for (const { content, ...fields } of plans) this.insert(fields, content);
+		if (buildings) {
+			this.move(BUILDINGS, existing + Math.min(buildings.below, plans.length));
+			this.setBuildingsVisible(buildings.visible);
+		}
+	}
+
 	/** Whether the map shows a plan now: its content is kept. */
 	#wanted(plan: FloorPlan): boolean {
 		const level = this.#shownLevel;
@@ -305,7 +319,7 @@ export class FloorPlans {
 			this.plans.filter((p) => this.#wanted(p)).map((p) => p.id),
 		);
 		for (const id of [...this.contents.keys()]) {
-			if (wanted.has(id) || this.#saving.has(id)) continue;
+			if (wanted.has(id)) continue;
 			closeContent(this.contents.get(id));
 			this.contents.delete(id);
 		}
@@ -346,14 +360,12 @@ export class FloorPlans {
 		const stored = await this.#store?.loadContent(plan.id);
 		if (!stored || !codec) return undefined;
 		if (stored.kind === "legacy") {
-			const content = rasterContent(
-				await codec.decodeImage(stored.image),
-				plan.size,
-			);
+			const { image } = await codec.decodeFile(stored.image);
+			const content = rasterContent(image, plan.size);
 			this.#persist(this.#saveContent(plan.id, content, stored.image));
 			return content;
 		}
-		const { raster, original } = stored;
+		const { raster, original, thumbnail } = stored;
 		const levels = await Promise.all(
 			raster.levels.map(async ({ scale, tiles }) => ({
 				scale,
@@ -377,50 +389,38 @@ export class FloorPlans {
 					height: raster.height,
 					blob: original ?? new Blob(),
 					levels,
+					encoded: Promise.resolve({
+						levels: raster.levels,
+						...(thumbnail ? { thumbnail } : {}),
+					}),
 				},
 			},
 		};
 	}
 
-	/** Saves a plan's content encoded, with its thumbnail and the file it came from. */
+	/**
+	 * Saves a plan's content once its tiles are encoded (the plan shows meanwhile), with its
+	 * thumbnail and the file it came from.
+	 */
 	async #saveContent(
 		id: string,
 		content: PlanContent,
 		original?: Blob,
 	): Promise<void> {
 		const store = this.#store;
-		const codec = this.#codec;
 		const raster = content.raster;
-		if (!store || !codec || !raster) return;
+		if (!store || !raster) return;
 		const { image, unit } = raster;
-		this.#saving.add(id);
-		try {
-			const [levels, thumbnail] = await Promise.all([
-				Promise.all(
-					image.levels.map(async ({ scale, tiles }) => ({
-						scale,
-						tiles: await Promise.all(
-							tiles.map(async ({ tile, bitmap }) => ({
-								tile,
-								blob: await codec.encode(bitmap),
-							})),
-						),
-					})),
-				),
-				codec.thumbnail(image),
-			]);
-			if (!this.plans.some((p) => p.id === id)) return;
-			this.thumbnails.set(id, thumbnail);
-			await store.saveContent(id, {
-				kind: "raster",
-				raster: { unit, width: image.width, height: image.height, levels },
-				original: original ?? image.blob,
-				thumbnail,
-			});
-		} finally {
-			this.#saving.delete(id);
-			this.#syncContent();
-		}
+		const { levels, thumbnail } = await image.encoded;
+		// Removed while its tiles were encoded: nothing to save.
+		if (this.#removed.has(id)) return;
+		if (thumbnail) this.thumbnails.set(id, thumbnail);
+		await store.saveContent(id, {
+			kind: "raster",
+			raster: { unit, width: image.width, height: image.height, levels },
+			original: original ?? image.blob,
+			...(thumbnail ? { thumbnail } : {}),
+		});
 	}
 
 	/**
@@ -659,6 +659,7 @@ export class FloorPlans {
 	}
 
 	remove(id: string): void {
+		this.#removed.add(id);
 		const index = this.plans.findIndex((p) => p.id === id);
 		this.plans = this.plans.filter((p) => p.id !== id);
 		if (index >= 0 && index < this.buildings.below) {

@@ -365,8 +365,8 @@ localized, address and access fields (`presets/text.ts`, `localized.ts`, `addres
 `access.ts`; `ui/TextField.svelte`, `TextareaField`, `LocalizedField`, `AddressField`,
 `AccessField`); (7) ✅ Wikidata, Wikipedia and wiki references
 (`api/wikidata.ts`, `api/osm-wikibase.ts`, `presets/wiki.ts`, `ui/WikidataField.svelte`,
-`ui/WikipediaField.svelte`, `ui/TagReference.svelte`); (8) tag
-table; (9) relations and members; (10) one undo step per field edit. Hover preview and
+`ui/WikipediaField.svelte`, `ui/TagReference.svelte`); (8) ✅ tag
+table (`ui/TagEditor.svelte`, `osm/tag-rows.ts`, `presets/tag-table.ts`); (9) relations and members; (10) one undo step per field edit. Hover preview and
 multi-selection come with P5.3.
 
 The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`,
@@ -430,10 +430,14 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
     article address can be pasted, its Wikidata item set in the same undo step) ✔. Searches
     and descriptions are in English; the dropdowns of these two fields don't complete
     inline as iD's do.
-- **Tags (N)**: a table of key and value inputs with a delete button, an always-present empty
-  "Add new tag" row, key/value autocomplete from taginfo, Enter/`=` moving between cells, a
-  duplicate key jumping to the existing row, and a List/Text toggle (the current text view)
-  remembered per browser. Mixed values in a multi-selection show "Multiple values".
+- **Tags (N)** ✔: a table of key and value inputs with a delete button and ⓘ, an
+  always-present empty "Add new tag" row, key/value autocomplete from taginfo (keys not set,
+  not discardable, not numbered), Enter/`=` moving between cells, a duplicate key jumping to
+  the existing row, rows kept in place while editing, and a List/Text toggle remembered per
+  browser; the text quotes as iD's. Differences: a key typed in the new row waits for its
+  value (the editor keeps no tag without a value, where iD adds `key=` at once), an emptied
+  value removes the tag, and the text view is sorted by key (iD's follows the list). Mixed
+  values in a multi-selection show "Multiple values" (with P5.3).
 - **Relations and members** ✔: parent relations with roles (role autocomplete from
   taginfo), adding the feature to a relation in view or to a new one, removing it; for a
   selected relation, its members with roles, zoom-to and reorder.

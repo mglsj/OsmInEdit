@@ -42,7 +42,7 @@ export interface EditorOptions {
 	/** Data is only downloaded from this zoom level. */
 	readonly minZoom: number;
 	/** Value suggestions for combo fields; none without it. */
-	readonly taginfo?: Pick<Taginfo, "values" | "multikeys">;
+	readonly taginfo?: Pick<Taginfo, "values" | "multikeys" | "keys">;
 	/** Tag documentation for the ⓘ buttons; none without it. */
 	readonly wikibase?: Pick<OsmWikibase, "docs">;
 	/** Wikidata items, for the wikidata and wikipedia fields. */

@@ -30,6 +30,13 @@
 		};
 		/** Free text (an address), never shown as a raw tag value. */
 		plain?: boolean;
+		/**
+		 * Text kept as typed (only trimmed), suggestions asked for without a key: the tag
+		 * table's key and value inputs. Implies `plain`.
+		 */
+		raw?: boolean;
+		/** The input's name when no label points at it. */
+		ariaLabel?: string;
 	}
 
 	let {
@@ -39,7 +46,9 @@
 		locked,
 		onchange,
 		adding,
-		plain = false,
+		plain: plainProp = false,
+		raw = false,
+		ariaLabel,
 	}: Props = $props();
 
 	const id = $derived(fieldInputId(field));
@@ -65,13 +74,16 @@
 			chosen: adding?.chosen ?? [],
 		}),
 	);
-	const shown = $derived(adding ? "" : displayValue(field, value));
+	const plain = $derived(plainProp || raw);
+	const shown = $derived(
+		adding ? "" : raw ? (value ?? "") : displayValue(field, value),
+	);
 	/** iD asks taginfo for every combo but manyCombo, unless the field says not to. */
 	const asksTaginfo = $derived(
 		context.suggest !== undefined &&
 			field.autoSuggestions &&
 			field.type !== "manyCombo" &&
-			field.key !== undefined,
+			(raw || field.key !== undefined),
 	);
 	const hasList = $derived(
 		!locked && (field.options.length > 0 || asksTaginfo),
@@ -154,8 +166,10 @@
 			if (text) adding.onadd(text);
 			return;
 		}
-		const next = tagValue(field, input.value);
-		input.value = displayValue(field, next);
+		const next = raw
+			? input.value.trim() || undefined
+			: tagValue(field, input.value);
+		input.value = raw ? (next ?? "") : displayValue(field, next);
 		if (next !== value) onchange?.(next);
 	}
 
@@ -237,7 +251,7 @@
 		}
 	}
 
-	const tagText = (v: string) => (field.key ? `${field.key}=${v}` : v);
+	const tagText = (v: string) => (field.key && !raw ? `${field.key}=${v}` : v);
 </script>
 
 <div bind:this={wrap} class="relative">
@@ -249,6 +263,7 @@
 		autocomplete="off"
 		spellcheck="false"
 		aria-autocomplete="both"
+		aria-label={ariaLabel}
 		aria-expanded={open && suggestions.length > 0}
 		aria-controls={listId}
 		aria-activedescendant={open && highlighted >= 0
@@ -264,7 +279,8 @@
 		title={value ? tagText(value) : undefined}
 		{readonly}
 		class={cn(
-			"flex h-8 w-full min-w-0 rounded-lg border border-input bg-transparent py-1 pr-8 pl-2.5 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30",
+			"flex h-8 w-full min-w-0 rounded-lg border border-input bg-transparent py-1 pl-2.5 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30",
+			raw ? "pr-2.5" : "pr-8",
 			!plain &&
 				value !== undefined &&
 				!field.options.some((o) => o.value === value) &&
@@ -281,7 +297,8 @@
 			commit();
 		}}
 	>
-	{#if hasList}
+	<!-- No caret in the tag table, as iD: ↓ opens the list. -->
+	{#if hasList && !raw}
 		<button
 			type="button"
 			tabindex="-1"

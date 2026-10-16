@@ -8,12 +8,10 @@
 	import { untrack } from "svelte";
 	import * as Alert from "#lib/components/shadcn/alert/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
-	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
-	import { Textarea } from "#lib/components/shadcn/textarea/index.ts";
 	import { isNewId, osmId } from "#lib/osm/entity.ts";
-	import { formatTagText, parseTagText } from "#lib/osm/tag-text.ts";
 	import type { Preset } from "#lib/presets/presets.ts";
+	import { keySuggestions, valueSuggestions } from "#lib/presets/tag-table.ts";
 	import { presetReference } from "#lib/presets/wiki.ts";
 	import type { Editor } from "#lib/state/editor.svelte.ts";
 	import FieldsSection from "#lib/ui/FieldsSection.svelte";
@@ -21,6 +19,7 @@
 	import InspectorSection from "#lib/ui/InspectorSection.svelte";
 	import PresetIcon from "#lib/ui/PresetIcon.svelte";
 	import PresetList from "#lib/ui/PresetList.svelte";
+	import TagEditor from "#lib/ui/TagEditor.svelte";
 	import TagReference from "#lib/ui/TagReference.svelte";
 	import { timeAgo } from "#lib/ui/time-ago.ts";
 
@@ -191,21 +190,34 @@
 				defaultOpen={false}
 				forceOpen={isFallback}
 			>
-				<Field.Field>
-					<Field.Label for="raw-tags" class="sr-only">Tags</Field.Label>
-					<Textarea
-						id="raw-tags"
-						rows={6}
-						spellcheck="false"
-						class="font-mono text-xs"
-						value={formatTagText(entity.tags)}
-						onchange={(event) =>
-							editor.setTags(
-								entity.id,
-								parseTagText(event.currentTarget.value),
-							)}
-					/>
-				</Field.Field>
+				<TagEditor
+					tags={entity.tags}
+					onchange={(tags) => editor.setTags(entity.id, tags)}
+					suggestKeys={editor.taginfo
+						? (query) =>
+								editor.taginfo
+									?.keys({ query, geometry })
+									.then((found) =>
+										keySuggestions(
+											found,
+											query,
+											entity.tags,
+											editor.discardedKeys,
+										),
+									) ?? Promise.resolve([])
+						: undefined}
+					suggestValues={editor.taginfo
+						? (key, query) =>
+								editor.taginfo
+									?.values({ key, query, geometry })
+									.then((found) => valueSuggestions(found, query)) ??
+								Promise.resolve([])
+						: undefined}
+					docs={editor.wikibase
+						? (reference) =>
+								editor.wikibase?.docs(reference) ?? Promise.resolve(null)
+						: undefined}
+				/>
 			</InspectorSection>
 		</ScrollArea>
 

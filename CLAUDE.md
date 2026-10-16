@@ -48,7 +48,8 @@ runs the same commands.
   `state/session.svelte.ts` (osm-auth login), `ui/Inspector.svelte` (with `ui/PresetList.svelte`,
   `ui/FieldsSection.svelte`, `ui/FieldInput.svelte` choosing `ComboField`, `ChipsField`,
   `CheckField`, `RadioField`, `TextField`, `TextareaField`, `LocalizedField`, `AddressField`,
-  `AccessField`, `WikidataField` or `WikipediaField`; `TagReference` + `InfoButton` for ⓘ),
+  `AccessField`, `WikidataField` or `WikipediaField`; `TagReference` + `InfoButton` for ⓘ;
+  `TagEditor` for the Tags section, whose text view e2e tests read with `tagsBox()`),
   `ui/SaveDialog.svelte`.
   Presets come from `@openstreetmap/id-tagging-schema` plus `presets/overlay.json`, built by
   `scripts/build-presets.ts` on install into the gitignored `presets/generated/`; run

@@ -202,9 +202,10 @@ export async function serveTaginfo(
 			if (url.searchParams.get("sortname") === "values_all") {
 				return route.fulfill({ json: { data: [] } });
 			}
+			// Used often enough to be suggested.
 			const data = keys
 				.filter((key) => key.startsWith(query))
-				.map((key) => ({ key }));
+				.map((key) => ({ key, count_all: 10_000 }));
 			return route.fulfill({ json: { data } });
 		},
 	);
@@ -271,12 +272,17 @@ export async function selectRoom(
 	return editor;
 }
 
-/** The raw tag editor of the feature editor, its section opened if it was closed. */
+/**
+ * The tag editor's text view (iD's "text"), its section opened if it was closed and the view
+ * switched from the list if needed.
+ */
 export async function tagsBox(page: Page): Promise<Locator> {
 	const editor = page.getByRole("complementary", { name: "Feature editor" });
 	const section = editor.getByRole("button", { name: /^Tags \(\d+\)$/ });
 	if ((await section.getAttribute("aria-expanded")) === "false") {
 		await section.click();
 	}
+	const text = editor.getByRole("radio", { name: "Text view" });
+	if ((await text.getAttribute("aria-checked")) !== "true") await text.click();
 	return editor.getByRole("textbox", { name: "Tags", exact: true });
 }

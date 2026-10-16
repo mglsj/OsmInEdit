@@ -16,7 +16,8 @@
 		tags: Tags;
 		context: FieldContext;
 		locked: boolean;
-		onchange: (patch: TagPatch) => void;
+		/** A change; `live` while typing (kept as typed, one undo step with the final value). */
+		onchange: (patch: TagPatch, live?: boolean) => void;
 	}
 
 	let { field, tags, context, locked, onchange }: Props = $props();
@@ -82,6 +83,9 @@
 							onchange({
 								[sub.key ?? ""]: value ? cleanValue(value) : undefined,
 							})}
+						onlive={(typed) => {
+							if (cleanValue(typed)) onchange({ [sub.key ?? ""]: typed }, true);
+						}}
 					/>
 				</div>
 			{/each}

@@ -10,6 +10,7 @@
 	} from "#lib/presets/combo.ts";
 	import type { Field } from "#lib/presets/presets.ts";
 	import { type FieldContext, fieldInputId } from "#lib/ui/field-context.ts";
+	import { liveText } from "#lib/ui/live-text.ts";
 	import { cn } from "#lib/utils.ts";
 
 	interface Props {
@@ -37,6 +38,11 @@
 		raw?: boolean;
 		/** The input's name when no label points at it. */
 		ariaLabel?: string;
+		/**
+		 * Text applied while it is typed (an address part, as iD), without the completion
+		 * offered after it; leaving the field then calls `onchange`, even with the same text.
+		 */
+		onlive?: (typed: string) => void;
 	}
 
 	let {
@@ -49,6 +55,7 @@
 		plain: plainProp = false,
 		raw = false,
 		ariaLabel,
+		onlive,
 	}: Props = $props();
 
 	const id = $derived(fieldInputId(field));
@@ -138,10 +145,19 @@
 		);
 	}
 
+	/** Whether text was applied while typing since the field got focus. */
+	let appliedLive = false;
+	const live = liveText(() => {
+		if (!onlive || !input || adding) return;
+		appliedLive = true;
+		onlive(typed());
+	});
+
 	function oninput(event: Event) {
 		if (!input) return;
 		dirty = true;
 		const text = input.value;
+		live.typed(text);
 		query = text;
 		highlighted = -1;
 		open = text !== "";
@@ -157,8 +173,11 @@
 	}
 
 	function commit() {
+		live.cancel();
 		if (!input || !dirty) return;
 		dirty = false;
+		const closesLive = appliedLive;
+		appliedLive = false;
 		if (adding) {
 			const text = input.value.trim();
 			input.value = "";
@@ -170,7 +189,7 @@
 			? input.value.trim() || undefined
 			: tagValue(field, input.value);
 		input.value = raw ? (next ?? "") : displayValue(field, next);
-		if (next !== value) onchange?.(next);
+		if (next !== value || closesLive) onchange?.(next);
 	}
 
 	function accept() {

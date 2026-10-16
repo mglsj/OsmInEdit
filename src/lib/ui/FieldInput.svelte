@@ -30,7 +30,8 @@
 		tags: Tags;
 		context: FieldContext;
 		/** Called with the tags to change once the user commits a value. */
-		onchange: (patch: TagPatch) => void;
+		/** A change; `live` while text is typed (one undo step with the final value). */
+		onchange: (patch: TagPatch, live?: boolean) => void;
 		/** Shown, not editable (the name of a feature linked to Wikidata). */
 		locked?: boolean;
 		/** Buttons at the end of the label row (remove, revert). */

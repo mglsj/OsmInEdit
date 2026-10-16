@@ -19,11 +19,12 @@ import { labelFor } from "#lib/map/classify.ts";
 import { buildFeatures } from "#lib/map/features.ts";
 import { AVAILABLE_ICONS } from "#lib/map/style/icons.ts";
 import { entityGeometry } from "#lib/osm/area.ts";
-import type {
-	Entity,
-	EntityId,
-	Relation,
-	RelationId,
+import {
+	type Entity,
+	type EntityId,
+	type Relation,
+	type RelationId,
+	sameTags,
 } from "#lib/osm/entity.ts";
 import { Graph } from "#lib/osm/graph.ts";
 import { type Action, History } from "#lib/osm/history.ts";
@@ -106,6 +107,11 @@ export class Editor {
 	readonly searchWikipedia: EditorOptions["searchWikipedia"];
 
 	#history = new History(this.graph);
+	/**
+	 * The feature whose field is being typed in: its next tag change replaces the last step
+	 * instead of adding one (iD's `_coalesceChanges`).
+	 */
+	#typing: EntityId | null = null;
 	readonly #api: EditorOptions["api"];
 	readonly #loader: MapLoader;
 	readonly #minZoom: number;
@@ -170,15 +176,18 @@ export class Editor {
 	});
 
 	perform(action: Action, annotation: string): void {
+		this.#typing = null;
 		this.graph = this.#history.perform(action, annotation);
 	}
 
 	undo(): void {
+		this.#typing = null;
 		this.#history.undo();
 		this.graph = this.#history.graph;
 	}
 
 	redo(): void {
+		this.#typing = null;
 		this.#history.redo();
 		this.graph = this.#history.graph;
 	}
@@ -217,6 +226,7 @@ export class Editor {
 	}
 
 	select(id: EntityId | null): void {
+		this.#typing = null;
 		this.selectedId = id;
 	}
 
@@ -250,8 +260,25 @@ export class Editor {
 		this.graph = this.#history.replace(changeTags(id, tags));
 	}
 
-	setTags(id: EntityId, tags: Tags): void {
-		this.perform(changeTags(id, tags), "Change tags");
+	/**
+	 * Sets a feature's tags, as iD's entity editor: `live` changes (text being typed) are kept as
+	 * typed and fold into one undo step, which the next change that isn't live (leaving the
+	 * field) cleans and closes. Tags left as they were make no step.
+	 */
+	setTags(id: EntityId, tags: Tags, { live = false } = {}): void {
+		const entity = this.graph.entity(id);
+		if (!entity) return;
+		const action = changeTags(id, tags, { clean: !live });
+		const changed = action(this.graph).entity(id);
+		const typing = this.#typing === id;
+		if (changed && sameTags(changed.tags, entity.tags)) {
+			if (!live) this.#typing = null;
+			return;
+		}
+		this.graph = typing
+			? this.#history.replace(action)
+			: this.#history.perform(action, "Change tags");
+		this.#typing = live ? id : null;
 	}
 
 	setPreset(entity: Entity, preset: Preset): void {

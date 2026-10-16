@@ -104,13 +104,16 @@
 			),
 	};
 
-	function setField(patch: TagPatch) {
-		const tags: Record<string, string> = { ...entity.tags };
+	/** Applies a field's change to the feature's tags as they are now (`live` while typing). */
+	function setField(patch: TagPatch, live = false) {
+		const tags: Record<string, string> = {
+			...(editor.graph.entity(entity.id)?.tags ?? entity.tags),
+		};
 		for (const [key, value] of Object.entries(patch)) {
 			if (value === undefined) delete tags[key];
 			else tags[key] = value;
 		}
-		editor.setTags(entity.id, tags);
+		editor.setTags(entity.id, tags, { live });
 	}
 
 	function remove(field: PresetField) {

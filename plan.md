@@ -368,7 +368,8 @@ localized, address and access fields (`presets/text.ts`, `localized.ts`, `addres
 `ui/WikipediaField.svelte`, `ui/TagReference.svelte`); (8) ✅ tag
 table (`ui/TagEditor.svelte`, `osm/tag-rows.ts`, `presets/tag-table.ts`); (9) ✅ relations and
 members (`actions/members.ts`, `osm/relations.ts`, `ui/RelationsSection.svelte`,
-`ui/MembersSection.svelte`); (10) one undo step per field edit. Hover preview and
+`ui/MembersSection.svelte`); (10) ✅ one undo step per field edit, text applied as it is
+typed (`Editor.setTags(…, { live })`, `ui/live-text.ts`). Hover preview and
 multi-selection come with P5.3.
 
 The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`,
@@ -457,12 +458,19 @@ The inspector is rebuilt to follow iD's entity editor (`modules/ui/inspector.js`
   (their fields), and the OSM wiki's Wikibase for ⓘ tag references (description, image,
   link) ✔; ⓘ on fields, the Feature Type and the type list ✔ (the tag table's come with
   slice 8). Their URLs go in `config.json`; e2e tests serve them from fixtures.
-- **Undo**: one history step per field edit, as in iD. Text is applied when leaving the field
-  until P5.2 lands, then live as you type ✔.
+- **Undo** ✔: one history step per field edit, as in iD's entity editor: text, textarea, the
+  localized name and address parts are applied as they are typed (kept as typed, an emptied
+  field waiting until it is left), folded into one step that leaving the field (change or
+  blur) cleans and closes; a change of another feature, any other edit, undo, redo or a new
+  selection starts a new step, and tags left as they were make none. Combos, chips and the
+  other fields apply once chosen, translation rows when left (as iD). Typed text is applied
+  after a 150 ms pause rather than on each keystroke, since every edit still redraws all
+  features: P5.2 can drop the pause.
 
 #### P5.2 Fast core (before anything is dragged)
 
-- **Incremental map updates**: every edit rebuilds all features and re-sends them to the map
+- **Incremental map updates** (then drop the 150 ms pause of live typing, `LIVE_DELAY`): every
+  edit rebuilds all features and re-sends them to the map
   (about 120 ms per edit on 10,000 rooms, so dragging would run at ~8 fps). Cache each
   feature by entity identity, work out the changed ids (plus ways and relations using
   changed nodes) and send only those with `updateData`. Make `@lv` independent of the levels

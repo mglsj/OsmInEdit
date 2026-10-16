@@ -27,7 +27,8 @@
 		field: Field;
 		tags: Tags;
 		locked: boolean;
-		onchange: (patch: TagPatch) => void;
+		/** A change; `live` while typing (kept as typed, one undo step with the final value). */
+		onchange: (patch: TagPatch, live?: boolean) => void;
 	}
 
 	let { field, tags, locked, onchange }: Props = $props();

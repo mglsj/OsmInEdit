@@ -27,8 +27,8 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | P4.1  | Floor plan layers, edit sessions, align UX | Done        |
 | P5.0–2 | Quick fixes, feature editor, fast core    | Done        |
 | R0    | Fixes and fast feedback (review)           | Done        |
-| R1    | Foundations for editing (review)           | In progress |
-| R2    | Floor plan content model (review)          | Not started |
+| R1    | Foundations for editing (review)           | Done        |
+| R2    | Floor plan content model (review)          | Next        |
 | P4.2  | Vector and light raster floor plans        | Not started |
 | P5.3  | Geometry editing                           | Not started |
 | P5.4  | Autosave and conflicts                     | Not started |
@@ -753,6 +753,16 @@ can't be reordered); `readonly` through `Inspector` and `FieldsSection` (a disab
 no action buttons) for P5.3's hover preview. Component tests: `FieldInput` per field type,
 `FieldsSection` (one step over two features, read-only), with `ui/testing/render.ts`
 (`renderWithEditor`).
+R1.12: `bun run bench` now edits every room of the 10,000, each its own undo step. Before:
+26 s for the 10,000 edits, 3.7 GB held (every step copied all local edits) and 143 ms for one
+more edit (garbage collection). `Graph`'s local edits are now a persistent map (Immutable.js
+`Map`, chosen ✔): steps share all but what they set. Each graph made by an edit knows its parent
+and the ids it set, so `changedSince` between nearby steps (64) reads only those, either way
+(undo); `changeCount()` counts from the parent's count (the edit count); local parent indexes
+are shared down the chain (links only added, lookups check them). After: 0.33 s, 41 MB,
+6.8 ms for one more edit (< 16 ms); deleting 1,000 rooms one by one went from 600 to 23 ms.
+
+**R1 done** ✅ (R1.11 ran before R1.10).
 
 ### R2: Floor plan content model — M
 

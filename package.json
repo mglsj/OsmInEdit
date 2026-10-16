@@ -74,6 +74,7 @@
 		"@lucide/svelte": "^1.57.0",
 		"bits-ui": "2.19.5",
 		"idb": "8.0.4",
+		"immutable": "5.1.9",
 		"maplibre-gl": "6.14.0",
 		"pdfjs-dist": "6.4.299",
 		"wmf-sitematrix": "0.2.0"

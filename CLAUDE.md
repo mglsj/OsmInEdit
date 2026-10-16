@@ -39,6 +39,9 @@ runs the same commands.
   in `osm/geometry.ts`, a way's nodes come from `graph.childNodes(way)`: don't write another copy.
   `History` runs each action on one copy (`Graph.update`, iD's unfrozen graph), so an action
   may call `replace`/`remove` thousands of times; outside it, wrap big changes the same way.
+  A graph's local edits are a persistent map (Immutable.js) shared between steps; each graph
+  knows the edit that made it, so `changedSince` between nearby steps and `changeCount()` cost
+  what the edit set. Avoid full scans (`changes()`, iterating every entity) on each edit.
 - Viewer (P2): `map/features.ts` (graph → GeoJSON with `@lv`, `@kind`, `@icon`, `@label`),
   `map/feature-store.ts` (P5.2: features rebuilt only for changed entities, sent to the map
   with `updateData`; an rbush index of drawn nodes, `nodesNear`, for snapping),

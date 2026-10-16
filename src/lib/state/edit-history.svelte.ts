@@ -16,10 +16,7 @@ export class EditHistory {
 	/** Current graph; replaced (never mutated) on every change. */
 	graph: Graph;
 	/** Number of entities created, modified or deleted since the download or last upload. */
-	readonly editCount = $derived.by(() => {
-		const { created, modified, deleted } = this.graph.changes();
-		return created.length + modified.length + deleted.length;
-	});
+	readonly editCount = $derived.by(() => this.graph.changeCount());
 
 	#history: History<Message>;
 	/**

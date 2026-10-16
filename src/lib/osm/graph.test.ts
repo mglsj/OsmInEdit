@@ -119,6 +119,50 @@ describe("Graph.changedSince", () => {
 	});
 });
 
+describe("Graph over a long history (shared structure, R1.12)", () => {
+	const base = () => Graph.fromEntities([node("n1"), node("n2"), node("n3")]);
+
+	it("lists what changed between steps of one history, forwards and back", () => {
+		const start = base();
+		const one = start.replace(node("n1", { door: "yes" }));
+		const two = one.update((g) => g.remove("n2").replace(node("n-1")));
+		const three = two.replace(node("n3", { door: "no" }));
+		expect([...three.changedSince(one)].sort()).toEqual(["n-1", "n2", "n3"]);
+		// Undo: from a later step back to an earlier one.
+		expect([...one.changedSince(three)].sort()).toEqual(["n-1", "n2", "n3"]);
+		expect([...three.changedSince(start)].sort()).toEqual([
+			"n-1",
+			"n1",
+			"n2",
+			"n3",
+		]);
+		// Steps on other branches (an edit after an undo) are compared whole.
+		const other = one.replace(node("n3", { door: "yes" }));
+		expect([...other.changedSince(three)].sort()).toEqual(["n-1", "n2", "n3"]);
+	});
+
+	it("counts its local changes as changes() lists them, step by step", () => {
+		let graph = base();
+		const steps: ((g: Graph) => Graph)[] = [
+			(g) => g.replace(node("n1", { door: "yes" })),
+			(g) => g.replace(node("n-1")),
+			(g) => g.remove("n2"),
+			// Put back as downloaded (same content): no longer a change.
+			(g) => g.replace(node("n1")),
+			(g) => g.remove("n-1"),
+			(g) => g.update((d) => d.replace(node("n3", { a: "1" })).remove("n1")),
+		];
+		for (const step of steps) {
+			graph = step(graph);
+			const { created, modified, deleted } = graph.changes();
+			expect(graph.changeCount()).toBe(
+				created.length + modified.length + deleted.length,
+			);
+		}
+		expect(graph.changeCount()).toBe(3);
+	});
+});
+
 describe("Graph.update: many changes on one copy (iD's unfrozen graph)", () => {
 	const base = () =>
 		Graph.fromEntities([

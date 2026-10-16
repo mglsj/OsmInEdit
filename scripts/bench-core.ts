@@ -4,7 +4,8 @@
  * snapping a click to a node. Run with `bun run bench`; the numbers are checked by hand.
  *
  * Targets (P5.2): a tag edit to map update under 16 ms, deleting 1,000 rooms under 150 ms,
- * a snap lookup under 1 ms, the first full build no slower than before.
+ * a snap lookup under 1 ms, the first full build no slower than before. R1.12: one more edit
+ * after 10,000 local edits (each its own undo step) under a frame, 16 ms.
  */
 import { changeTags } from "#lib/actions/change-tags.ts";
 import { deleteEntities } from "#lib/actions/delete.ts";
@@ -12,6 +13,7 @@ import { diffFeatures, FeatureStore } from "#lib/map/feature-store.ts";
 import { buildFeatures } from "#lib/map/features.ts";
 import type { Entity, Loc, NodeId, WayId } from "#lib/osm/entity.ts";
 import { Graph } from "#lib/osm/graph.ts";
+import { History } from "#lib/osm/history.ts";
 import { loadPresetIndex } from "#lib/presets/load.ts";
 
 const SIDE = 100; // rooms per row: 100 × 100 rooms
@@ -176,7 +178,44 @@ report(
 	"< 1 ms",
 );
 
+// R1.12: the history after 10,000 local edits, each an undo step (every room renamed).
+const heapBefore = process.memoryUsage().heapUsed;
+const history = new History<string>(graph);
+const editStart = performance.now();
+for (const way of ways) {
+	history.perform(
+		changeTags(way.id, { ...way.tags, name: `${way.tags.name} edited` }),
+		"Change tags",
+	);
+}
+report(
+	"10,000 edits, a step each",
+	performance.now() - editStart,
+	"for reference",
+);
+const heapMb = (process.memoryUsage().heapUsed - heapBefore) / 1024 / 1024;
+const scaled = new FeatureStore();
+let shown = new Map(scaled.update(history.graph, options).byId);
+let edit = 0;
+report(
+	"One more edit after 10,000",
+	time(10, () => {
+		const way = ways[edit++ % ways.length] as Entity;
+		history.perform(
+			changeTags(way.id, { ...way.tags, name: `Again ${edit}` }),
+			"Change tags",
+		);
+		// What the editor does after each edit: the edit count, the map's features.
+		history.graph.changeCount();
+		const next = scaled.update(history.graph, options).byId;
+		diffFeatures(shown, next);
+		shown = new Map(next);
+	}),
+	"< 16 ms",
+);
+
 console.log(`${entities.length} entities, ${ways.length} rooms\n`);
+console.log(`History of 10,000 steps holds about ${heapMb.toFixed(0)} MB\n`);
 for (const [name, ms, target] of results) {
 	console.log(
 		`${name.padEnd(32)} ${ms.toFixed(1).padStart(8)} ms   (${target})`,

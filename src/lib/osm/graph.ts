@@ -1,3 +1,4 @@
+import { Map as PersistentMap } from "immutable";
 import {
 	type Entity,
 	type EntityId,
@@ -48,19 +49,28 @@ export interface Changes {
  */
 export class Graph {
 	readonly #base: BaseData;
-	/** Only ever changed in place by a graph that `update` hasn't given out yet. */
-	readonly #local: Map<EntityId, Entity | null>;
+	/**
+	 * Local edits (null: deleted), a persistent map: each step of a history shares all but what
+	 * it changed. Only ever changed in place by a graph that `update` hasn't given out yet.
+	 */
+	#local: LocalEdits;
 	#nextId: number;
 	/** False while `update` runs an action on this copy: changes are then made in place. */
 	#frozen = true;
+	/**
+	 * Parent indexes of the local edits. A graph made by an edit shares its parent's and adds
+	 * to them: they may hold links no longer true, so lookups check that a parent still holds
+	 * the child.
+	 */
 	#localParentWays?: Map<EntityId, Set<EntityId>>;
 	#localParentRelations?: Map<EntityId, Set<EntityId>>;
+	/** The graph an edit (`replace`, `remove`, `update`) made this one from, and the ids it set. */
+	#parent?: Graph;
+	#touched?: Set<EntityId>;
+	/** The number of local changes, once counted. */
+	#count?: number;
 
-	private constructor(
-		base: BaseData,
-		local: Map<EntityId, Entity | null>,
-		nextId: number,
-	) {
+	private constructor(base: BaseData, local: LocalEdits, nextId: number) {
 		this.#base = base;
 		this.#local = local;
 		this.#nextId = nextId;
@@ -73,7 +83,7 @@ export class Graph {
 			map.set(entity.id, entity);
 			nextId = Math.min(nextId, osmId(entity.id) - 1);
 		}
-		return new Graph(new BaseData(map), new Map(), nextId);
+		return new Graph(new BaseData(map), NO_EDITS, nextId);
 	}
 
 	entity(id: EntityId): Entity | undefined {
@@ -108,11 +118,13 @@ export class Graph {
 	 * graph returned is immutable again; this one is left as it was.
 	 */
 	update(action: (graph: Graph) => Graph): Graph {
-		const draft = new Graph(this.#base, new Map(this.#local), this.#nextId);
+		const draft = this.#child(this.#local.asMutable(), this.#nextId, new Set());
 		draft.#frozen = false;
 		const result = action(draft);
 		draft.#frozen = true;
+		draft.#local = draft.#local.asImmutable();
 		result.#frozen = true;
+		result.#local = result.#local.asImmutable();
 		return result;
 	}
 
@@ -122,32 +134,52 @@ export class Graph {
 			? Math.min(this.#nextId, osmId(entity.id) - 1)
 			: this.#nextId;
 		if (!this.#frozen) {
-			this.#local.set(entity.id, entity);
+			this.#local = this.#local.set(entity.id, entity);
 			this.#nextId = nextId;
-			// Links are only added: lookups check that a parent still holds the child.
-			if (entity.type === "way" && this.#localParentWays) {
-				for (const node of entity.nodes) {
-					addTo(this.#localParentWays, node, entity.id);
-				}
-			}
-			if (entity.type === "relation" && this.#localParentRelations) {
-				for (const m of entity.members) {
-					addTo(this.#localParentRelations, m.ref, entity.id);
-				}
-			}
+			this.#touched?.add(entity.id);
+			this.#link(entity);
 			return this;
 		}
-		const local = new Map(this.#local).set(entity.id, entity);
-		return new Graph(this.#base, local, nextId);
+		const child = this.#child(
+			this.#local.set(entity.id, entity),
+			nextId,
+			new Set([entity.id]),
+		);
+		child.#link(entity);
+		return child;
 	}
 
 	remove(id: EntityId): Graph {
 		if (!this.#frozen) {
-			this.#local.set(id, null);
+			this.#local = this.#local.set(id, null);
+			this.#touched?.add(id);
 			return this;
 		}
-		const local = new Map(this.#local).set(id, null);
-		return new Graph(this.#base, local, this.#nextId);
+		return this.#child(this.#local.set(id, null), this.#nextId, new Set([id]));
+	}
+
+	/** A graph made from this one by an edit setting `touched`. */
+	#child(local: LocalEdits, nextId: number, touched: Set<EntityId>): Graph {
+		const child = new Graph(this.#base, local, nextId);
+		child.#parent = this;
+		child.#touched = touched;
+		child.#localParentWays = this.#localParentWays;
+		child.#localParentRelations = this.#localParentRelations;
+		return child;
+	}
+
+	/** Adds an entity's links to the parent indexes, if built (links are only ever added). */
+	#link(entity: Entity): void {
+		if (entity.type === "way" && this.#localParentWays) {
+			for (const node of entity.nodes) {
+				addTo(this.#localParentWays, node, entity.id);
+			}
+		}
+		if (entity.type === "relation" && this.#localParentRelations) {
+			for (const m of entity.members) {
+				addTo(this.#localParentRelations, m.ref, entity.id);
+			}
+		}
 	}
 
 	/**
@@ -177,7 +209,7 @@ export class Graph {
 			map.set(entity.id, entity);
 			nextId = Math.min(nextId, osmId(entity.id) - 1);
 		}
-		return new Graph(new BaseData(map), new Map(), nextId);
+		return new Graph(new BaseData(map), NO_EDITS, nextId);
 	}
 
 	/** The same local edits, applied on the server data of `base`. */
@@ -191,7 +223,7 @@ export class Graph {
 
 	/** The graph of server data, without local edits. */
 	base(): Graph {
-		return new Graph(this.#base, new Map(), this.#nextId);
+		return new Graph(this.#base, NO_EDITS, this.#nextId);
 	}
 
 	parentWays(id: NodeId): Way[] {
@@ -219,6 +251,17 @@ export class Graph {
 	 * server data) every entity is compared.
 	 */
 	changedSince(other: Graph): Set<EntityId> {
+		// Steps of one history: only what the edits between them set (either way, for undo).
+		if (this.#base === other.#base) {
+			const touched = this.#touchedSince(other) ?? other.#touchedSince(this);
+			if (touched) {
+				const changed = new Set<EntityId>();
+				for (const id of touched) {
+					if (this.entity(id) !== other.entity(id)) changed.add(id);
+				}
+				return changed;
+			}
+		}
 		const changed = new Set<EntityId>();
 		const check = (id: EntityId) => {
 			if (this.entity(id) !== other.entity(id)) changed.add(id);
@@ -248,8 +291,53 @@ export class Graph {
 	}
 
 	hasChanges(): boolean {
-		const { created, modified, deleted } = this.changes();
-		return created.length + modified.length + deleted.length > 0;
+		return this.changeCount() > 0;
+	}
+
+	/**
+	 * How many entities were created, modified or deleted (as `changes()` lists them), counted
+	 * from the graph this one was made from when it has counted, so an edit costs what it set.
+	 */
+	changeCount(): number {
+		if (this.#count !== undefined) return this.#count;
+		const parent = this.#parent;
+		let count = 0;
+		if (parent && parent.#count !== undefined && this.#touched) {
+			count = parent.#count;
+			for (const id of this.#touched) {
+				count += this.#isChange(id) - parent.#isChange(id);
+			}
+		} else {
+			for (const id of this.#local.keys()) count += this.#isChange(id);
+		}
+		// A graph `update` is still changing counts again later.
+		if (this.#frozen) this.#count = count;
+		return count;
+	}
+
+	/** 1 when the entity is a local change (created, modified or deleted), else 0. */
+	#isChange(id: EntityId): number {
+		const local = this.#local.get(id);
+		if (local === undefined) return 0;
+		const base = this.#base.entities.get(id);
+		if (local === null) return base ? 1 : 0;
+		return !base || !sameContent(local, base) ? 1 : 0;
+	}
+
+	/**
+	 * The ids set by the edits that made this graph from `ancestor`, when it is one of the last
+	 * graphs this one comes from; null otherwise.
+	 */
+	#touchedSince(ancestor: Graph): Set<EntityId> | null {
+		const ids = new Set<EntityId>();
+		let graph: Graph | undefined = this;
+		for (let step = 0; graph && step <= MAX_CHAIN; step++) {
+			if (graph === ancestor) return ids;
+			if (!graph.#touched) return null;
+			for (const id of graph.#touched) ids.add(id);
+			graph = graph.#parent;
+		}
+		return null;
 	}
 
 	#parents(id: EntityId, base: ParentIndex, local: ParentIndex): Entity[] {
@@ -277,6 +365,13 @@ export class Graph {
 		};
 	}
 }
+
+type LocalEdits = PersistentMap<EntityId, Entity | null>;
+
+/** How many steps back `changedSince` follows edits before comparing whole graphs. */
+const MAX_CHAIN = 64;
+
+const NO_EDITS: LocalEdits = PersistentMap();
 
 function buildParentWays(
 	entities: Iterable<Entity>,

@@ -31,7 +31,8 @@
 		"test": "bun run test:unit && bun run test:e2e",
 		"test:unit": "vitest run",
 		"test:e2e": "playwright test",
-		"presets": "bun scripts/build-presets.ts"
+		"presets": "bun scripts/build-presets.ts",
+		"bench": "bun scripts/bench-core.ts"
 	},
 	"imports": {
 		"#lib/*": "./src/lib/*"

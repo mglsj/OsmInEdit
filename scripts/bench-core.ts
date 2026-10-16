@@ -1,0 +1,129 @@
+/**
+ * Times the editor's core on a synthetic area of 10,000 rooms (50,000 entities), the size P5
+ * was measured on: building the map's features, one tag edit, deleting 1,000 rooms, and
+ * snapping a click to a node. Run with `bun run bench`; the numbers are checked by hand.
+ *
+ * Targets (P5.2): a tag edit to map update under 16 ms, deleting 1,000 rooms under 150 ms,
+ * a snap lookup under 1 ms, the first full build no slower than before.
+ */
+import { changeTags } from "#lib/actions/change-tags.ts";
+import { deleteEntities } from "#lib/actions/delete.ts";
+import { buildFeatures } from "#lib/map/features.ts";
+import type { Entity, Loc, NodeId, WayId } from "#lib/osm/entity.ts";
+import { Graph } from "#lib/osm/graph.ts";
+import { loadPresetIndex } from "#lib/presets/load.ts";
+
+const SIDE = 100; // rooms per row: 100 × 100 rooms
+const SIZE = 0.0001; // degrees per room
+const LEVELS = 5;
+
+/** Rooms on a grid, each with its own four nodes, spread over levels 0 to 4. */
+function syntheticArea(): Entity[] {
+	const entities: Entity[] = [];
+	let id = 1;
+	for (let row = 0; row < SIDE; row++) {
+		for (let col = 0; col < SIDE; col++) {
+			const x = 2.35 + col * SIZE;
+			const y = 48.85 + row * SIZE;
+			const corners: Loc[] = [
+				[x, y],
+				[x + SIZE * 0.9, y],
+				[x + SIZE * 0.9, y + SIZE * 0.9],
+				[x, y + SIZE * 0.9],
+			];
+			const nodes = corners.map((loc): NodeId => {
+				const node = `n${id++}` as NodeId;
+				entities.push({ type: "node", id: node, version: 1, tags: {}, loc });
+				return node;
+			});
+			entities.push({
+				type: "way",
+				id: `w${id++}` as WayId,
+				version: 1,
+				nodes: [...nodes, nodes[0] as NodeId],
+				tags: {
+					indoor: "room",
+					level: String((row + col) % LEVELS),
+					name: `Room ${row}.${col}`,
+				},
+			});
+		}
+	}
+	return entities;
+}
+
+/** Median time of `runs` calls, in ms. */
+function time(runs: number, fn: () => void): number {
+	const times: number[] = [];
+	for (let i = 0; i < runs; i++) {
+		const start = performance.now();
+		fn();
+		times.push(performance.now() - start);
+	}
+	times.sort((a, b) => a - b);
+	return times[Math.floor(times.length / 2)] as number;
+}
+
+const results: [string, number, string][] = [];
+function report(name: string, ms: number, target: string) {
+	results.push([name, ms, target]);
+}
+
+const entities = syntheticArea();
+const graph = Graph.fromEntities(entities);
+const presets = await loadPresetIndex();
+const options = { icons: new Set<string>(), presets };
+const ways = entities.filter((e) => e.type === "way");
+
+report(
+	"Full feature build",
+	time(5, () => buildFeatures(graph, options)),
+	"no slower than before",
+);
+
+const room = ways[5000] as Entity;
+let n = 0;
+report(
+	"One tag edit → map features",
+	time(10, () => {
+		const edited = changeTags(room.id, { ...room.tags, name: `Edit ${n++}` })(
+			graph,
+		);
+		buildFeatures(edited, options);
+	}),
+	"< 16 ms",
+);
+
+const thousand = ways.slice(0, 1000).map((w) => w.id);
+report(
+	"Delete 1,000 rooms",
+	time(3, () => deleteEntities(thousand)(graph)),
+	"< 150 ms",
+);
+
+const click: Loc = [2.35 + 50.5 * SIZE, 48.85 + 50.5 * SIZE];
+const tolerance = SIZE * 0.2;
+report(
+	"Snap a click to a node",
+	time(10, () => {
+		let best: Loc | null = null;
+		let bestDistance = tolerance;
+		for (const entity of graph.entities()) {
+			if (entity.type !== "node") continue;
+			const d = Math.hypot(entity.loc[0] - click[0], entity.loc[1] - click[1]);
+			if (d < bestDistance) {
+				bestDistance = d;
+				best = entity.loc;
+			}
+		}
+		void best;
+	}),
+	"< 1 ms",
+);
+
+console.log(`${entities.length} entities, ${ways.length} rooms\n`);
+for (const [name, ms, target] of results) {
+	console.log(
+		`${name.padEnd(32)} ${ms.toFixed(1).padStart(8)} ms   (${target})`,
+	);
+}

@@ -435,7 +435,14 @@ export interface SvgStyle {
 	readonly displayed: boolean;
 	/** Nothing of it is painted. */
 	readonly hidden: boolean;
+	/** Text's font size in user units. */
+	readonly fontSize: number;
+	/** Where text sits from its position: starting there, centred on it, or ending there. */
+	readonly textAnchor: TextAnchor;
 }
+
+export type TextAnchor = "start" | "middle" | "end";
+const ANCHORS = new Set<string>(["start", "middle", "end"]);
 
 export const INITIAL_STYLE: SvgStyle = {
 	fill: "black",
@@ -448,6 +455,8 @@ export const INITIAL_STYLE: SvgStyle = {
 	visible: true,
 	displayed: true,
 	hidden: false,
+	fontSize: 16,
+	textAnchor: "start",
 };
 
 /** An element's style: its attributes, overridden by its `style` attribute, over its parent's. */
@@ -463,6 +472,8 @@ export function resolveStyle(parent: SvgStyle, attrs: Attributes): SvgStyle {
 		"color",
 		"display",
 		"visibility",
+		"font-size",
+		"text-anchor",
 	]) {
 		const value = attrs[name]?.trim();
 		if (value) own.set(name, value);
@@ -499,6 +510,7 @@ export function resolveStyle(parent: SvgStyle, attrs: Attributes): SvgStyle {
 		visibility === undefined ? parent.visible : visibility === "visible";
 	const displayed = parent.displayed && get("display") !== "none";
 	const width = get("stroke-width");
+	const anchor = get("text-anchor");
 	return {
 		fill: paint("fill", parent.fill),
 		stroke: paint("stroke", parent.stroke),
@@ -513,5 +525,22 @@ export function resolveStyle(parent: SvgStyle, attrs: Attributes): SvgStyle {
 		visible,
 		displayed,
 		hidden: !(visible && displayed),
+		fontSize: fontSizeOf(get("font-size"), parent.fontSize),
+		textAnchor:
+			anchor && ANCHORS.has(anchor)
+				? (anchor as TextAnchor)
+				: parent.textAnchor,
 	};
+}
+
+/** A font size: a length, or em and % of the parent's. */
+function fontSizeOf(value: string | undefined, parent: number): number {
+	if (value === undefined) return parent;
+	const relative = /^\s*([\d.]+)\s*(em|%)\s*$/.exec(value);
+	if (relative) {
+		const n = Number(relative[1]);
+		return relative[2] === "em" ? n * parent : (n / 100) * parent;
+	}
+	const size = parseLength(value, parent);
+	return size > 0 ? size : parent;
 }

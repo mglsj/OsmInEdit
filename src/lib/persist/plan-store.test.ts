@@ -84,6 +84,7 @@ const vector: VectorContent = {
 	triangles: new Float32Array([]),
 	triangleStyles: new Uint32Array([]),
 	styles: [{ color: [255, 0, 0, 255], width: 0, layer: 0 }],
+	texts: [{ text: "Hall", x: 100, y: 200, size: 12, angle: 0, layer: 0 }],
 	layers: [{ id: "7R", name: "Walls", visible: true }],
 };
 
@@ -164,6 +165,14 @@ describe("IndexedDbPlanStore (schema 4)", () => {
 		expect(loaded?.segments).toBeInstanceOf(Float32Array);
 		await store.delete("a");
 		expect(await store.loadVector("a")).toBeUndefined();
+	});
+
+	it("reads vector content saved before text as having none", async () => {
+		const store = freshStore();
+		await store.save(plan("a", 0));
+		const { texts: _, ...before } = vector;
+		await store.saveVector("a", before as VectorContent);
+		expect((await store.loadVector("a"))?.texts).toEqual([]);
 	});
 
 	it("upgrades a version 3 database: its plans and content stay, vectors are added", async () => {

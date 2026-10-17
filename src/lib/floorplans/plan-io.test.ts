@@ -22,6 +22,7 @@ const paths: VectorContent = {
 	segmentStyles: new Uint32Array([0]),
 	triangles: new Float32Array([]),
 	triangleStyles: new Uint32Array([]),
+	texts: [],
 	styles: [{ color: [0, 0, 0, 255], width: 0, layer: -1 }],
 	layers: [],
 };

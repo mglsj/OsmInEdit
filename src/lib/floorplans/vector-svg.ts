@@ -1,8 +1,9 @@
 /**
- * The paths of an SVG drawing as vector content, measured in the drawing's own size (its
- * `width` and `height`, else its viewBox), like the image a browser makes of it. The file is
- * parsed with `DOMParser` and never attached to the page, so its scripts never run. Shapes,
- * paths, groups and `<use>` are drawn; text, images, clip paths, masks and stylesheets aren't.
+ * The paths and text of an SVG drawing as vector content, measured in the drawing's own size
+ * (its `width` and `height`, else its viewBox), like the image a browser makes of it. The file
+ * is parsed with `DOMParser` and never attached to the page, so its scripts never run. Shapes,
+ * paths, groups, `<use>` and text (a line for each `<text>` and each `<tspan>` placed with x or
+ * y) are drawn; images, clip paths, masks and stylesheets aren't.
  */
 import { MessageError, msg } from "#lib/i18n/messages.ts";
 import {
@@ -16,8 +17,14 @@ import {
 	resolveStyle,
 	type SvgStyle,
 	shapePath,
+	type TextAnchor,
 } from "./svg-path.ts";
-import { type Rgba, VectorBuilder, type VectorContent } from "./vector.ts";
+import {
+	type PaintText,
+	type Rgba,
+	VectorBuilder,
+	type VectorContent,
+} from "./vector.ts";
 
 const SHAPES = new Set([
 	"path",
@@ -53,6 +60,7 @@ export function extractSvg(text: string): VectorContent {
 	};
 	const builder = new VectorBuilder();
 	const colors = new ColorReader();
+	const meter = new TextMeter();
 
 	function draw(
 		element: Element,
@@ -86,6 +94,10 @@ export function extractSvg(text: string): VectorContent {
 			draw(target, multiply(m, at), style, depth + 1);
 			return;
 		}
+		if (name === "text") {
+			readText(element, m, style);
+			return;
+		}
 		if (CONTAINERS.has(name)) {
 			for (const child of element.children) draw(child, m, style, depth);
 			return;
@@ -115,6 +127,46 @@ export function extractSvg(text: string): VectorContent {
 		builder.clear();
 	}
 
+	/** Each line of a `<text>`: the text itself, then each `<tspan>` placed anew. */
+	function readText(element: Element, m: Matrix, style: SvgStyle): void {
+		let line = {
+			x: firstLength(element.getAttribute("x")),
+			y: firstLength(element.getAttribute("y")),
+			style,
+			text: "",
+		};
+		const end = () => {
+			const text = line.text.replace(/\s+/g, " ").trim();
+			if (text && !line.style.hidden) {
+				builder.text(placeText(text, line, m, meter));
+			}
+		};
+		const walk = (node: Element, inherited: SvgStyle) => {
+			for (const child of node.childNodes) {
+				if (child.nodeType === Node.TEXT_NODE) {
+					line.text += child.textContent ?? "";
+				} else if (child instanceof Element && child.localName === "tspan") {
+					const style = resolveStyle(inherited, attributesOf(child));
+					if (!style.displayed) continue;
+					const x = child.getAttribute("x");
+					const y = child.getAttribute("y");
+					if (x !== null || y !== null) {
+						end();
+						line = {
+							x: x === null ? line.x : firstLength(x),
+							y: y === null ? line.y : firstLength(y),
+							style,
+							text: "",
+						};
+					}
+					walk(child, style);
+				}
+			}
+		};
+		walk(element, style);
+		end();
+	}
+
 	const start = viewBox
 		? viewBoxMatrix(viewBox, size, root.getAttribute("preserveAspectRatio"))
 		: ([1, 0, 0, 1, 0, 0] as Matrix);
@@ -122,6 +174,50 @@ export function extractSvg(text: string): VectorContent {
 		draw(child, start, resolveStyle(INITIAL_STYLE, attributesOf(root)), 0);
 	}
 	return builder.build(size);
+}
+
+/** The first of a list of lengths (x and y may give one per character). */
+function firstLength(value: string | null): number {
+	return parseLength(value?.trim().split(/[\s,]+/)[0]);
+}
+
+/** A capital's middle, above the baseline: half of a typical capital height. */
+const MIDDLE = 0.35;
+
+const SHARE: Record<TextAnchor, number> = { start: 0, middle: 0.5, end: 1 };
+
+/** A line of text placed by its anchor, as its middle in plan units. */
+function placeText(
+	text: string,
+	{ x, y, style }: { x: number; y: number; style: SvgStyle },
+	m: Matrix,
+	meter: TextMeter,
+): PaintText {
+	const size = style.fontSize;
+	const width = meter.width(text, size);
+	const u = x + width * (0.5 - SHARE[style.textAnchor]);
+	const v = y - MIDDLE * size;
+	return {
+		text,
+		x: m[0] * u + m[2] * v + m[4],
+		y: m[1] * u + m[3] * v + m[5],
+		size: size * Math.hypot(m[2], m[3]),
+		angle: (Math.atan2(m[1], m[0]) * 180) / Math.PI + 0,
+		layer: null,
+	};
+}
+
+/** Measures text as the browser would draw it, in a sans-serif font. */
+class TextMeter {
+	readonly #context = new OffscreenCanvas(1, 1).getContext("2d");
+
+	width(text: string, size: number): number {
+		const context = this.#context;
+		if (!context) return 0.5 * size * text.length;
+		// Measured at 100 px, scaled: canvases round small font sizes.
+		context.font = "100px sans-serif";
+		return (context.measureText(text).width * size) / 100;
+	}
 }
 
 function attributesOf(element: Element): Record<string, string> {

@@ -194,6 +194,24 @@ describe("resolveStyle: presentation attributes and style, inherited", () => {
 		expect(child.fill).toBe("green");
 	});
 
+	it("sizes text in user units, em and % of the parent's size, 16 at first", () => {
+		expect(INITIAL_STYLE).toMatchObject({ fontSize: 16, textAnchor: "start" });
+		const group = resolveStyle(INITIAL_STYLE, {
+			"font-size": "10",
+			"text-anchor": "middle",
+		});
+		expect(group).toMatchObject({ fontSize: 10, textAnchor: "middle" });
+		expect(resolveStyle(group, { style: "font-size: 2em" }).fontSize).toBe(20);
+		expect(resolveStyle(group, { "font-size": "150%" }).fontSize).toBe(15);
+		expect(resolveStyle(group, { "font-size": "12pt" }).fontSize).toBe(16);
+		expect(resolveStyle(group, { "text-anchor": "end" }).textAnchor).toBe(
+			"end",
+		);
+		expect(resolveStyle(group, { "text-anchor": "sideways" }).textAnchor).toBe(
+			"middle",
+		);
+	});
+
 	it("hides what display or visibility hide", () => {
 		expect(resolveStyle(INITIAL_STYLE, { display: "none" }).hidden).toBe(true);
 		expect(

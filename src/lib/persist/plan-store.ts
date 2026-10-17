@@ -249,7 +249,9 @@ export class IndexedDbPlanStore implements PlanStore {
 	}
 
 	async loadVector(id: string): Promise<VectorContent | undefined> {
-		return (await this.#open()).get("vectors", id);
+		const vector = await (await this.#open()).get("vectors", id);
+		// Saved before text was read: none.
+		return vector && { ...vector, texts: vector.texts ?? [] };
 	}
 
 	async saveVector(

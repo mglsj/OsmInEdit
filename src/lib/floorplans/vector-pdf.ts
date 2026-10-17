@@ -1,11 +1,17 @@
 /**
- * The paths of a PDF page, from pdf.js's operator list, as vector content in points from the
- * page's top left (the page's viewport at scale 1). Follows the transform, colours, opacity
- * and line width through save and restore and form XObjects, and the CAD layer (optional
- * content group) each path is in. Clipping paths, shadings, images and text are left out.
+ * The paths and text of a PDF page, from pdf.js's operator list, as vector content in points
+ * from the page's top left (the page's viewport at scale 1). Follows the transform, colours,
+ * opacity and line width through save and restore and form XObjects, the text position and
+ * font size, and the CAD layer (optional content group) each path or text is in. Clipping
+ * paths, shadings, images and invisible text are left out.
  * Pure: pdf.js's operator codes come as an argument, so pdf.js loads only when a PDF does.
  */
-import { rgba, VectorBuilder, type VectorContent } from "./vector.ts";
+import {
+	type PaintText,
+	rgba,
+	VectorBuilder,
+	type VectorContent,
+} from "./vector.ts";
 
 export interface OperatorList {
 	readonly fnArray: ArrayLike<number>;
@@ -44,7 +50,20 @@ export type PdfOps = Record<
 	| "paintImageXObject"
 	| "paintInlineImageXObject"
 	| "paintImageMaskXObject"
-	| "paintImageXObjectRepeat",
+	| "paintImageXObjectRepeat"
+	| "beginText"
+	| "setFont"
+	| "setTextMatrix"
+	| "moveText"
+	| "setLeadingMoveText"
+	| "nextLine"
+	| "setLeading"
+	| "setCharSpacing"
+	| "setWordSpacing"
+	| "setHScale"
+	| "setTextRise"
+	| "setTextRenderingMode"
+	| "showText",
 	number
 >;
 
@@ -119,7 +138,26 @@ interface State {
 	strokeAlpha: number;
 	fillAlpha: number;
 	width: number;
+	/** The text state: font size, spacing in unscaled text space, horizontal scale (1 is 100%). */
+	fontSize: number;
+	charSpacing: number;
+	wordSpacing: number;
+	hScale: number;
+	leading: number;
+	rise: number;
+	/** 3 and 7 draw nothing. */
+	textMode: number;
 }
+
+/** A glyph as pdf.js gives it in `showText`; numbers between glyphs move the next one back. */
+interface Glyph {
+	readonly unicode?: string;
+	/** Thousandths of an em. */
+	readonly width: number;
+	readonly isSpace?: boolean;
+}
+
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
 
 function multiply(m: Matrix, n: ArrayLike<number>): Matrix {
 	const [a = 1, b = 0, c = 0, d = 1, e = 0, f = 0] = Array.from(n);
@@ -153,8 +191,23 @@ export function extractPdfPage(
 		strokeAlpha: 1,
 		fillAlpha: 1,
 		width: 1,
+		fontSize: 0,
+		charSpacing: 0,
+		wordSpacing: 0,
+		hScale: 1,
+		leading: 0,
+		rise: 0,
+		textMode: 0,
 	};
 	const saved: State[] = [];
+	/** The text matrix and the matrix of the line's start. */
+	let tm: Matrix = IDENTITY;
+	let tlm: Matrix = IDENTITY;
+	const lines = new Lines(builder);
+	const moveText = (x: number, y: number) => {
+		tlm = multiply(tlm, [1, 0, 0, 1, x, y]);
+		tm = tlm;
+	};
 	/** The layer of each open marked content section: inner sections inherit it. */
 	const layers: (string | null)[] = [];
 	const strokes = new Set([
@@ -247,6 +300,56 @@ export function extractPdfPage(
 			case OPS.endMarkedContent:
 				layers.pop();
 				break;
+			case OPS.beginText:
+				tm = IDENTITY;
+				tlm = IDENTITY;
+				break;
+			case OPS.setTextMatrix:
+				tm = multiply(IDENTITY, args[0] as ArrayLike<number>);
+				tlm = tm;
+				break;
+			case OPS.moveText:
+				moveText(Number(args[0]), Number(args[1]));
+				break;
+			case OPS.setLeadingMoveText:
+				state = { ...state, leading: -Number(args[1]) };
+				moveText(Number(args[0]), Number(args[1]));
+				break;
+			case OPS.nextLine:
+				moveText(0, -state.leading);
+				break;
+			case OPS.setFont:
+				state = { ...state, fontSize: Math.abs(Number(args[1])) };
+				break;
+			case OPS.setLeading:
+				state = { ...state, leading: Number(args[0]) };
+				break;
+			case OPS.setCharSpacing:
+				state = { ...state, charSpacing: Number(args[0]) };
+				break;
+			case OPS.setWordSpacing:
+				state = { ...state, wordSpacing: Number(args[0]) };
+				break;
+			case OPS.setHScale:
+				state = { ...state, hScale: Number(args[0]) / 100 };
+				break;
+			case OPS.setTextRise:
+				state = { ...state, rise: Number(args[0]) };
+				break;
+			case OPS.setTextRenderingMode:
+				state = { ...state, textMode: Number(args[0]) };
+				break;
+			case OPS.showText: {
+				const advance = show(
+					lines,
+					args[0] as readonly (Glyph | number)[],
+					state,
+					multiply(state.ctm, tm),
+					layers.at(-1) ?? null,
+				);
+				tm = multiply(tm, [1, 0, 0, 1, advance, 0]);
+				break;
+			}
 			case OPS.constructPath: {
 				const paint = args[0] as number;
 				const data = (args[1] as ArrayLike<number>[] | undefined)?.[0];
@@ -275,11 +378,154 @@ export function extractPdfPage(
 			}
 		}
 	}
+	lines.flush();
 	return builder.build(
 		{ width: viewport.width, height: viewport.height },
 		groups,
 	);
 }
+
+/** A capital's middle, above the baseline: half of a typical capital height. */
+const MIDDLE = 0.35;
+
+/**
+ * Shows glyphs at the text rendering matrix `m` (the text matrix through the CTM) and gives
+ * how far they move the text position, in text space.
+ */
+function show(
+	lines: Lines,
+	glyphs: readonly (Glyph | number)[],
+	state: State,
+	m: Matrix,
+	layer: string | null,
+): number {
+	const { fontSize, charSpacing, wordSpacing, hScale } = state;
+	let x = 0;
+	let text = "";
+	let start: number | null = null;
+	let end = 0;
+	for (const glyph of glyphs) {
+		if (typeof glyph === "number") {
+			x -= (glyph * fontSize) / 1000;
+			continue;
+		}
+		const width = (glyph.width * fontSize) / 1000;
+		const unicode = glyph.unicode ?? "";
+		text += unicode;
+		if (unicode.trim()) {
+			start ??= x;
+			end = x + width;
+		}
+		x += width + charSpacing + (glyph.isSpace ? wordSpacing : 0);
+	}
+	const shown = text.replace(/\s+/g, " ").trim();
+	if (start !== null && shown && (state.textMode & 3) !== 3) {
+		const at = (u: number): [number, number] => [
+			m[0] * u * hScale + m[2] * state.rise + m[4],
+			m[1] * u * hScale + m[3] * state.rise + m[5],
+		];
+		const up = Math.hypot(m[2], m[3]);
+		lines.add({
+			text: shown,
+			start: at(start),
+			end: at(end),
+			size: fontSize * up,
+			angle: (Math.atan2(m[1], m[0]) * 180) / Math.PI + 0,
+			up: [m[2] / up, m[3] / up],
+			layer,
+		});
+	}
+	return x * hScale;
+}
+
+/** A line of text shown, its baseline from `start` to `end` in plan units. */
+interface Run {
+	readonly text: string;
+	readonly start: readonly [number, number];
+	readonly end: readonly [number, number];
+	readonly size: number;
+	readonly angle: number;
+	/** The text's up, a unit vector. */
+	readonly up: readonly [number, number];
+	readonly layer: string | null;
+}
+
+/**
+ * Joins the pieces of a line shown one after another (a word, a subscript, a CAD label's
+ * parts) into one text: a piece in the same layer and direction that starts on the last
+ * one's baseline, between half an em back and JOIN_GAP ems on from its end.
+ */
+class Lines {
+	readonly #builder: VectorBuilder;
+	#run: Run | null = null;
+
+	constructor(builder: VectorBuilder) {
+		this.#builder = builder;
+	}
+
+	add(run: Run): void {
+		const last = this.#run;
+		if (last && this.#joins(last, run)) {
+			const em = Math.max(last.size, run.size);
+			const gap = this.#along(last, run);
+			this.#run = {
+				...last,
+				text: last.text + (gap > SPACE_GAP * em ? " " : "") + run.text,
+				end: run.end,
+				size: em,
+			};
+			return;
+		}
+		this.flush();
+		this.#run = run;
+	}
+
+	flush(): void {
+		const run = this.#run;
+		if (!run) return;
+		const lift = MIDDLE * run.size;
+		const text: PaintText = {
+			text: run.text,
+			x: (run.start[0] + run.end[0]) / 2 + run.up[0] * lift,
+			y: (run.start[1] + run.end[1]) / 2 + run.up[1] * lift,
+			size: run.size,
+			angle: run.angle,
+			layer: run.layer,
+		};
+		this.#builder.text(text);
+		this.#run = null;
+	}
+
+	#joins(last: Run, run: Run): boolean {
+		if (last.layer !== run.layer || Math.abs(last.angle - run.angle) > 1)
+			return false;
+		const em = Math.max(last.size, run.size);
+		const gap = this.#along(last, run);
+		// Off the baseline: the distance along the text's up.
+		const dx = run.start[0] - last.end[0];
+		const dy = run.start[1] - last.end[1];
+		const off = Math.abs(dx * last.up[0] + dy * last.up[1]);
+		return (
+			off < BASELINE_SLACK * em && gap >= -0.5 * em && gap <= JOIN_GAP * em
+		);
+	}
+
+	/** How far on from the last piece's end the next one starts, along the line. */
+	#along(last: Run, run: Run): number {
+		const radians = (last.angle * Math.PI) / 180;
+		return (
+			(run.start[0] - last.end[0]) * Math.cos(radians) +
+			(run.start[1] - last.end[1]) * Math.sin(radians)
+		);
+	}
+}
+
+/** Pieces further apart than this, in ems, are separate texts. */
+const JOIN_GAP = 0.6;
+/** Pieces further apart than this, in ems, get a space between them. */
+const SPACE_GAP = 0.15;
+/** How far off the line, in ems, a piece can start and still join it. */
+const BASELINE_SLACK = 0.25;
 
 /** Feeds pdf.js path data to the builder, placed by `m`. */
 function walk(

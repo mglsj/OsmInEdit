@@ -40,9 +40,30 @@ export interface VectorContent {
 	/** Each triangle's style. */
 	readonly triangleStyles: Uint32Array;
 	readonly styles: readonly VectorStyle[];
+	/** Text, drawn as map labels. */
+	readonly texts: readonly VectorText[];
 	/** The layers used, in the file's order. */
 	readonly layers: readonly VectorLayer[];
 }
+
+/** A line of text in plan units. */
+export interface VectorText {
+	readonly text: string;
+	/** The middle of the text: halfway along its line, half a capital's height up. */
+	readonly x: number;
+	readonly y: number;
+	/** The font size (an em). */
+	readonly size: number;
+	/** The way it reads, in degrees clockwise from the plan's x axis (y runs down). */
+	readonly angle: number;
+	/** Index in `VectorContent.layers`, or -1 outside any layer. */
+	readonly layer: number;
+}
+
+/** Text while building: its layer still named by id. */
+export type PaintText = Omit<VectorText, "layer"> & {
+	readonly layer: string | null;
+};
 
 /** A style while building: its layer still named by id. */
 export interface PaintStyle {
@@ -59,6 +80,7 @@ export class VectorBuilder {
 	readonly #triangleStyles: number[] = [];
 	readonly #styles: PaintStyle[] = [];
 	readonly #styleIndex = new Map<string, number>();
+	readonly #texts: PaintText[] = [];
 	/** The path being built: its subpaths as flat x, y lists, each with whether it closed. */
 	#rings: { points: number[]; closed: boolean }[] = [];
 	#x = 0;
@@ -187,6 +209,11 @@ export class VectorBuilder {
 		}
 	}
 
+	/** Adds a line of text. */
+	text(text: PaintText): void {
+		this.#texts.push(text);
+	}
+
 	/** Drops the path built so far, painted or not. */
 	clear(): void {
 		this.#rings = [];
@@ -203,9 +230,13 @@ export class VectorBuilder {
 		const order = [...layers.keys()];
 		const used = [
 			...new Set(
-				this.#styles.flatMap((s) => (s.layer === null ? [] : [s.layer])),
+				[...this.#styles, ...this.#texts].flatMap((s) =>
+					s.layer === null ? [] : [s.layer],
+				),
 			),
 		].sort((a, b) => rank(order, a) - rank(order, b));
+		const index = (layer: string | null) =>
+			layer === null ? -1 : used.indexOf(layer);
 		return {
 			size,
 			segments: new Float32Array(this.#segments),
@@ -215,8 +246,9 @@ export class VectorBuilder {
 			styles: this.#styles.map(({ color, width, layer }) => ({
 				color,
 				width,
-				layer: layer === null ? -1 : used.indexOf(layer),
+				layer: index(layer),
 			})),
+			texts: this.#texts.map((t) => ({ ...t, layer: index(t.layer) })),
 			layers: used.map((id) => ({
 				id,
 				name: layers.get(id)?.name ?? id,

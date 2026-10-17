@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MessageError } from "#lib/i18n/messages.ts";
-import type { VectorContent } from "./vector.ts";
+import type { VectorContent, VectorText } from "./vector.ts";
 import { extractSvg } from "./vector-svg.ts";
 
 const svg = (
@@ -25,6 +25,15 @@ const segments = ({ segments: s }: VectorContent) =>
 	Array.from({ length: s.length / 4 }, (_, i) => [
 		...s.subarray(i * 4, i * 4 + 4),
 	]);
+
+/** Text with its numbers to 6 decimals: rotations leave cos(90°) a hair off 0. */
+const rounded = (text: VectorText) =>
+	Object.fromEntries(
+		Object.entries(text).map(([k, v]) => [
+			k,
+			typeof v === "number" ? Math.round(v * 1e6) / 1e6 + 0 : v,
+		]),
+	);
 
 describe("extractSvg (in Chromium)", () => {
 	it("measures the drawing in its own size, its viewBox scaled into it", () => {
@@ -96,6 +105,52 @@ describe("extractSvg (in Chromium)", () => {
 		expect(content.size).toEqual({ width: 400, height: 300 });
 		expect(filledArea(content)).toBeCloseTo(400 * 300, 3);
 		expect((window as { svgRan?: boolean }).svgRan).toBeUndefined();
+	});
+
+	it("reads text by the middle of its line, sized and turned with its transforms", () => {
+		const content = extractSvg(
+			svg(
+				'<text x="100" y="50" font-size="20" text-anchor="middle">Main  hall</text>' +
+					'<g font-size="10" transform="translate(200 100) rotate(90)">' +
+					'<text text-anchor="middle" style="font-size: 2em">Up</text></g>',
+			),
+		);
+		expect(content.texts.map(rounded)).toEqual([
+			// Half size: the viewBox is twice the drawing. 0.35 em above the baseline.
+			{ text: "Main hall", x: 50, y: 21.5, size: 10, angle: 0, layer: -1 },
+			// 20 units: lifted 7 up, turned to 7 right of (200, 100).
+			{ text: "Up", x: 103.5, y: 50, size: 10, angle: 90, layer: -1 },
+		]);
+	});
+
+	it("starts text at its position, or ends it there, as measured in the browser", () => {
+		const content = extractSvg(
+			svg(
+				'<text x="0" y="100" font-size="20">Hall</text>' +
+					'<text x="400" y="100" font-size="20" text-anchor="end">Hall</text>',
+			),
+		);
+		const [start, end] = content.texts;
+		// "Hall" at 20 units is some 30 to 50 units long: its middle 7.5 to 12.5 in.
+		expect(start?.x).toBeGreaterThan(7.5);
+		expect(start?.x).toBeLessThan(12.5);
+		expect((end?.x ?? 0) + (start?.x ?? 0)).toBeCloseTo(200, 6);
+	});
+
+	it("takes each positioned tspan as a line of its own, and skips hidden and blank text", () => {
+		const content = extractSvg(
+			svg(
+				'<text font-size="10" text-anchor="middle">' +
+					'<tspan x="100" y="20">Room</tspan><tspan x="100" y="35">1<tspan>01</tspan></tspan></text>' +
+					'<text x="0" y="0" visibility="hidden">hidden</text>' +
+					'<g display="none"><text x="0" y="0">none</text></g>' +
+					'<text x="0" y="0"> </text>',
+			),
+		);
+		expect(content.texts.map(({ text, x, y }) => [text, x, y])).toEqual([
+			["Room", 50, 8.25],
+			["101", 50, 15.75],
+		]);
 	});
 
 	it("refuses a file that isn't SVG", () => {

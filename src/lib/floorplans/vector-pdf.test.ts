@@ -233,6 +233,173 @@ describe("extractPdfPage: a PDF page's paths in plan units", () => {
 	});
 });
 
+/** pdf.js glyphs for `text`, each `width` thousandths of an em wide. */
+const glyphs = (text: string, width = 500) =>
+	[...text].map((unicode) => ({ unicode, width, isSpace: unicode === " " }));
+
+/** Text shown at `matrix` (the text matrix) in a `size` pt font. */
+const shown = (
+	text: string | unknown[],
+	matrix: number[],
+	size = 10,
+	...state: [number, ...unknown[]][]
+): [number, ...unknown[]][] => [
+	[OPS.beginText],
+	[OPS.setFont, "F1", size],
+	[OPS.setTextMatrix, matrix],
+	...state,
+	[OPS.showText, typeof text === "string" ? glyphs(text) : text],
+	[OPS.endText],
+];
+
+describe("extractPdfPage: a PDF page's text", () => {
+	it("places text by the middle of its line, its size and angle in plan units", () => {
+		const content = extract(
+			ops(
+				// "Hall", four glyphs of half an em: 20 pt long, from (20, 50) up the page.
+				...shown("Hall", [1, 0, 0, 1, 20, 50]),
+				// Reading up the page, from (100, 20), in a 5 pt font scaled twice.
+				[OPS.save],
+				[OPS.transform, 2, 0, 0, 2, 0, 0],
+				...shown("Up", [0, 1, -1, 0, 50, 10], 5),
+				[OPS.restore],
+			),
+		);
+		expect(content.texts).toEqual([
+			// Halfway along, 0.35 em above the baseline (half a capital's height).
+			{ text: "Hall", x: 30, y: 146.5, size: 10, angle: 0, layer: -1 },
+			{ text: "Up", x: 96.5, y: 175, size: 10, angle: -90, layer: -1 },
+		]);
+	});
+
+	it("measures a line by its glyphs, spacing and adjustments, without its outer spaces", () => {
+		const content = extract(
+			ops(
+				...shown(
+					[
+						...glyphs(" "),
+						{ unicode: "A", width: 600, isSpace: false },
+						{ unicode: " ", width: 250, isSpace: true },
+						// TJ's adjustment: 400 thousandths of an em to the right.
+						-400,
+						{ unicode: "B", width: 600, isSpace: false },
+						...glyphs(" "),
+					],
+					[1, 0, 0, 1, 0, 100],
+					10,
+					[OPS.setCharSpacing, 1],
+					[OPS.setWordSpacing, 2],
+					[OPS.setHScale, 50],
+				),
+			),
+		);
+		// Unscaled: the space 5 + 1 + 2; A 6 + 1, the space 2.5 + 1 + 2, 4, B 6, from 8 to
+		// 30.5. At half width, 4 to 15.25.
+		expect(content.texts).toEqual([
+			{ text: "A B", x: 9.625, y: 96.5, size: 10, angle: 0, layer: -1 },
+		]);
+	});
+
+	it("joins the pieces of a line, a space between those apart, and keeps other lines apart", () => {
+		const content = extract(
+			ops(
+				// "W" 10 pt long, then a smaller "2" on its tail, then "B" a fifth of an em on.
+				...shown(
+					[{ unicode: "W", width: 1000, isSpace: false }],
+					[1, 0, 0, 1, 0, 100],
+				),
+				...shown("2", [1, 0, 0, 1, 9, 100], 7.5),
+				...shown("B", [1, 0, 0, 1, 15, 100]),
+				// Further on, and on the next line.
+				...shown("far", [1, 0, 0, 1, 40, 100]),
+				...shown("next", [1, 0, 0, 1, 0, 80]),
+			),
+		);
+		expect(content.texts.map((t) => t.text)).toEqual(["W2 B", "far", "next"]);
+		expect(content.texts[0]).toEqual({
+			text: "W2 B",
+			// From 0 to the end of "B", 20.
+			x: 10,
+			y: 96.5,
+			size: 10,
+			angle: 0,
+			layer: -1,
+		});
+	});
+
+	it("follows the text position through moves and lines shown one after another", () => {
+		const content = extract(
+			ops(
+				[OPS.beginText],
+				[OPS.setFont, "F1", 10],
+				[OPS.setLeading, 12],
+				[OPS.moveText, 10, 100],
+				[OPS.showText, glyphs("One")],
+				[OPS.nextLine],
+				[OPS.showText, glyphs("Two")],
+				[OPS.setLeadingMoveText, 0, -20],
+				[OPS.showText, glyphs("Six")],
+				[OPS.nextLine],
+				[OPS.showText, glyphs("Ten")],
+				[OPS.endText],
+			),
+		);
+		// Each line starts at x 10 and is 15 pt long: middle 17.5.
+		expect(content.texts.map(({ text, x, y }) => [text, x, y])).toEqual([
+			["One", 17.5, 96.5],
+			["Two", 17.5, 108.5],
+			["Six", 17.5, 128.5],
+			["Ten", 17.5, 148.5],
+		]);
+	});
+
+	it("leaves out invisible text (a scan's recognised text) and blank lines", () => {
+		const content = extract(
+			ops(
+				...shown("hidden", [1, 0, 0, 1, 0, 0], 10, [
+					OPS.setTextRenderingMode,
+					3,
+				]),
+				...shown("clipped", [1, 0, 0, 1, 0, 0], 10, [
+					OPS.setTextRenderingMode,
+					7,
+				]),
+				...shown("   ", [1, 0, 0, 1, 0, 50]),
+				...shown("shown", [1, 0, 0, 1, 0, 100], 10, [
+					OPS.setTextRenderingMode,
+					1,
+				]),
+			),
+		);
+		expect(content.texts.map((t) => t.text)).toEqual(["shown"]);
+	});
+
+	it("tags text with its CAD layer, listing layers only text is in", () => {
+		const groups = new Map([
+			["7R", { name: "Walls", visible: true }],
+			["9R", { name: "Labels", visible: false }],
+		]);
+		const content = extract(
+			ops(
+				[OPS.beginMarkedContentProps, "OC", { type: "OCG", id: "9R" }],
+				...shown("Bed", [1, 0, 0, 1, 0, 0]),
+				[OPS.endMarkedContent],
+				[OPS.beginMarkedContentProps, "OC", { type: "OCG", id: "7R" }],
+				path(OPS.stroke, M, 0, 0, L, 1, 0),
+				// On the same line, but in another layer.
+				...shown("Wall", [1, 0, 0, 1, 15, 0]),
+				[OPS.endMarkedContent],
+			),
+			groups,
+		);
+		expect(content.layers.map((l) => l.name)).toEqual(["Walls", "Labels"]);
+		expect(content.texts.map((t) => [t.text, t.layer])).toEqual([
+			["Bed", 1],
+			["Wall", 0],
+		]);
+	});
+});
+
 describe("extractPdfPage on a PDF read by pdf.js", () => {
 	it("gives the test plan's first page: a red rectangle over its 4 × 3 inches", async () => {
 		const data = new Uint8Array(readFileSync("tests/e2e/files/plan.pdf"));
@@ -248,6 +415,35 @@ describe("extractPdfPage on a PDF read by pdf.js", () => {
 		expect(content.styles).toEqual([
 			{ color: [255, 0, 0, 255], width: 0, layer: -1 },
 		]);
+		await task.destroy();
+	});
+
+	it("gives a CAD drawing's text and layers: a frame on Walls, a label on Labels", async () => {
+		const data = new Uint8Array(readFileSync("tests/e2e/files/layers.pdf"));
+		const task = getDocument({ data });
+		const pdf = await task.promise;
+		const first = await pdf.getPage(1);
+		const config = await pdf.getOptionalContentConfig();
+		const groups = new Map(
+			[...config].map(([id, g]) => [
+				id,
+				{ name: g.name ?? id, visible: g.visible },
+			]),
+		);
+		const content = extractPdfPage(
+			await first.getOperatorList(),
+			first.getViewport({ scale: 1 }),
+			{ OPS, groups },
+		);
+		expect(content.layers.map((l) => l.name)).toEqual(["Walls", "Labels"]);
+		expect(content.styles.map((s) => s.layer)).toEqual([0]);
+		// "Hall" at 24 pt from (100, 100): Helvetica's H, a, l, l are 722, 556, 222 and 222
+		// thousandths of an em, 41.328 pt in all.
+		const [hall] = content.texts;
+		expect(hall?.text).toBe("Hall");
+		expect(hall?.x).toBeCloseTo(100 + 41.328 / 2, 3);
+		expect(hall?.y).toBeCloseTo(216 - 100 - 0.35 * 24, 3);
+		expect([hall?.size, hall?.angle, hall?.layer]).toEqual([24, 0, 1]);
 		await task.destroy();
 	});
 });

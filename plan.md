@@ -896,6 +896,14 @@ P4.2.2b: the PDF page dialog's "Draw as" Auto / Vector / Image (Resolution only 
 least half of it (`IMAGE_SHARE`); `PdfDocument.vector(page)` (with the PDF's CAD layers) and
 `pageMode(page)`; `PlanSource.mode` (`PlanMode`, SVG and PDF; unset: image) set at import,
 written to plan files and honoured when they're read (`readPlans` draws each page as saved).
+P4.2.3a (text read, not drawn yet): `VectorContent.texts` (`VectorText`: the middle of a line,
+font size and angle in plan units, its CAD layer). PDF text comes from the operator list's
+`showText`, not pdf.js's text content (which can't say a text's optional content group): the
+text matrix, font size, spacing and horizontal scale tracked; pieces of one line shown one
+after another joined (within 0.6 em on, a space past 0.15 em); invisible text (render modes 3
+and 7, a scan's recognised text) left out. SVG `<text>` and `<tspan>`s placed with x or y, with
+`font-size` (em, %) and `text-anchor` inherited (`resolveStyle`), measured with a canvas. On
+the user's PDF: 200–1,260 labels a page. Vectors stored before read with no text.
 
 ### P5.3: Geometry editing — L
 

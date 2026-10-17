@@ -102,10 +102,27 @@ for (const file of ["plan.png", "plan.jpg", "plan.webp"]) {
 	});
 }
 
-test("imports an SVG plan without running its scripts", async ({ page }) => {
+test("imports an SVG plan as paths, without running its scripts, kept after a reload", async ({
+	page,
+}) => {
 	await importPlan(page, "plan.svg");
 	await expectPlanDrawn(page, [0, 255, 0], 4 / 3);
 	expect(await page.evaluate(() => "svgRan" in window)).toBe(false);
+	// Measured in its own units, not pixels: drawn from its paths.
+	await expect(planRows(page).first()).toContainText("400 × 300");
+	await expect(planRows(page).first()).not.toContainText("px");
+
+	await page.getByRole("button", { name: "Done" }).click();
+	// Saved once its paths are: a reload could cut the write short.
+	await expect
+		.poll(async () => {
+			const { plans, complete } = await storedPlans(page);
+			return complete && JSON.parse(plans).length === 1;
+		})
+		.toBe(true);
+	await page.reload();
+	await page.getByRole("button", { name: "Floor plans" }).click();
+	await expectPlanDrawn(page, [0, 255, 0], 4 / 3);
 });
 
 test("imports the chosen page of a PDF at the chosen resolution", async ({
@@ -539,18 +556,19 @@ function storedPlans(
 				open.onerror = () => reject(open.error);
 				open.onsuccess = () => {
 					const db = open.result;
-					if (!db.objectStoreNames.contains("rasters")) {
+					if (!db.objectStoreNames.contains("vectors")) {
 						db.close();
 						resolve({ plans: "[]", complete: true });
 						return;
 					}
-					const tx = db.transaction(["plans", "rasters"]);
+					const tx = db.transaction(["plans", "rasters", "vectors"]);
 					const plans = tx.objectStore("plans").getAll();
 					const rasters = tx.objectStore("rasters").getAllKeys();
+					const vectors = tx.objectStore("vectors").getAllKeys();
 					tx.onerror = () => reject(tx.error);
 					tx.oncomplete = () => {
 						db.close();
-						const saved = new Set(rasters.result);
+						const saved = new Set([...rasters.result, ...vectors.result]);
 						resolve({
 							plans: JSON.stringify(plans.result),
 							complete: plans.result.every((p: { id: string }) =>

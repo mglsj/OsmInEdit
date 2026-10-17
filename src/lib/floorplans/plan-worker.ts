@@ -11,14 +11,17 @@ import {
 	encodePyramid,
 	pyramidOfFile,
 	pyramidOfRendering,
+	vectorThumbnail,
 } from "./pyramid.ts";
 import { decodeTile, encodeTile, probeSupport } from "./tile-codec.ts";
 import { tileFormats } from "./tile-format.ts";
+import type { VectorContent } from "./vector.ts";
 
 export type WorkerRequest = { readonly id: number } & (
 	| { readonly op: "file"; readonly file: Blob }
 	| { readonly op: "rendering"; readonly bitmap: ImageBitmap }
 	| { readonly op: "decode"; readonly blob: Blob }
+	| { readonly op: "vector-thumbnail"; readonly vector: VectorContent }
 );
 
 export interface WorkerError {
@@ -86,6 +89,9 @@ self.onmessage = async ({ data }: MessageEvent<WorkerRequest>) => {
 				await answer(data.id, image, image);
 				break;
 			}
+			case "vector-thumbnail":
+				post({ id: data.id, value: await vectorThumbnail(data.vector) });
+				break;
 			case "decode": {
 				const bitmap = await decodeTile(data.blob);
 				post({ id: data.id, value: bitmap }, [bitmap]);

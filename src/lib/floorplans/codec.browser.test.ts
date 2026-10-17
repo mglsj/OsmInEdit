@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { MessageError } from "#lib/i18n/messages.ts";
 import { workerCodec } from "./codec.ts";
 import type { PlanImage } from "./content.ts";
+import { VectorBuilder } from "./vector.ts";
 
 const codec = workerCodec();
 afterAll(() => codec.terminate());
@@ -101,6 +102,23 @@ describe("workerCodec (the plan worker, in Chromium)", () => {
 		const tile = image.levels[0]?.tiles[0]?.bitmap;
 		if (!tile) throw new Error("no tile");
 		expect(same(pixels(tile), pixels(canvasOf(400, 300)))).toBe(true);
+	});
+
+	it("draws a vector plan's thumbnail: its fills and lines in their colours", async () => {
+		const builder = new VectorBuilder();
+		builder.moveTo(0, 0);
+		builder.lineTo(400, 0);
+		builder.lineTo(400, 300);
+		builder.lineTo(0, 300);
+		builder.close();
+		builder.fill({ color: [0, 0, 255, 255], width: 0, layer: null });
+		const blob = await codec.vectorThumbnail(
+			builder.build({ width: 400, height: 300 }),
+		);
+		const thumbnail = await createImageBitmap(blob);
+		expect([thumbnail.width, thumbnail.height]).toEqual([128, 96]);
+		const [r = 0, g = 0, b = 0] = pixels(thumbnail, 64, 48, 1, 1);
+		expect([r, g, b].map((v) => Math.round(v / 16))).toEqual([0, 0, 16]);
 	});
 
 	it("reports a file it can't read with its message", async () => {

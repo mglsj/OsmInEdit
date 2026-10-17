@@ -6,6 +6,7 @@
  * list: it is large, and loaded only for the plans shown.
  */
 import type { Tile } from "./tiling.ts";
+import type { VectorContent } from "./vector.ts";
 
 /**
  * The file a plan was imported from, by id (stored once, shared by the pages of one PDF):
@@ -80,6 +81,13 @@ export interface RasterContent {
 export interface PlanContent {
 	readonly size: PlanSize;
 	readonly raster?: RasterContent;
+	/** Its paths, drawn by the GPU at any zoom (P4.2). */
+	readonly vector?: VectorContent;
+}
+
+/** Content drawn from paths, measured as they are. */
+export function vectorContent(vector: VectorContent): PlanContent {
+	return { size: vector.size, vector };
 }
 
 /**

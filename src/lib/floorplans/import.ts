@@ -5,8 +5,9 @@
  */
 import { MessageError, msg } from "#lib/i18n/messages.ts";
 import type { PlanCodec } from "./codec.ts";
-import { type PlanContent, rasterContent } from "./content.ts";
+import { type PlanContent, rasterContent, vectorContent } from "./content.ts";
 import { MAX_IMAGE_SIZE } from "./pyramid.ts";
+import { extractSvg } from "./vector-svg.ts";
 
 /** Longest side SVG drawings are rendered at: they have no resolution of their own. */
 const SVG_SIZE = 4096;
@@ -50,7 +51,7 @@ export interface PlanDecoders {
 export function planDecoders(codec: PlanCodec): PlanDecoders {
 	return {
 		raster: (file) => importRaster(file, codec),
-		svg: (file) => importSvg(file, codec),
+		svg: (file) => importDrawing(file, codec),
 		pdf: (file) => openPdf(file, codec),
 	};
 }
@@ -61,6 +62,19 @@ async function importRaster(
 ): Promise<PlanContent> {
 	const { image, width, height } = await codec.decodeFile(file);
 	return rasterContent(image, { width, height });
+}
+
+/**
+ * An SVG drawing as vector content, drawn sharp at any zoom; one holding images is rendered
+ * instead, as vector plans don't draw images.
+ */
+async function importDrawing(
+	file: Blob,
+	codec: PlanCodec,
+): Promise<PlanContent> {
+	const text = await file.text();
+	if (/<([\w-]+:)?image[\s/>]/.test(text)) return importSvg(file, codec);
+	return vectorContent(extractSvg(text));
 }
 
 /**

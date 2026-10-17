@@ -883,6 +883,14 @@ styles; pure) and `vector-svg.ts` (`DOMParser`, viewBox and preserveAspectRatio,
 colours read by a canvas). On the user's heaviest page: 219,000 segments, 1,400 triangles,
 58 layers, 4.4 MB, 350 ms after pdf.js's 2.4 s parse. Store schema 4: `vectors`
 (`loadVector`, `saveVector`, deleted with the plan).
+P4.2.2a: `PlanContent.vector` (`vectorContent`), saved with a thumbnail drawn in the plan
+worker (`vectorThumbnail`), loaded per level; `map/plan-matrix.ts` (`planToClip`: plan units
+to clip space through MapLibre's world-pixel `modelViewProjectionMatrix`, composed in
+float64; `unitPixels`), `map/vector-plan-layer.ts` (a custom layer per plan: fills as
+triangles, segments as instanced quads widened on screen, hairlines 1 device pixel,
+premultiplied blending, opacity), drawn by `FloorPlanLayers` in the plan stack. SVGs import as
+vectors unless they hold `<image>`s. Tested: the maths in Node, the layer's pixels in
+Chromium, FloorPlans with the memory store, an SVG plan drawn and reloaded in e2e.
 
 ### P5.3: Geometry editing — L
 

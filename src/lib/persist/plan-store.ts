@@ -84,7 +84,11 @@ export interface PlanStore {
 	): Promise<void>;
 	/** A plan's vector content; undefined when it has none. */
 	loadVector(id: string): Promise<VectorContent | undefined>;
-	saveVector(id: string, content: VectorContent): Promise<void>;
+	saveVector(
+		id: string,
+		content: VectorContent,
+		thumbnail?: Blob,
+	): Promise<void>;
 	/** Saves a file plans were imported from, by its id. */
 	saveFile(id: string, file: Blob): Promise<void>;
 	loadFile(id: string): Promise<Blob | undefined>;
@@ -248,8 +252,18 @@ export class IndexedDbPlanStore implements PlanStore {
 		return (await this.#open()).get("vectors", id);
 	}
 
-	async saveVector(id: string, content: VectorContent): Promise<void> {
-		await (await this.#open()).put("vectors", content, id);
+	async saveVector(
+		id: string,
+		content: VectorContent,
+		thumbnail?: Blob,
+	): Promise<void> {
+		const db = await this.#open();
+		const tx = db.transaction(["vectors", "thumbnails"], "readwrite");
+		await Promise.all([
+			tx.objectStore("vectors").put(content, id),
+			...(thumbnail ? [tx.objectStore("thumbnails").put(thumbnail, id)] : []),
+			tx.done,
+		]);
 	}
 
 	async saveFile(id: string, file: Blob): Promise<void> {

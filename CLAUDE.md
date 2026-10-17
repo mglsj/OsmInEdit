@@ -80,7 +80,8 @@ runs the same commands.
   JSON and 1.x read), `tiling.ts`, `import.ts` raster/SVG/PDF; vector plans (P4.2):
   `vector.ts` (`VectorContent`, `VectorBuilder`), `vector-pdf.ts` (pdf.js operator lists,
   pure: pass pdf.js's `OPS`), `svg-path.ts` (pure), `vector-svg.ts` (`DOMParser`)),
-  `map/floorplan-layers.ts`,
+  `map/floorplan-layers.ts` (vector plans through `map/vector-plan-layer.ts`, a custom
+  WebGL layer, and `map/plan-matrix.ts`),
   `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),
   `persist/plan-store.ts` (IndexedDB schema 4: settings, tiles, files, thumbnails, vectors; tested on
   fake-indexeddb; content loads for the shown level only, `FloorPlans.showLevel`; tests use

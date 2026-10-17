@@ -7,6 +7,7 @@
 import { MessageError, msg } from "#lib/i18n/messages.ts";
 import type { EncodedImage, PlanImage, PlanLevel } from "./content.ts";
 import { type Tile, tiles } from "./tiling.ts";
+import type { VectorContent } from "./vector.ts";
 
 /** Longest side kept for a plan, in pixels; larger plans are scaled down on import. */
 export const MAX_IMAGE_SIZE = 8192;
@@ -144,6 +145,42 @@ async function thumbnailOf(image: CutImage): Promise<Blob> {
 			tile.width * scale,
 			tile.height * scale,
 		);
+	}
+	return canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
+}
+
+/** A vector plan at most `THUMBNAIL_SIZE` pixels: its fills, then its lines a pixel wide. */
+export async function vectorThumbnail(vector: VectorContent): Promise<Blob> {
+	const { width, height } = vector.size;
+	const scale = THUMBNAIL_SIZE / Math.max(width, height);
+	const canvas = new OffscreenCanvas(
+		Math.max(1, Math.round(width * scale)),
+		Math.max(1, Math.round(height * scale)),
+	);
+	const context = canvas.getContext("2d");
+	if (context) {
+		const css = (style: number) => {
+			const [r, g, b, a] = vector.styles[style]?.color ?? [0, 0, 0, 255];
+			return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+		};
+		const t = vector.triangles;
+		for (let i = 0; i < t.length / 6; i++) {
+			context.fillStyle = css(vector.triangleStyles[i] ?? 0);
+			context.beginPath();
+			context.moveTo((t[i * 6] ?? 0) * scale, (t[i * 6 + 1] ?? 0) * scale);
+			context.lineTo((t[i * 6 + 2] ?? 0) * scale, (t[i * 6 + 3] ?? 0) * scale);
+			context.lineTo((t[i * 6 + 4] ?? 0) * scale, (t[i * 6 + 5] ?? 0) * scale);
+			context.fill();
+		}
+		context.lineWidth = 1;
+		const s = vector.segments;
+		for (let i = 0; i < s.length / 4; i++) {
+			context.strokeStyle = css(vector.segmentStyles[i] ?? 0);
+			context.beginPath();
+			context.moveTo((s[i * 4] ?? 0) * scale, (s[i * 4 + 1] ?? 0) * scale);
+			context.lineTo((s[i * 4 + 2] ?? 0) * scale, (s[i * 4 + 3] ?? 0) * scale);
+			context.stroke();
+		}
 	}
 	return canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
 }

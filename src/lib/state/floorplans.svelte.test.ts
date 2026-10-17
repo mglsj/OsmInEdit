@@ -5,6 +5,7 @@ import {
 	type PlanImage,
 	type PlanOrigin,
 	rasterContent,
+	vectorContent,
 } from "#lib/floorplans/content.ts";
 import {
 	place,
@@ -14,6 +15,7 @@ import {
 	translateTo,
 } from "#lib/floorplans/georef.ts";
 import { distance, offset, RENNES } from "#lib/floorplans/test-geometry.ts";
+import type { VectorContent } from "#lib/floorplans/vector.ts";
 import { msg } from "#lib/i18n/messages.ts";
 import { type FloorPlan, FloorPlans } from "./floorplans.svelte.ts";
 import { fakeCodec, fakeImage, memoryStore } from "./testing/plan-store.ts";
@@ -556,6 +558,36 @@ describe("FloorPlans: content kept for the level shown", () => {
 		await after.restore();
 		return { after, contents };
 	}
+
+	it("saves a vector plan's paths with a thumbnail, and loads them back for its level", async () => {
+		const { store, vectors } = memoryStore();
+		const paths: VectorContent = {
+			size: { width: 595, height: 842 },
+			segments: new Float32Array([0, 0, 595, 842]),
+			segmentStyles: new Uint32Array([0]),
+			triangles: new Float32Array([]),
+			triangleStyles: new Uint32Array([]),
+			styles: [{ color: [255, 0, 0, 255], width: 0, layer: -1 }],
+			layers: [],
+		};
+		const before = new FloorPlans({ store, codec: fakeCodec });
+		before.add(vectorContent(paths), "drawing", view, "1", photo());
+		before.done();
+		await settled();
+		const id = idOf(before, "drawing");
+		expect(vectors.get(id)).toBe(paths);
+		expect(before.plans[0]?.size).toEqual({ width: 595, height: 842 });
+
+		const after = new FloorPlans({ store, codec: fakeCodec });
+		await after.restore();
+		expect(await after.thumbnails.get(id)?.text()).toBe("vector thumbnail");
+		after.showLevel(0);
+		await settled();
+		expect(after.contents.has(id)).toBe(false);
+		after.showLevel(1);
+		await settled();
+		expect(after.contents.get(id)).toEqual({ size: paths.size, vector: paths });
+	});
 
 	it("saves a new plan's encoded tiles, its file and its thumbnail", async () => {
 		const { after, contents } = await reloaded();

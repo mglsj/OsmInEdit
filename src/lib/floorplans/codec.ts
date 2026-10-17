@@ -10,6 +10,7 @@ import type {
 	WorkerResponse,
 } from "./plan-worker.ts";
 import type { CutImage } from "./pyramid.ts";
+import type { VectorContent } from "./vector.ts";
 
 export interface PlanCodec {
 	/**
@@ -23,6 +24,8 @@ export interface PlanCodec {
 	fromRendering(bitmap: ImageBitmap): Promise<PlanImage>;
 	/** A stored tile, decoded. */
 	decode(blob: Blob): Promise<ImageBitmap>;
+	/** A small picture of a vector plan for the list. */
+	vectorThumbnail(vector: VectorContent): Promise<Blob>;
 }
 
 interface Deferred<T> {
@@ -88,7 +91,9 @@ export function workerCodec(): PlanCodec & { terminate(): void } {
 			answers.set(id, { resolve: resolve as (value: unknown) => void, reject });
 		});
 		const encoded = new Promise<EncodedImage>((resolve, reject) => {
-			if (request.op !== "decode") encodings.set(id, { resolve, reject });
+			if (request.op === "file" || request.op === "rendering") {
+				encodings.set(id, { resolve, reject });
+			}
 		});
 		// Handled where content is saved; a plan dropped before that leaves it unread.
 		encoded.catch(() => {});
@@ -118,6 +123,8 @@ export function workerCodec(): PlanCodec & { terminate(): void } {
 			return withEncoded(await answer, encoded);
 		},
 		decode: (blob) => call<ImageBitmap>({ op: "decode", blob }).answer,
+		vectorThumbnail: (vector) =>
+			call<Blob>({ op: "vector-thumbnail", vector }).answer,
 		terminate() {
 			worker?.terminate();
 			worker = undefined;

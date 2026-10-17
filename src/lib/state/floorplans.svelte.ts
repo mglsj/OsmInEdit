@@ -401,6 +401,8 @@ export class FloorPlans {
 		readonly size?: PlanSize;
 	}): Promise<PlanContent | undefined> {
 		const codec = this.#codec;
+		const vector = await this.#store?.loadVector(plan.id);
+		if (vector) return { size: plan.size ?? vector.size, vector };
 		const stored = await this.#store?.loadContent(plan.id);
 		if (!stored || !codec) return undefined;
 		if (stored.kind === "legacy") {
@@ -453,11 +455,21 @@ export class FloorPlans {
 	 */
 	async #saveContent(id: string, content: PlanContent): Promise<void> {
 		const store = this.#store;
-		const raster = content.raster;
-		if (!raster) return;
+		const { raster, vector } = content;
+		if (!raster && !vector) return;
 		// Kept until saved: without a store, for as long as the plan lasts.
 		this.#unsaved.add(id);
 		if (!store) return;
+		if (vector) {
+			const thumbnail = await this.#codec?.vectorThumbnail(vector);
+			if (this.#removed.has(id)) return;
+			if (thumbnail) this.thumbnails.set(id, thumbnail);
+			await store.saveVector(id, vector, thumbnail);
+			this.#unsaved.delete(id);
+			this.#syncContent();
+			return;
+		}
+		if (!raster) return;
 		const { image, unit } = raster;
 		const { levels, thumbnail } = await image.encoded;
 		// Removed while its tiles were encoded: nothing to save.

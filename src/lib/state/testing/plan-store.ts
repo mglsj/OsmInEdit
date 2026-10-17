@@ -28,8 +28,9 @@ export function memoryStore() {
 			if (content.thumbnail) thumbnails.set(id, content.thumbnail);
 		},
 		loadVector: async (id) => vectors.get(id),
-		saveVector: async (id, content) => {
+		saveVector: async (id, content, thumbnail) => {
 			vectors.set(id, content);
+			if (thumbnail) thumbnails.set(id, thumbnail);
 		},
 		saveFile: async (id, file) => {
 			files.set(id, file);
@@ -97,4 +98,5 @@ export const fakeCodec: PlanCodec = {
 	decodeFile: async () => ({ image: fakeImage(), width: 400, height: 300 }),
 	fromRendering: async () => fakeImage(),
 	decode: async () => fakeBitmap(),
+	vectorThumbnail: async () => new Blob(["vector thumbnail"]),
 };

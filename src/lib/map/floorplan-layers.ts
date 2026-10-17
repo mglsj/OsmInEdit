@@ -1,7 +1,9 @@
 /**
- * Draws floor plans on the map: one MapLibre image source and raster layer per plan tile, above
- * the indoor fills (which would hide them) and below the indoor outlines, icons and labels. Plans are compared by identity, so only what
- * changed is updated: moving a plan sets new coordinates, it never re-uploads the image.
+ * Draws floor plans on the map: one MapLibre image source and raster layer per plan tile, or one
+ * custom WebGL layer for a vector plan (`vector-plan-layer.ts`), above the indoor fills (which
+ * would hide them) and below the indoor outlines, icons and labels. Plans are compared by
+ * identity, so only what changed is updated: moving a plan sets new coordinates or a new
+ * matrix, it never re-uploads the image or the paths.
  */
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
 import type { PlanContent, RasterContent } from "#lib/floorplans/content.ts";
@@ -13,6 +15,7 @@ import {
 	project,
 } from "#lib/floorplans/georef.ts";
 import { pyramidLevel, tileCorners } from "#lib/floorplans/tiling.ts";
+import type { VectorContent } from "#lib/floorplans/vector.ts";
 import { EARTH_RADIUS } from "#lib/osm/geometry.ts";
 import {
 	type FloorPlan,
@@ -28,14 +31,19 @@ import type {
 	ImageSource,
 	Map as MapLibreMap,
 } from "./maplibre.ts";
+import { VectorPlanLayer } from "./vector-plan-layer.ts";
 
 /** Prefix of the floor plan source and layer ids. */
 export const FLOORPLAN_PREFIX = "floorplan-";
 
 interface Shown {
 	readonly plan: FloorPlan;
-	/** The content drawn (its raster's tiles at `level`). */
-	readonly raster: RasterContent;
+	/** The content drawn: its raster's tiles at `level`, or its paths. */
+	readonly raster?: RasterContent;
+	readonly vector?: {
+		readonly content: VectorContent;
+		readonly layer: VectorPlanLayer;
+	};
 	readonly ids: readonly string[];
 	/** Index of the pyramid level drawn. */
 	readonly level: number;
@@ -95,35 +103,40 @@ export class FloorPlanLayers {
 	readonly #onZoom = () => this.#sync();
 
 	#sync(): void {
-		const wanted = this.#plans.filter(
-			(p) =>
+		const wanted = this.#plans.filter((p) => {
+			const content = this.#contents.get(p.id);
+			return (
 				p.visible &&
 				isPlanOnLevel(p, this.#level) &&
-				this.#contents.get(p.id)?.raster,
-		);
+				(content?.vector || content?.raster)
+			);
+		});
 		const levels = new Map(
-			wanted.map((p) => [
-				p.id,
-				this.#pyramidLevel(
-					p,
-					this.#contents.get(p.id)?.raster as RasterContent,
-				),
-			]),
+			wanted.flatMap((p) => {
+				const content = this.#contents.get(p.id);
+				return content?.raster && !content.vector
+					? [[p.id, this.#pyramidLevel(p, content.raster)] as const]
+					: [];
+			}),
 		);
 		for (const [id, shown] of this.#shown) {
-			if (
-				shown.raster !== this.#contents.get(id)?.raster ||
-				shown.level !== levels.get(id)
-			) {
-				this.#hide(id);
-			}
+			const content = this.#contents.get(id);
+			const changed = shown.vector
+				? shown.vector.content !== content?.vector
+				: shown.raster !== content?.raster ||
+					Boolean(content?.vector) ||
+					shown.level !== levels.get(id);
+			if (changed) this.#hide(id);
 		}
 		let added = false;
 		for (const plan of wanted) {
 			const shown = this.#shown.get(plan.id);
-			const raster = this.#contents.get(plan.id)?.raster;
-			if (!shown && raster) {
-				this.#show(plan, raster, levels.get(plan.id) ?? 0);
+			const content = this.#contents.get(plan.id);
+			if (!shown && content?.vector) {
+				this.#showVector(plan, content.vector);
+				added = true;
+			} else if (!shown && content?.raster) {
+				this.#show(plan, content.raster, levels.get(plan.id) ?? 0);
 				added = true;
 			} else if (shown && shown.plan !== plan) this.#update(shown, plan);
 		}
@@ -195,9 +208,38 @@ export class FloorPlanLayers {
 		this.#shown.set(plan.id, { plan, raster, ids, level });
 	}
 
+	#showVector(plan: FloorPlan, content: VectorContent): void {
+		const id = `${FLOORPLAN_PREFIX}${plan.id}-vector`;
+		const layer = new VectorPlanLayer(
+			id,
+			content,
+			plan.transform,
+			plan.opacity,
+		);
+		this.#map.addLayer(layer, this.#below());
+		this.#shown.set(plan.id, {
+			plan,
+			vector: { content, layer },
+			ids: [id],
+			level: 0,
+		});
+	}
+
 	#update(shown: Shown, plan: FloorPlan): void {
+		if (shown.vector) {
+			if (plan.transform !== shown.plan.transform) {
+				shown.vector.layer.setTransform(plan.transform);
+			}
+			if (plan.opacity !== shown.plan.opacity) {
+				shown.vector.layer.setOpacity(plan.opacity);
+			}
+			this.#shown.set(plan.id, { ...shown, plan });
+			return;
+		}
+		const raster = shown.raster;
+		if (!raster) return;
 		if (plan.transform !== shown.plan.transform) {
-			const { image, unit } = shown.raster;
+			const { image, unit } = raster;
 			image.levels[shown.level]?.tiles.forEach(({ tile }, i) => {
 				const id = shown.ids[i];
 				if (!id) return;
@@ -215,6 +257,7 @@ export class FloorPlanLayers {
 	}
 
 	#hide(id: string): void {
+		// A vector plan's layer has no source; a raster tile's layer is named as its source.
 		for (const layer of this.#shown.get(id)?.ids ?? []) {
 			if (this.#map.getLayer(layer)) this.#map.removeLayer(layer);
 			if (this.#map.getSource(layer)) this.#map.removeSource(layer);

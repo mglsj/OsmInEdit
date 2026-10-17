@@ -84,6 +84,9 @@ const outlineOpacity: ExpressionSpecification = [
 	0,
 ];
 
+/** The labels' font, when the basemap names none. */
+export const LABEL_FONT = ["Noto Sans Regular"];
+
 export interface IndoorStyleOptions {
 	/** Fonts available from the basemap's glyph server. */
 	readonly textFont?: string[];
@@ -91,7 +94,7 @@ export interface IndoorStyleOptions {
 
 export function indoorLayers(
 	level: number,
-	{ textFont = ["Noto Sans Regular"] }: IndoorStyleOptions = {},
+	{ textFont = LABEL_FONT }: IndoorStyleOptions = {},
 ): LayerSpecification[] {
 	const onLevel = (filter: ExpressionSpecification): FilterSpecification => [
 		"all",

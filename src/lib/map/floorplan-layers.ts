@@ -1,9 +1,10 @@
 /**
  * Draws floor plans on the map: one MapLibre image source and raster layer per plan tile, or one
  * custom WebGL layer for a vector plan (`vector-plan-layer.ts`), above the indoor fills (which
- * would hide them) and below the indoor outlines, icons and labels. Plans are compared by
- * identity, so only what changed is updated: moving a plan sets new coordinates or a new
- * matrix, it never re-uploads the image or the paths.
+ * would hide them) and below the indoor outlines, icons and labels; a vector plan's text as a
+ * symbol layer right above it (`plan-labels.ts`). Plans are compared by identity, so only what
+ * changed is updated: moving a plan sets new coordinates or a new matrix, it never re-uploads
+ * the image or the paths.
  */
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
 import type { PlanContent, RasterContent } from "#lib/floorplans/content.ts";
@@ -31,6 +32,7 @@ import type {
 	ImageSource,
 	Map as MapLibreMap,
 } from "./maplibre.ts";
+import { labelOpacity, planLabelLayer, planLabels } from "./plan-labels.ts";
 import { VectorPlanLayer } from "./vector-plan-layer.ts";
 
 /** Prefix of the floor plan source and layer ids. */
@@ -217,21 +219,49 @@ export class FloorPlanLayers {
 			plan.opacity,
 		);
 		this.#map.addLayer(layer, this.#below());
+		const ids = [id];
+		if (content.texts.length > 0) {
+			// The source and its layer share an id, as a raster tile's do.
+			const labels = `${id}-labels`;
+			this.#map.addSource(labels, {
+				type: "geojson",
+				data: planLabels(content, plan.transform),
+			});
+			this.#map.addLayer(
+				planLabelLayer(labels, labels, plan.opacity),
+				this.#below(),
+			);
+			ids.push(labels);
+		}
 		this.#shown.set(plan.id, {
 			plan,
 			vector: { content, layer },
-			ids: [id],
+			ids,
 			level: 0,
 		});
 	}
 
 	#update(shown: Shown, plan: FloorPlan): void {
 		if (shown.vector) {
+			const { content, layer } = shown.vector;
+			const labels = shown.ids[1];
 			if (plan.transform !== shown.plan.transform) {
-				shown.vector.layer.setTransform(plan.transform);
+				layer.setTransform(plan.transform);
+				if (labels) {
+					this.#map
+						.getSource<GeoJSONSource>(labels)
+						?.setData(planLabels(content, plan.transform));
+				}
 			}
 			if (plan.opacity !== shown.plan.opacity) {
-				shown.vector.layer.setOpacity(plan.opacity);
+				layer.setOpacity(plan.opacity);
+				if (labels) {
+					this.#map.setPaintProperty(
+						labels,
+						"text-opacity",
+						labelOpacity(plan.opacity),
+					);
+				}
 			}
 			this.#shown.set(plan.id, { ...shown, plan });
 			return;

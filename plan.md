@@ -904,6 +904,13 @@ after another joined (within 0.6 em on, a space past 0.15 em); invisible text (r
 and 7, a scan's recognised text) left out. SVG `<text>` and `<tspan>`s placed with x or y, with
 `font-size` (em, %) and `text-anchor` inherited (`resolveStyle`), measured with a canvas. On
 the user's PDF: 200–1,260 labels a page. Vectors stored before read with no text.
+P4.2.3b: `map/plan-labels.ts` (pure): `planLabels` (each text a GeoJSON point through the
+plan's transform, its size in pixels at zoom 0 and its rotation measured on the spot, hidden
+CAD layers' text left out) and `planLabelLayer` (dark text, light halo, turned with the plan;
+`text-size` doubling each zoom level, exact at whole levels, capped at 250 px, which MapLibre
+can't exceed; opacity 0 under 6 px, fading in over the zoom level before; never hidden by
+collisions, never hiding OSM labels). `FloorPlanLayers` adds the labels right above their plan
+and moves them with it. MapLibre draws glyphs locally when the glyph server fails (e2e).
 
 ### P5.3: Geometry editing — L
 

@@ -165,6 +165,66 @@ test("imports a PDF page from its paths, measured in points", async ({
 	await expectPlanDrawn(page, [255, 0, 0], 4 / 3);
 });
 
+/** The darkest channel value in a box of the screen: low where text is drawn. */
+async function darkest(
+	page: Page,
+	box: { x: number; y: number; width: number; height: number },
+): Promise<number> {
+	const clip = {
+		x: Math.round(box.x),
+		y: Math.round(box.y),
+		width: Math.round(box.width),
+		height: Math.round(box.height),
+	};
+	const png = await page.screenshot({ clip });
+	return page.evaluate(
+		async ({ base64, width, height }) => {
+			const blob = await (
+				await fetch(`data:image/png;base64,${base64}`)
+			).blob();
+			const canvas = new OffscreenCanvas(width, height);
+			const context = canvas.getContext("2d");
+			if (!context) throw new Error("No 2D context");
+			context.drawImage(await createImageBitmap(blob), 0, 0);
+			const data = context.getImageData(0, 0, width, height).data;
+			let min = 255;
+			for (let i = 0; i < data.length; i += 4) {
+				min = Math.min(
+					min,
+					data[i] ?? 255,
+					data[i + 1] ?? 255,
+					data[i + 2] ?? 255,
+				);
+			}
+			return min;
+		},
+		{ base64: png.toString("base64"), width: clip.width, height: clip.height },
+	);
+}
+
+test("draws a PDF's text as labels where the PDF has it", async ({ page }) => {
+	await importPlan(page, "layers.pdf");
+	const dialog = page.getByRole("dialog", { name: "Import PDF pages" });
+	await dialog.getByRole("radio", { name: "Vector" }).click();
+	await dialog.getByRole("button", { name: "Import" }).click();
+	await expect(dialog).toBeHidden({ timeout: 20_000 });
+
+	// 288 × 216 pt; "Hall" in 24 pt Helvetica, 41 pt long from (100, 100) up from the bottom
+	// left: its middle 23 pt left of the page's and level with it.
+	const { cx, cy, scale } = await initialLayout(page, 216);
+	const label = {
+		x: cx - (23 + 25) * scale,
+		y: cy - 15 * scale,
+		width: 50 * scale,
+		height: 30 * scale,
+	};
+	// Dark text (#333 at the plan's opacity, 0.5) where the label is; the page bare beside it.
+	await expect.poll(() => darkest(page, label)).toBeLessThan(170);
+	expect(await darkest(page, { ...label, x: cx + 20 * scale })).toBeGreaterThan(
+		200,
+	);
+});
+
 test("imports several PDF pages as plans, all on the level shown", async ({
 	page,
 }) => {

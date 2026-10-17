@@ -707,8 +707,25 @@ describe("FloorPlans: content kept for the level shown", () => {
 		expect(floorplans.thumbnails.has(b)).toBe(false);
 	});
 
-	it("restores plans without content, then loads only the shown level's", async () => {
-		const { after } = await reloaded();
+	it("restores plans without content, then loads only the shown level's, its tiles encoded", async () => {
+		const { store } = memoryStore();
+		const before = new FloorPlans({ store, codec: fakeCodec });
+		before.add(rasterContent(fakeImage()), "a", view, "0", photo());
+		before.add(rasterContent(fakeImage()), "b", view, "1", photo());
+		before.done();
+		await settled();
+		let decodes = 0;
+		const after = new FloorPlans({
+			store,
+			codec: {
+				...fakeCodec,
+				decode: (blob) => {
+					decodes++;
+					return fakeCodec.decode(blob);
+				},
+			},
+		});
+		await after.restore();
 		expect(after.plans.map((p) => p.name)).toEqual(["a", "b"]);
 		expect(after.contents.size).toBe(0);
 
@@ -717,16 +734,33 @@ describe("FloorPlans: content kept for the level shown", () => {
 		const a = after.contents.get(idOf(after, "a"));
 		expect(a?.raster?.image.width).toBe(400);
 		expect(after.contents.has(idOf(after, "b"))).toBe(false);
+		// Decoded only when the map shows them, through `tiles`.
+		const [entry] = a?.raster?.image.levels[0]?.tiles ?? [];
+		if (!entry?.blob) throw new Error("no stored tile");
+		expect(await entry.blob.text()).toBe("tile 400×300");
+		expect(decodes).toBe(0);
+		const bitmap = (await after.tiles.load(entry, entry.blob)) as unknown as {
+			closed: boolean;
+		};
+		expect(decodes).toBe(1);
 
-		// Another level: the first plan's bitmaps are freed.
+		// Another level: the first plan's decoded tiles are freed.
 		after.showLevel(1);
 		await settled();
 		expect(after.contents.has(idOf(after, "a"))).toBe(false);
-		const bitmap = a?.raster?.image.levels[0]?.tiles[0]?.bitmap as unknown as {
-			closed: boolean;
-		};
 		expect(bitmap.closed).toBe(true);
 		expect(after.contents.has(idOf(after, "b"))).toBe(true);
+	});
+
+	it("frees a plan's bitmaps, cut or decoded, when it is removed", async () => {
+		const floorplans = new FloorPlans({ codec: fakeCodec });
+		floorplans.add(rasterContent(fakeImage()), "a", view, "0", photo());
+		const id = idOf(floorplans, "a");
+		const [entry] =
+			floorplans.contents.get(id)?.raster?.image.levels[0]?.tiles ?? [];
+		if (!entry?.bitmap) throw new Error("no cut tile");
+		floorplans.remove(id);
+		expect((entry.bitmap as unknown as { closed: boolean }).closed).toBe(true);
 	});
 
 	it("keeps the plan in Edit's content on any level", async () => {

@@ -2,8 +2,8 @@
  * What a floor plan shows, apart from where it is placed: its size in plan units and the
  * content drawn over that size. Plan units are the file's own: PDF points, SVG user units, a
  * photo's or scan's pixels. A plan's transform maps plan units, so rendering a PDF at another
- * DPI moves nothing. Content (bitmaps, later vector geometry) stays out of the reactive plan
- * list: it is large, and loaded only for the plans shown.
+ * DPI moves nothing. Content (tiles, paths) stays out of the reactive plan list: it is large,
+ * and loaded only for the plans shown.
  */
 import type { Tile } from "./tiling.ts";
 import type { VectorContent } from "./vector.ts";
@@ -41,7 +41,7 @@ export interface PlanSize {
 }
 
 /** A plan's pixels, cut into tiles at several scales. */
-export interface PlanImage {
+export interface PlanImage<T extends PlanTile = PlanTile> {
 	readonly width: number;
 	readonly height: number;
 	/**
@@ -49,7 +49,7 @@ export interface PlanImage {
 	 * zoom. MapLibre doesn't mipmap image sources, so a large plan drawn small would otherwise
 	 * lose its thin lines between the pixels it samples.
 	 */
-	readonly levels: readonly PlanLevel[];
+	readonly levels: readonly PlanLevel<T>[];
 	/**
 	 * The tiles as stored, and a thumbnail: encoded in the plan worker while the plan is already
 	 * shown (lossless JPEG XL takes about half a second a tile).
@@ -57,14 +57,29 @@ export interface PlanImage {
 	readonly encoded: Promise<EncodedImage>;
 }
 
-export interface PlanLevel {
+export interface PlanLevel<T extends PlanTile = PlanTile> {
 	/** Image pixels per pixel of this level: 1, 2, 4… */
 	readonly scale: number;
 	/** The level cut into GPU-sized tiles, placed in full-size image pixels. */
-	readonly tiles: readonly {
-		readonly tile: Tile;
-		readonly bitmap: ImageBitmap;
-	}[];
+	readonly tiles: readonly T[];
+}
+
+/**
+ * A tile's pixels: decoded, as cut from a plan just imported, or encoded, as stored, decoded
+ * when the map shows it (`TileCache`).
+ */
+export type PlanTile = CutTile | StoredTile;
+
+export interface CutTile {
+	readonly tile: Tile;
+	readonly bitmap: ImageBitmap;
+	readonly blob?: undefined;
+}
+
+export interface StoredTile {
+	readonly tile: Tile;
+	readonly blob: Blob;
+	readonly bitmap?: undefined;
 }
 
 /** A plan image's tiles encoded for storage (lossless), level by level as in `levels`. */
@@ -107,9 +122,12 @@ export function rasterContent(image: PlanImage, size?: PlanSize): PlanContent {
 	};
 }
 
-/** Frees a content's bitmaps (a plan removed or its content dropped). */
+/** A content's tiles, every level's. */
+export function tilesOf(content: PlanContent | undefined): PlanTile[] {
+	return (content?.raster?.image.levels ?? []).flatMap((l) => l.tiles);
+}
+
+/** Frees a content's cut bitmaps (a plan removed or its content dropped). */
 export function closeContent(content: PlanContent | undefined): void {
-	for (const level of content?.raster?.image.levels ?? []) {
-		for (const { bitmap } of level.tiles) bitmap.close();
-	}
+	for (const { bitmap } of tilesOf(content)) bitmap?.close();
 }

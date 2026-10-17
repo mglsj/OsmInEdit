@@ -3,7 +3,7 @@
  * is tested without a browser; in the app, the work runs in the plan worker (`plan-worker.ts`).
  */
 import { MessageError } from "#lib/i18n/messages.ts";
-import type { EncodedImage, PlanImage } from "./content.ts";
+import type { CutTile, EncodedImage, PlanImage } from "./content.ts";
 import type {
 	WorkerError,
 	WorkerRequest,
@@ -19,9 +19,9 @@ export interface PlanCodec {
 	 */
 	decodeFile(
 		file: Blob,
-	): Promise<{ image: PlanImage; width: number; height: number }>;
+	): Promise<{ image: PlanImage<CutTile>; width: number; height: number }>;
 	/** A rendered drawing (an SVG, a PDF page) cut; `bitmap` is used up. */
-	fromRendering(bitmap: ImageBitmap): Promise<PlanImage>;
+	fromRendering(bitmap: ImageBitmap): Promise<PlanImage<CutTile>>;
 	/** A stored tile, decoded. */
 	decode(blob: Blob): Promise<ImageBitmap>;
 	/** A small picture of a vector plan for the list. */

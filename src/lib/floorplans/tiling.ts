@@ -85,3 +85,34 @@ export function pyramidLevel(
 	}
 	return clamp(Math.floor(exact));
 }
+
+/** A part of the map, in degrees. */
+export interface Bounds {
+	readonly west: number;
+	readonly south: number;
+	readonly east: number;
+	readonly north: number;
+}
+
+/**
+ * The tiles whose place on the map (the box around their corners) meets `bounds`, in their
+ * order. Tiles are in pixels of `unit` plan units.
+ */
+export function visibleTiles<T extends { readonly tile: Tile }>(
+	entries: readonly T[],
+	transform: Transform,
+	unit: number,
+	bounds: Bounds,
+): T[] {
+	return entries.filter(({ tile }) => {
+		const corners = tileCorners(transform, tile, unit);
+		const lons = corners.map(([lon]) => lon);
+		const lats = corners.map(([, lat]) => lat);
+		return (
+			Math.min(...lons) < bounds.east &&
+			Math.max(...lons) > bounds.west &&
+			Math.min(...lats) < bounds.north &&
+			Math.max(...lats) > bounds.south
+		);
+	});
+}

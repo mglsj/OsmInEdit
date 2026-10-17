@@ -187,7 +187,8 @@
 		$effect(() => indoor.setBuildingsVisible(floorplans.buildings.visible));
 		const stopDrawn = indoor.onDrawn((count) => (drawn = count));
 
-		const layers = new FloorPlanLayers(instance);
+		const layers = new FloorPlanLayers(instance, floorplans.tiles);
+		const stopTiles = layers.onTiles((count) => (planTiles = count));
 		const marks = new PlanToolLayer(instance);
 		$effect(() => layers.setLayers(floorplans.layers));
 		// A copy: reading every entry follows content added or dropped.
@@ -246,6 +247,7 @@
 			modes = undefined;
 			manager.remove();
 			stopDrawn();
+			stopTiles();
 			marks.remove();
 			layers.remove();
 			indoor.remove();
@@ -339,6 +341,8 @@
 
 	/** Indoor features the map has drawn (for the e2e tests' `data-drawn`). */
 	let drawn = $state<number>();
+	/** Floor plan tiles the map draws (for the e2e tests' `data-plan-tiles`). */
+	let planTiles = $state<number>();
 
 	/** The side panel, which covers the left of the map while it is open. */
 	let sidePanel = $state<HTMLElement>();
@@ -486,6 +490,7 @@
 	bind:map
 	onmove={onMove}
 	{drawn}
+	{planTiles}
 />
 
 <!-- The side panel edits the selected feature, or the floor plans in floor plan mode. -->

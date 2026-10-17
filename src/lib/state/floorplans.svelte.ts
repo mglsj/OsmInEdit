@@ -13,6 +13,7 @@ import {
 	type PlanSize,
 	type PlanSource,
 	rasterContent,
+	tilesOf,
 } from "#lib/floorplans/content.ts";
 import {
 	type ControlPoint,
@@ -32,6 +33,7 @@ import {
 	unproject,
 } from "#lib/floorplans/georef.ts";
 import type { ImportedPlans } from "#lib/floorplans/plan-io.ts";
+import { TileCache } from "#lib/floorplans/tile-cache.ts";
 import { type Message, msg } from "#lib/i18n/messages.ts";
 import { isOnLevel, parseLevels } from "#lib/levels/levels.ts";
 import {
@@ -117,6 +119,8 @@ export class FloorPlans {
 	readonly contents = new SvelteMap<string, PlanContent>();
 	/** Each plan's thumbnail, by id, for the list. */
 	readonly thumbnails = new SvelteMap<string, Blob>();
+	/** Stored tiles decoded for the map, within a memory budget. */
+	readonly tiles: TileCache;
 	/** Set when plans could not be saved or restored. */
 	storageError = $state.raw<Message | null>(null);
 	/** The building outlines' entry in the layer stack: how many plans are drawn under them. */
@@ -174,6 +178,11 @@ export class FloorPlans {
 	constructor({ store, codec }: FloorPlansOptions = {}) {
 		this.#store = store;
 		this.#codec = codec;
+		this.tiles = new TileCache((blob) =>
+			codec
+				? codec.decode(blob)
+				: Promise.reject(new Error("No codec to decode tiles")),
+		);
 	}
 
 	/**
@@ -379,7 +388,7 @@ export class FloorPlans {
 		);
 		for (const id of [...this.contents.keys()]) {
 			if (wanted.has(id) || this.#unsaved.has(id)) continue;
-			closeContent(this.contents.get(id));
+			this.#close(this.contents.get(id));
 			this.contents.delete(id);
 		}
 		for (const id of wanted) {
@@ -396,7 +405,7 @@ export class FloorPlans {
 			if (content && now && this.#wanted(now) && !this.contents.has(id)) {
 				this.contents.set(id, content);
 			} else {
-				closeContent(content);
+				this.#close(content);
 			}
 		} catch (e) {
 			this.storageError = msg("plan_storage_restore_failed", {
@@ -432,18 +441,8 @@ export class FloorPlans {
 			);
 			return content;
 		}
+		// Tiles stay encoded until the map shows them (`tiles`).
 		const { raster, thumbnail } = stored;
-		const levels = await Promise.all(
-			raster.levels.map(async ({ scale, tiles }) => ({
-				scale,
-				tiles: await Promise.all(
-					tiles.map(async ({ tile, blob }) => ({
-						tile,
-						bitmap: await codec.decode(blob),
-					})),
-				),
-			})),
-		);
 		return {
 			size: plan.size ?? {
 				width: raster.width * raster.unit,
@@ -454,7 +453,7 @@ export class FloorPlans {
 				image: {
 					width: raster.width,
 					height: raster.height,
-					levels,
+					levels: raster.levels,
 					encoded: Promise.resolve({
 						levels: raster.levels,
 						...(thumbnail ? { thumbnail } : {}),
@@ -462,6 +461,12 @@ export class FloorPlans {
 				},
 			},
 		};
+	}
+
+	/** Frees a content's bitmaps: those cut, and those decoded for the map. */
+	#close(content: PlanContent | undefined): void {
+		closeContent(content);
+		this.tiles.forget(tilesOf(content));
 	}
 
 	/**
@@ -773,7 +778,7 @@ export class FloorPlans {
 			this.buildings = { ...this.buildings, below: this.buildings.below - 1 };
 		}
 		if (this.editingId === id) this.#endEdit();
-		closeContent(this.contents.get(id));
+		this.#close(this.contents.get(id));
 		this.contents.delete(id);
 		this.thumbnails.delete(id);
 		this.#persist(this.#store?.delete(id));

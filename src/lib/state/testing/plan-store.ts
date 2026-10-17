@@ -1,6 +1,6 @@
 /** Floor plan tests: a store in memory and a codec without a browser. */
 import type { PlanCodec } from "#lib/floorplans/codec.ts";
-import type { PlanImage } from "#lib/floorplans/content.ts";
+import type { CutTile, PlanImage } from "#lib/floorplans/content.ts";
 import type { VectorContent } from "#lib/floorplans/vector.ts";
 import {
 	fileOf,
@@ -78,7 +78,7 @@ export function fakeBitmap(width = 400, height = 300) {
 }
 
 /** A 400 × 300 image in one tile, encoded as its size in text, with a thumbnail. */
-export function fakeImage(): PlanImage {
+export function fakeImage(): PlanImage<CutTile> {
 	const tile = { x: 0, y: 0, width: 400, height: 300 };
 	return {
 		width: 400,

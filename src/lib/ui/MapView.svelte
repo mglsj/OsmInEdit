@@ -24,6 +24,8 @@
 		onmove?: (camera: Camera) => void;
 		/** Indoor features drawn so far, shown as `data-drawn` for the e2e tests. */
 		drawn?: number;
+		/** Floor plan tiles drawn, shown as `data-plan-tiles` for the e2e tests. */
+		planTiles?: number;
 	}
 
 	let {
@@ -32,6 +34,7 @@
 		map = $bindable(),
 		onmove,
 		drawn,
+		planTiles,
 	}: Props = $props();
 
 	let error = $state<string>();
@@ -97,6 +100,7 @@
 	data-zoom={camera?.zoom}
 	data-center={camera ? `${camera.lat},${camera.lon}` : undefined}
 	data-drawn={drawn}
+	data-plan-tiles={planTiles}
 ></div>
 
 {#if error}

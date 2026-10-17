@@ -1,13 +1,21 @@
 /**
- * Draws floor plans on the map: one MapLibre image source and raster layer per plan tile, or one
- * custom WebGL layer for a vector plan (`vector-plan-layer.ts`), above the indoor fills (which
- * would hide them) and below the indoor outlines, icons and labels; a vector plan's text as a
- * symbol layer right above it (`plan-labels.ts`). Plans are compared by identity, so only what
- * changed is updated: moving a plan sets new coordinates or a new matrix, it never re-uploads
- * the image or the paths.
+ * Draws floor plans on the map: one MapLibre image source and raster layer per plan tile on
+ * screen, or one custom WebGL layer for a vector plan (`vector-plan-layer.ts`), above the
+ * indoor fills (which would hide them) and below the indoor outlines, icons and labels; a
+ * vector plan's text as a symbol layer right above it (`plan-labels.ts`). Plans are compared by
+ * identity, so only what changed is updated: moving a plan sets new coordinates or a new
+ * matrix, it never re-uploads the image or the paths.
+ *
+ * A raster plan draws the tiles of its pyramid level that the view covers, updated as the map
+ * moves. Stored tiles are decoded when first shown (`TileCache`); until they are, the nearest
+ * coarser level already decoded there is drawn under them.
  */
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
-import type { PlanContent, RasterContent } from "#lib/floorplans/content.ts";
+import type {
+	PlanContent,
+	PlanTile,
+	RasterContent,
+} from "#lib/floorplans/content.ts";
 import {
 	corners,
 	groundDistance,
@@ -15,7 +23,13 @@ import {
 	type Pixel,
 	project,
 } from "#lib/floorplans/georef.ts";
-import { pyramidLevel, tileCorners } from "#lib/floorplans/tiling.ts";
+import type { TileCache } from "#lib/floorplans/tile-cache.ts";
+import {
+	type Bounds,
+	pyramidLevel,
+	tileCorners,
+	visibleTiles,
+} from "#lib/floorplans/tiling.ts";
 import type { VectorContent } from "#lib/floorplans/vector.ts";
 import { EARTH_RADIUS } from "#lib/osm/geometry.ts";
 import {
@@ -40,16 +54,22 @@ export const FLOORPLAN_PREFIX = "floorplan-";
 
 interface Shown {
 	readonly plan: FloorPlan;
-	/** The content drawn: its raster's tiles at `level`, or its paths. */
+	/** The content drawn: its raster's tiles on screen, or its paths. */
 	readonly raster?: RasterContent;
 	readonly vector?: {
 		readonly content: VectorContent;
 		readonly layer: VectorPlanLayer;
 	};
+	/** Its map layers, bottom first. */
 	readonly ids: readonly string[];
-	/** Index of the pyramid level drawn. */
+	/** Index of the pyramid level drawn sharp. */
 	readonly level: number;
+	/** A raster plan's tile drawn by each layer (named as its source). */
+	readonly tiles?: ReadonlyMap<string, PlanTile>;
 }
+
+/** How far past the view's edges tiles are drawn, in views: panning a little shows no gap. */
+const VIEW_MARGIN = 0.25;
 
 export class FloorPlanLayers {
 	readonly #map: MapLibreMap;
@@ -63,14 +83,20 @@ export class FloorPlanLayers {
 	readonly #shown = new Map<string, Shown>();
 	/** The map layers in stack order last time, to reorder only when it changes. */
 	#order = "";
+	readonly #tiles: TileCache | undefined;
+	/** A sync waiting for the next frame. */
+	#frame = 0;
+	readonly #tileListeners = new Set<(count: number) => void>();
 
-	constructor(map: MapLibreMap) {
+	/** `tiles` decodes stored tiles; without it, only tiles already decoded are drawn. */
+	constructor(map: MapLibreMap, tiles?: TileCache) {
 		this.#map = map;
+		this.#tiles = tiles;
 		const install = () => {
 			this.#ready = true;
 			this.#sync();
-			// Zooming may call for another level of the plans' pyramids.
-			map.on("zoom", this.#onZoom);
+			// Moving brings other tiles on screen; zooming, another level of the pyramids.
+			map.on("move", this.#schedule);
 		};
 		void slotsReady(map).then(() => {
 			if (!this.#removed) install();
@@ -96,13 +122,28 @@ export class FloorPlanLayers {
 		if (this.#ready) this.#sync();
 	}
 
-	remove(): void {
-		this.#removed = true;
-		this.#map.off("zoom", this.#onZoom);
-		for (const id of [...this.#shown.keys()]) this.#hide(id);
+	/** Calls `listener` with how many raster tiles are drawn, each time it changes. */
+	onTiles(listener: (count: number) => void): () => void {
+		this.#tileListeners.add(listener);
+		return () => this.#tileListeners.delete(listener);
 	}
 
-	readonly #onZoom = () => this.#sync();
+	remove(): void {
+		this.#removed = true;
+		this.#map.off("move", this.#schedule);
+		cancelAnimationFrame(this.#frame);
+		for (const id of [...this.#shown.keys()]) this.#hide(id);
+		this.#tiles?.pin([]);
+	}
+
+	/** Syncs once on the next frame, however many times the map moved meanwhile. */
+	readonly #schedule = () => {
+		if (this.#frame || this.#removed) return;
+		this.#frame = requestAnimationFrame(() => {
+			this.#frame = 0;
+			if (!this.#removed) this.#sync();
+		});
+	};
 
 	#sync(): void {
 		const wanted = this.#plans.filter((p) => {
@@ -113,35 +154,34 @@ export class FloorPlanLayers {
 				(content?.vector || content?.raster)
 			);
 		});
-		const levels = new Map(
-			wanted.flatMap((p) => {
-				const content = this.#contents.get(p.id);
-				return content?.raster && !content.vector
-					? [[p.id, this.#pyramidLevel(p, content.raster)] as const]
-					: [];
-			}),
-		);
+		const wantedIds = new Set(wanted.map((p) => p.id));
 		for (const [id, shown] of this.#shown) {
 			const content = this.#contents.get(id);
 			const changed = shown.vector
 				? shown.vector.content !== content?.vector
-				: shown.raster !== content?.raster ||
-					Boolean(content?.vector) ||
-					shown.level !== levels.get(id);
-			if (changed) this.#hide(id);
+				: shown.raster !== content?.raster || Boolean(content?.vector);
+			if (changed || !wantedIds.has(id)) this.#hide(id);
 		}
+		const bounds = this.#bounds();
 		let added = false;
 		for (const plan of wanted) {
 			const shown = this.#shown.get(plan.id);
 			const content = this.#contents.get(plan.id);
-			if (!shown && content?.vector) {
-				this.#showVector(plan, content.vector);
-				added = true;
-			} else if (!shown && content?.raster) {
-				this.#show(plan, content.raster, levels.get(plan.id) ?? 0);
-				added = true;
-			} else if (shown && shown.plan !== plan) this.#update(shown, plan);
+			if (content?.vector) {
+				if (!shown) {
+					this.#showVector(plan, content.vector);
+					added = true;
+				} else if (shown.plan !== plan) this.#update(shown, plan);
+			} else if (content?.raster) {
+				this.#showRaster(plan, content.raster, bounds);
+			}
 		}
+		// The stored tiles drawn stay decoded.
+		this.#tiles?.pin(
+			[...this.#shown.values()].flatMap((shown) => [
+				...(shown.tiles?.values() ?? []),
+			]),
+		);
 		const order = stackLayerIds(
 			this.#layers,
 			(id) => this.#shown.get(id)?.ids ?? [],
@@ -149,6 +189,13 @@ export class FloorPlanLayers {
 		).filter((id) => this.#map.getLayer(id));
 		const key = order.join(",");
 		if (!added && key === this.#order) return;
+		if (this.#tileListeners.size > 0) {
+			const count = [...this.#shown.values()].reduce(
+				(sum, shown) => sum + (shown.tiles?.size ?? 0),
+				0,
+			);
+			for (const listener of this.#tileListeners) listener(count);
+		}
 		this.#order = key;
 		// Each one moved to the top of the plans' slot in turn: the last ends up on top.
 		const below = this.#below();
@@ -185,29 +232,113 @@ export class FloorPlanLayers {
 		);
 	}
 
-	#show(plan: FloorPlan, raster: RasterContent, level: number): void {
-		const tiles = raster.image.levels[level]?.tiles ?? [];
-		const ids = tiles.map(({ tile, bitmap }, i) => {
-			const id = `${FLOORPLAN_PREFIX}${plan.id}-${i}`;
-			this.#map.addSource(id, {
-				type: "image",
-				coordinates: tileCorners(plan.transform, tile, raster.unit),
-			});
-			const source = this.#map.getSource<ImageSource>(id);
-			source?.setWarp("perspective");
-			source?.updateImage({ image: bitmap });
-			this.#map.addLayer(
-				{
-					id,
-					type: "raster",
-					source: id,
-					paint: { "raster-opacity": plan.opacity, "raster-fade-duration": 0 },
-				},
-				this.#below(),
+	/** The part of the map drawn: the view and a margin around it. */
+	#bounds(): Bounds {
+		const view = this.#map.getBounds();
+		const width = view.getEast() - view.getWest();
+		const height = view.getNorth() - view.getSouth();
+		return {
+			west: view.getWest() - width * VIEW_MARGIN,
+			south: view.getSouth() - height * VIEW_MARGIN,
+			east: view.getEast() + width * VIEW_MARGIN,
+			north: view.getNorth() + height * VIEW_MARGIN,
+		};
+	}
+
+	/**
+	 * Draws a raster plan's tiles on screen at the level the zoom calls for, decoding those
+	 * stored; while some aren't decoded yet, the nearest coarser level decoded there goes
+	 * under them (the coarsest, decoded first, when none is).
+	 */
+	#showRaster(plan: FloorPlan, raster: RasterContent, bounds: Bounds): void {
+		const before = this.#shown.get(plan.id);
+		const levels = raster.image.levels;
+		const level = this.#pyramidLevel(plan, raster);
+		const onScreen = (l: number) =>
+			visibleTiles(
+				(levels[l]?.tiles ?? []).map((entry, i) => ({
+					tile: entry.tile,
+					entry,
+					id: `${FLOORPLAN_PREFIX}${plan.id}-${l}-${i}`,
+				})),
+				plan.transform,
+				raster.unit,
+				bounds,
 			);
-			return id;
+		const sharp = onScreen(level);
+		const ready = ({ entry }: { entry: PlanTile }) =>
+			Boolean(entry.bitmap ?? this.#tiles?.peek(entry));
+		let under: typeof sharp = [];
+		if (!sharp.every(ready)) {
+			for (const s of sharp) this.#request(s.entry);
+			for (let l = level + 1; l < levels.length; l++) {
+				const tiles = onScreen(l);
+				if (tiles.every(ready)) {
+					under = tiles;
+					break;
+				}
+				if (l === levels.length - 1)
+					for (const t of tiles) this.#request(t.entry);
+			}
+		}
+		const drawn = [...under, ...sharp.filter(ready)];
+		const tiles = new Map(drawn.map(({ id, entry }) => [id, entry]));
+		for (const id of before?.tiles?.keys() ?? []) {
+			if (tiles.has(id)) continue;
+			if (this.#map.getLayer(id)) this.#map.removeLayer(id);
+			if (this.#map.getSource(id)) this.#map.removeSource(id);
+		}
+		const moved = before?.plan.transform !== plan.transform;
+		const faded = before?.plan.opacity !== plan.opacity;
+		for (const { id, entry } of drawn) {
+			const corners = tileCorners(plan.transform, entry.tile, raster.unit);
+			if (!before?.tiles?.has(id)) {
+				const image = entry.bitmap ?? this.#tiles?.peek(entry);
+				if (!image) continue;
+				this.#map.addSource(id, { type: "image", coordinates: corners });
+				const source = this.#map.getSource<ImageSource>(id);
+				source?.setWarp("perspective");
+				source?.updateImage({ image });
+				this.#map.addLayer(
+					{
+						id,
+						type: "raster",
+						source: id,
+						paint: {
+							"raster-opacity": plan.opacity,
+							"raster-fade-duration": 0,
+						},
+					},
+					this.#below(),
+				);
+				continue;
+			}
+			if (moved) {
+				this.#map.getSource<ImageSource>(id)?.setCoordinates(corners);
+			}
+			if (faded) this.#map.setPaintProperty(id, "raster-opacity", plan.opacity);
+		}
+		this.#shown.set(plan.id, {
+			plan,
+			raster,
+			ids: [...tiles.keys()],
+			level,
+			tiles,
 		});
-		this.#shown.set(plan.id, { plan, raster, ids, level });
+	}
+
+	/** Decodes a stored tile, then draws again. */
+	#request(entry: PlanTile): void {
+		const cache = this.#tiles;
+		if (!entry.blob || !cache || cache.peek(entry)) return;
+		cache.load(entry, entry.blob).then(
+			(bitmap) => {
+				if (bitmap) this.#schedule();
+			},
+			() => {
+				// A tile that can't be decoded stays blank; the coarser level shows there.
+			},
+		);
 	}
 
 	#showVector(plan: FloorPlan, content: VectorContent): void {
@@ -243,6 +374,7 @@ export class FloorPlanLayers {
 		});
 	}
 
+	/** A vector plan moved, faded or with layers hidden. */
 	#update(shown: Shown, plan: FloorPlan): void {
 		if (shown.vector) {
 			const { content, layer } = shown.vector;
@@ -269,26 +401,7 @@ export class FloorPlanLayers {
 				}
 			}
 			this.#shown.set(plan.id, { ...shown, plan });
-			return;
 		}
-		const raster = shown.raster;
-		if (!raster) return;
-		if (plan.transform !== shown.plan.transform) {
-			const { image, unit } = raster;
-			image.levels[shown.level]?.tiles.forEach(({ tile }, i) => {
-				const id = shown.ids[i];
-				if (!id) return;
-				this.#map
-					.getSource<ImageSource>(id)
-					?.setCoordinates(tileCorners(plan.transform, tile, unit));
-			});
-		}
-		if (plan.opacity !== shown.plan.opacity) {
-			for (const id of shown.ids) {
-				this.#map.setPaintProperty(id, "raster-opacity", plan.opacity);
-			}
-		}
-		this.#shown.set(plan.id, { ...shown, plan });
 	}
 
 	#hide(id: string): void {

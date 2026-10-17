@@ -91,7 +91,8 @@ runs the same commands.
   `PlanTools`). Pixels go through a `PlanCodec`
   (`codec.ts`; `workerCodec()` runs `plan-worker.ts`: `pyramid.ts` cuts, then `tile-codec.ts`
   encodes lossless JPEG XL (`jxl.ts`, WASM, where the browser reads it), WebP or PNG
-  (`tile-format.ts`)); a plan shows once cut, its `encoded` tiles are saved after. Import and
+  (`tile-format.ts`)); a plan shows once cut, its `encoded` tiles are saved after; stored tiles
+  load encoded and are decoded when on screen through `tile-cache.ts` (`FloorPlans.tiles`). Import and
   export of files go through `plan-io.ts` (decoders from `planDecoders(codec)` in `import.ts`).
   Import pdf.js only from its legacy build, lazily. E2E tests that reload after saving a plan
   wait for IndexedDB first (`untilSaved` in `floorplans.spec.ts`): a reload can cut a write

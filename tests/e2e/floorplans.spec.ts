@@ -617,6 +617,85 @@ test("keeps plans, where they were placed, after a reload", async ({
 	await expect(planRows(page)).toContainText(["plan 400 × 300 px"]);
 });
 
+test("draws a large stored plan's tiles on screen only, more as the map is panned", async ({
+	page,
+}) => {
+	await page.goto(`/#19/${LAT}/${LON}/0`);
+	// 6000 × 1500 px: three columns of 2048 px tiles, red, green and blue.
+	const png = await page.evaluate(async () => {
+		const canvas = new OffscreenCanvas(6000, 1500);
+		const context = canvas.getContext("2d");
+		if (!context) throw new Error("No 2D context");
+		for (const [x, color] of [
+			[0, "#ff0000"],
+			[2048, "#00ff00"],
+			[4096, "#0000ff"],
+		] as const) {
+			context.fillStyle = color;
+			context.fillRect(x, 0, 2048, 1500);
+		}
+		const blob = await canvas.convertToBlob({ type: "image/png" });
+		const bytes = new Uint8Array(await blob.arrayBuffer());
+		let binary = "";
+		for (const byte of bytes) binary += String.fromCharCode(byte);
+		return btoa(binary);
+	});
+	await page.getByRole("button", { name: "Floor plans" }).click();
+	await page.getByLabel("Import a floor plan").setInputFiles({
+		name: "large.png",
+		mimeType: "image/png",
+		buffer: Buffer.from(png, "base64"),
+	});
+	const latitude = page.getByRole("spinbutton", { name: "Latitude" });
+	const longitude = page.getByRole("spinbutton", { name: "Longitude" });
+	await expect(latitude).not.toHaveValue("");
+	const centre = [await latitude.inputValue(), await longitude.inputValue()];
+	await page.getByRole("button", { name: "Done" }).click();
+	// Saved once its tiles are encoded: then they load from storage, not decoded yet.
+	await expect
+		.poll(
+			async () => {
+				const { plans, complete } = await storedPlans(page);
+				return complete && JSON.parse(plans).length === 1;
+			},
+			{ timeout: 60_000 },
+		)
+		.toBe(true);
+
+	// Zoomed in on the plan's middle: about a plan pixel a screen pixel, its full size drawn,
+	// only the green tile on screen.
+	await page.goto(`/#21/${centre[0]}/${centre[1]}/0`);
+	await page.reload();
+	const map = mapLocator(page);
+	await expect(map).toHaveAttribute("data-plan-tiles", "1", {
+		timeout: 20_000,
+	});
+	const box = await map.boundingBox();
+	if (!box) throw new Error("No map");
+	const middle = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	await expectPixel(
+		page,
+		middle.x,
+		middle.y,
+		blend([0, 255, 0], 0.5, BACKGROUND),
+	);
+
+	// Panned 1200 px east: the blue tile comes on screen, right of the middle.
+	await page.mouse.move(middle.x + 600, middle.y);
+	await page.mouse.down();
+	await page.mouse.move(middle.x - 600, middle.y, { steps: 20 });
+	await page.mouse.up();
+	await expect(map).toHaveAttribute("data-plan-tiles", "2", {
+		timeout: 20_000,
+	});
+	await expectPixel(
+		page,
+		middle.x + 450,
+		middle.y,
+		blend([0, 0, 255], 0.5, BACKGROUND),
+	);
+});
+
 test("shows a plan only on its level", async ({ page }) => {
 	await importPlan(page, "plan.png");
 	const { cx, cy } = await initialLayout(page, 300);

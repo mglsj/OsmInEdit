@@ -917,6 +917,15 @@ has off hidden (a plan file's own list wins); changed in a Layers section of the
 once like the plan's eye (Cancel keeps it), stored (plans saved before have none hidden) and
 written to plan files. `VectorPlanLayer.setHiddenLayers` rewrites only the colour buffers
 (hidden paths clear); the labels of hidden layers are left out. P4.2.3 done.
+P4.2.4: light raster plans. A plan's tiles are cut (`CutTile`, a bitmap: just imported) or
+stored (`StoredTile`, a blob: loaded from storage, no longer all decoded on load).
+`floorplans/tile-cache.ts` (`TileCache`, `FloorPlans.tiles`): stored tiles decoded once when
+the map first shows them, kept within 512 MB (`TILE_BUDGET`), the least recently used dropped
+and closed, never those on screen (`pin`); a plan's are closed with its content.
+`visibleTiles` (`tiling.ts`, pure): the tiles meeting a part of the map. `FloorPlanLayers` draws
+a raster plan's tiles at its pyramid level within the view (and a quarter view around it),
+synced once a frame while the map moves; while some are decoding, the nearest coarser level
+decoded there goes under them. The map shows how many tiles it draws as `data-plan-tiles` (e2e).
 
 ### P5.3: Geometry editing — L
 

@@ -5,7 +5,7 @@
  * and `createImageBitmap`, no DOM.
  */
 import { MessageError, msg } from "#lib/i18n/messages.ts";
-import type { EncodedImage, PlanImage, PlanLevel } from "./content.ts";
+import type { CutTile, EncodedImage, PlanImage, PlanLevel } from "./content.ts";
 import { type Tile, tiles } from "./tiling.ts";
 import type { VectorContent } from "./vector.ts";
 
@@ -19,7 +19,7 @@ export const THUMBNAIL_SIZE = 128;
 export type EncodeTile = (bitmap: ImageBitmap) => Promise<Blob>;
 
 /** A plan image before its tiles are encoded. */
-export type CutImage = Omit<PlanImage, "encoded">;
+export type CutImage = Omit<PlanImage<CutTile>, "encoded">;
 
 /**
  * Decodes a PNG, JPEG or WebP file, at most `MAX_IMAGE_SIZE` pixels wide or tall, into its
@@ -53,7 +53,7 @@ export function pyramidOfRendering(bitmap: ImageBitmap): Promise<CutImage> {
 /** Builds the pyramid of a decoded image (`bitmap` is used up). */
 async function buildPyramid(bitmap: ImageBitmap): Promise<CutImage> {
 	const { width, height } = bitmap;
-	const levels: PlanLevel[] = [];
+	const levels: PlanLevel<CutTile>[] = [];
 	let level: ImageBitmap | null = bitmap;
 	for (let scale = 1; level; scale *= 2) {
 		const current: ImageBitmap = level;

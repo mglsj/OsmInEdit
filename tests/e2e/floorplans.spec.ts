@@ -615,6 +615,36 @@ test("moves a plan by dragging it", async ({ page }) => {
 	});
 });
 
+test("places a plan from a longitude typed, the fields following a drag", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.png");
+	const plan = await importedPlanBox(page);
+	await expectPlanAt(page, plan);
+
+	// 100 screen pixels east at zoom 19: MapLibre's world is 512 × 2^19 pixels around.
+	const longitude = page.getByRole("spinbutton", { name: "Longitude" });
+	const before = Number(await longitude.inputValue());
+	await longitude.fill(String(before + (100 * 360) / (512 * 2 ** 19)));
+	await longitude.press("Enter");
+	await expectPlanAt(page, {
+		left: plan.left + 100,
+		top: plan.top,
+		right: plan.right + 100,
+		bottom: plan.bottom,
+	});
+
+	// Dragged back: the field follows.
+	await drag(
+		page,
+		{ x: plan.cx + 100, y: plan.cy },
+		{ x: plan.cx, y: plan.cy },
+	);
+	await expect
+		.poll(async () => Number(await longitude.inputValue()))
+		.toBeCloseTo(before, 6);
+});
+
 test("turns and resizes a plan from a corner, around the opposite one", async ({
 	page,
 }) => {

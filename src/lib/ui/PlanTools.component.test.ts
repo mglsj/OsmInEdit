@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { rasterContent } from "#lib/floorplans/content.ts";
-import { type Pixel, project } from "#lib/floorplans/georef.ts";
+import {
+	type Pixel,
+	positionOf,
+	project,
+	rotateAbout,
+} from "#lib/floorplans/georef.ts";
 import { distance, offset, RENNES } from "#lib/floorplans/test-geometry.ts";
 import { FloorPlans } from "#lib/state/floorplans.svelte.ts";
 import { fakeImage } from "#lib/state/testing/plan-store.ts";
@@ -108,5 +113,60 @@ describe("PlanTools", () => {
 		await page.getByRole("button", { name: "Done" }).click();
 		expect(floorplans.plans[0]?.level).toBe("2");
 		expect(floorplans.editingId).toBeNull();
+	});
+
+	it("shows the plan's position, and places it from values typed", async () => {
+		const { floorplans, plan } = renderTools();
+		const latitude = page.getByRole("spinbutton", { name: "Latitude" });
+		const longitude = page.getByRole("spinbutton", { name: "Longitude" });
+		const rotation = page.getByRole("spinbutton", { name: "Rotation (°)" });
+		const width = page.getByRole("spinbutton", { name: "Width (m)" });
+		// Centred on RENNES, north up, 400 px at 5 cm.
+		await expect.element(latitude).toHaveValue(48.1368);
+		await expect.element(longitude).toHaveValue(-1.6953);
+		await expect.element(rotation).toHaveValue(0);
+		await expect.element(width).toHaveValue(20);
+
+		await longitude.fill("-1.69");
+		await userEvent.keyboard("{Enter}");
+		await rotation.fill("90");
+		await userEvent.keyboard("{Enter}");
+		await width.fill("40");
+		await userEvent.keyboard("{Enter}");
+		const {
+			center,
+			bearing,
+			width: metres,
+		} = positionOf(plan().transform, 400, 300);
+		expect(center[0]).toBeCloseTo(-1.69, 9);
+		expect(center[1]).toBeCloseTo(48.1368, 9);
+		expect(bearing).toBeCloseTo(90, 6);
+		expect(metres).toBeCloseTo(40, 3);
+		expect(floorplans.editing?.controlPoints).toEqual([]);
+	});
+
+	it("follows the plan as it is dragged", async () => {
+		const { floorplans, plan } = renderTools();
+		const rotation = page.getByRole("spinbutton", { name: "Rotation (°)" });
+		floorplans.preview(
+			plan().id,
+			rotateAbout(plan().transform, [200, 150], 30),
+		);
+		await expect.element(rotation).toHaveValue(30);
+		floorplans.preview(
+			plan().id,
+			rotateAbout(plan().transform, [200, 150], -60),
+		);
+		await expect.element(rotation).toHaveValue(330);
+	});
+
+	it("puts back a value that can't be a position", async () => {
+		const { plan } = renderTools();
+		const latitude = page.getByRole("spinbutton", { name: "Latitude" });
+		const before = plan().transform;
+		await latitude.fill("95");
+		await userEvent.keyboard("{Enter}");
+		expect(plan().transform).toBe(before);
+		await expect.element(latitude).toHaveValue(48.1368);
 	});
 });

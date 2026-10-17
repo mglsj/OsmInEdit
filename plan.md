@@ -830,13 +830,20 @@ opacity, alignment tools, Done/Cancel), each with component tests in Chromium.
 
 **R2 done** ✅.
 
-### R2.6: Precise placement — S
+### R2.6: Precise placement — S ✅
 
 Asked for after R2.5. In the plan in Edit's tools: the centre's latitude and longitude, the
 rotation (bearing of the plan's top edge, 0–360° clockwise from north) and the real width in
 metres, typed exactly; dragging, turning or resizing the plan updates them. Typing one moves,
 turns or scales the plan around its centre, keeping its shape, and drops its control points (as
 dragging does), whatever its fit.
+
+Done ✅: `georef.ts` `positionOf` (centre, bearing of the top measured from the centre, width
+across the middle in ground metres) and `moveTo` (moved first, then turned and scaled about the
+centre, as a whole: a warped plan keeps its shape), tested against spherical geometry;
+`FloorPlans.setPosition`; a Position group under Opacity in `PlanTools` (values rounded to
+7 decimals, 0.1°, 1 cm; an impossible value puts the field back). E2E: a longitude typed moves
+the plan 100 px, a drag back updates the field.
 
 ### P4.2: Vector and light raster plans — M–L
 

@@ -8,6 +8,7 @@ import {
 } from "#lib/floorplans/content.ts";
 import {
 	place,
+	positionOf,
 	project,
 	type Transform,
 	translateTo,
@@ -242,6 +243,23 @@ function moveWest(floorplans: FloorPlans) {
 }
 
 describe("editing a plan", () => {
+	it("places the plan in Edit by numbers, its control points dropped", () => {
+		const floorplans = new FloorPlans();
+		floorplans.add(image, "plan", view, "0", photo());
+		moveWest(floorplans);
+		expect(floorplans.editing?.controlPoints).toHaveLength(1);
+
+		const target = offset(RENNES, 50, 20);
+		floorplans.setPosition({ center: target, bearing: 45, width: 30 });
+		const plan = floorplans.editing;
+		if (!plan) throw new Error("no plan in Edit");
+		const { center, bearing, width } = positionOf(plan.transform, 400, 300);
+		expect(distance(center, target)).toBeLessThan(0.001);
+		expect(bearing).toBeCloseTo(45, 6);
+		expect(width).toBeCloseTo(30, 3);
+		expect(plan.controlPoints).toEqual([]);
+	});
+
 	it("opens a new plan in Edit, saved as imported", () => {
 		const { store, saved } = memoryStore();
 		const floorplans = new FloorPlans({ store });

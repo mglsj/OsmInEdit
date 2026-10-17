@@ -8,7 +8,11 @@
 	import { Input } from "#lib/components/shadcn/input/index.ts";
 	import { Slider } from "#lib/components/shadcn/slider/index.ts";
 	import * as ToggleGroup from "#lib/components/shadcn/toggle-group/index.ts";
-	import type { TransformKind } from "#lib/floorplans/georef.ts";
+	import {
+		type PlanPosition,
+		positionOf,
+		type TransformKind,
+	} from "#lib/floorplans/georef.ts";
 	import { type Message, t } from "#lib/i18n/messages.ts";
 	import {
 		type FloorPlans,
@@ -26,6 +30,42 @@
 
 	let distance = $state<number>();
 	let angle = $state<number>(90);
+
+	/** Where the plan in Edit is, following it as it is dragged. */
+	const position = $derived.by(() => {
+		const plan = floorplans.editing;
+		return (
+			plan && positionOf(plan.transform, plan.size.width, plan.size.height)
+		);
+	});
+	/** The position as the fields show it: rounded to a centimetre or so, 0.1°. */
+	const shown = $derived(
+		position && {
+			latitude: round(position.center[1], 7),
+			longitude: round(position.center[0], 7),
+			rotation: round(position.bearing, 1) % 360,
+			width: round(position.width, 2),
+		},
+	);
+
+	function round(value: number, digits: number): number {
+		return Number(value.toFixed(digits));
+	}
+
+	/**
+	 * Places the plan from a field's value, or puts the field back when its value can't be one
+	 * (`change` gives null).
+	 */
+	function place(
+		event: Event & { currentTarget: HTMLInputElement },
+		change: (value: number) => Partial<PlanPosition> | null,
+		shownValue: number,
+	) {
+		const value = event.currentTarget.valueAsNumber;
+		const changes = Number.isFinite(value) ? change(value) : null;
+		if (changes) floorplans.setPosition(changes);
+		else event.currentTarget.value = String(shownValue);
+	}
 
 	const tool = $derived(floorplans.tool);
 	/** Whether the plan has control points, or the tool a half-done pick, to clear. */
@@ -58,7 +98,7 @@
 					? "Turn the plan around the picked spot."
 					: "Click the spot on the plan to turn around.";
 			default:
-				return "Drag the plan to move it, a corner to resize it, the round handle above it to turn it. While dragging a corner: Shift stretches, Ctrl (⌘) resizes from the centre, Alt moves that corner alone. Shift turns in 15° steps. For precise placement, pick a tool.";
+				return "Drag the plan to move it, a corner to resize it, the round handle above it to turn it. While dragging a corner: Shift stretches, Ctrl (⌘) resizes from the centre, Alt moves that corner alone. Shift turns in 15° steps. For precise placement, type its position or pick a tool.";
 		}
 	});
 	const FIT_KINDS: { kind: TransformKind; label: string }[] = [
@@ -125,6 +165,90 @@
 					floorplans.update(plan.id, { opacity })}
 			/>
 		</Field.Field>
+
+		{#if position && shown}
+			<Field.Set>
+				<Field.Legend variant="label">Position</Field.Legend>
+				<div class="grid grid-cols-2 gap-3">
+					<Field.Field>
+						<Field.Label for="plan-latitude">Latitude</Field.Label>
+						<Input
+							id="plan-latitude"
+							type="number"
+							step="any"
+							min={-85}
+							max={85}
+							value={shown.latitude}
+							onchange={(event) =>
+								place(
+									event,
+									(lat) =>
+										Math.abs(lat) <= 85
+											? { center: [position.center[0], lat] }
+											: null,
+									shown.latitude,
+								)}
+						/>
+					</Field.Field>
+					<Field.Field>
+						<Field.Label for="plan-longitude">Longitude</Field.Label>
+						<Input
+							id="plan-longitude"
+							type="number"
+							step="any"
+							min={-180}
+							max={180}
+							value={shown.longitude}
+							onchange={(event) =>
+								place(
+									event,
+									(lon) =>
+										Math.abs(lon) <= 180
+											? { center: [lon, position.center[1]] }
+											: null,
+									shown.longitude,
+								)}
+						/>
+					</Field.Field>
+					<Field.Field>
+						<Field.Label for="plan-rotation">Rotation (°)</Field.Label>
+						<Input
+							id="plan-rotation"
+							type="number"
+							step="any"
+							value={shown.rotation}
+							onchange={(event) =>
+								place(
+									event,
+									(degrees) => ({ bearing: ((degrees % 360) + 360) % 360 }),
+									shown.rotation,
+								)}
+						/>
+					</Field.Field>
+					<Field.Field>
+						<Field.Label for="plan-width">Width (m)</Field.Label>
+						<Input
+							id="plan-width"
+							type="number"
+							step="any"
+							min={0}
+							value={shown.width}
+							onchange={(event) =>
+								place(
+									event,
+									(width) => (width > 0 ? { width } : null),
+									shown.width,
+								)}
+						/>
+					</Field.Field>
+				</div>
+				<Field.Description>
+					The centre, the direction the plan's top faces (clockwise from north)
+					and its real width. A value typed moves the plan around its centre;
+					its control points go.
+				</Field.Description>
+			</Field.Set>
+		{/if}
 
 		<Field.Field>
 			<Field.Label id="plan-tool-label">Align</Field.Label>

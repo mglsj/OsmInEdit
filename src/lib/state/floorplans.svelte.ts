@@ -20,7 +20,9 @@ import {
 	fitPlan,
 	GeorefError,
 	type LngLat,
+	moveTo,
 	type Pixel,
+	type PlanPosition,
 	place,
 	rotateAbout,
 	scaleToDistance,
@@ -651,6 +653,14 @@ export class FloorPlans {
 	commitPlacement(id: string): void {
 		const plan = this.editing;
 		if (plan?.id === id) this.#place(plan, plan.transform);
+	}
+
+	/** Moves, turns or scales the plan in Edit to a position typed in numbers. */
+	setPosition(changes: Partial<PlanPosition>): void {
+		const plan = this.editing;
+		if (!plan) return;
+		const { width, height } = plan.size;
+		this.#place(plan, moveTo(plan.transform, width, height, changes));
 	}
 
 	/** Turns the plan in Edit clockwise around the picked spot. */

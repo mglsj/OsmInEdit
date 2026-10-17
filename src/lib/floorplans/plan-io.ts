@@ -7,6 +7,7 @@
 import { MessageError, msg } from "#lib/i18n/messages.ts";
 import {
 	type PlanContent,
+	type PlanMode,
 	type PlanOrigin,
 	type PlanSize,
 	type PlanSource,
@@ -87,8 +88,7 @@ export async function openPlanFile(
 			return {
 				kind: "plan",
 				name,
-				content: await decoders[kind](file),
-				origin: { source: { kind, file: id }, file },
+				...(await drawing(kind, id, file, decoders)),
 			};
 		}
 		case "pdf":
@@ -105,17 +105,40 @@ export async function openPlanFile(
 	}
 }
 
-/** A page of an opened PDF, rendered at `dpi`, as a new plan's content. */
+/** A photo's or a drawing's content and origin; a drawing's mode is what it was drawn as. */
+async function drawing(
+	kind: "raster" | "svg",
+	id: string,
+	file: Blob,
+	decoders: PlanDecoders,
+): Promise<{ content: PlanContent; origin: PlanOrigin }> {
+	const content = await decoders[kind](file);
+	const source: PlanSource =
+		kind === "raster"
+			? { kind, file: id }
+			: { kind, file: id, mode: content.vector ? "vector" : "image" };
+	return { content, origin: { source, file } };
+}
+
+/**
+ * A page of an opened PDF as a new plan's content: from its paths, as an image rendered at
+ * `dpi`, or as Auto finds best for the page.
+ */
 export async function pdfPage(
 	{ name, document, origin }: OpenedPdf,
 	page: number,
 	dpi: number,
+	mode: PlanMode | "auto",
 ): Promise<{ name: string; content: PlanContent; origin: PlanOrigin }> {
+	const drawn = mode === "auto" ? await document.pageMode(page) : mode;
 	return {
 		name: document.pageCount > 1 ? `${name}, page ${page}` : name,
-		content: await document.render(page, dpi),
+		content:
+			drawn === "vector"
+				? await document.vector(page)
+				: await document.render(page, dpi),
 		origin: {
-			source: { kind: "pdf", file: origin.id, page, dpi },
+			source: { kind: "pdf", file: origin.id, page, dpi, mode: drawn },
 			file: origin.file,
 		},
 	};
@@ -182,11 +205,17 @@ async function contentOf(
 			pdf = decoders.pdf(file);
 			pdfs.set(source.file, pdf);
 		}
-		decoded = await (await pdf).render(source.page, source.dpi);
+		const document = await pdf;
+		decoded =
+			source.mode === "vector"
+				? await document.vector(source.page)
+				: await document.render(source.page, source.dpi);
 	} else {
 		decoded = await decoders[source.kind](file);
 	}
-	return decoded.raster ? rasterContent(decoded.raster.image, size) : decoded;
+	return decoded.raster
+		? rasterContent(decoded.raster.image, size)
+		: { ...decoded, size };
 }
 
 async function readJson(
@@ -224,7 +253,14 @@ async function readEntry(
 		level: entry.level,
 		visible: entry.visible,
 		...(entry.color ? { color: entry.color } : {}),
-		source: { kind, file: crypto.randomUUID() },
+		source:
+			kind === "svg"
+				? {
+						kind,
+						file: crypto.randomUUID(),
+						mode: decoded.vector ? "vector" : "image",
+					}
+				: { kind, file: crypto.randomUUID() },
 		file,
 		content: decoded.raster
 			? rasterContent(decoded.raster.image, size)

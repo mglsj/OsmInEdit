@@ -6,7 +6,7 @@
  */
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { MessageError, msg } from "#lib/i18n/messages.ts";
-import type { PlanSize, PlanSource } from "./content.ts";
+import type { PlanMode, PlanSize, PlanSource } from "./content.ts";
 import {
 	type ControlPoint,
 	fitPlan,
@@ -178,8 +178,12 @@ function readArchivedPlan(value: unknown): ArchivedPlan {
 
 function sourceOf(value: unknown): PlanSource {
 	if (!isRecord(value) || typeof value.file !== "string") throw invalid();
-	const { kind, file, page, dpi } = value;
-	if (kind === "raster" || kind === "svg") return { kind, file };
+	const { kind, file, page, dpi, mode } = value;
+	// Plans saved before modes were rendered as images: no mode.
+	const drawn: { mode?: PlanMode } =
+		mode === "vector" || mode === "image" ? { mode } : {};
+	if (kind === "raster") return { kind, file };
+	if (kind === "svg") return { kind, file, ...drawn };
 	if (
 		kind === "pdf" &&
 		typeof page === "number" &&
@@ -187,7 +191,7 @@ function sourceOf(value: unknown): PlanSource {
 		page >= 1 &&
 		isPositive(dpi)
 	) {
-		return { kind, file, page, dpi };
+		return { kind, file, page, dpi, ...drawn };
 	}
 	throw invalid();
 }

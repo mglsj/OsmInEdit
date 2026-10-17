@@ -5,7 +5,11 @@
 	import * as Alert from "#lib/components/shadcn/alert/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
 	import { Spinner } from "#lib/components/shadcn/spinner/index.ts";
-	import type { PlanContent, PlanOrigin } from "#lib/floorplans/content.ts";
+	import type {
+		PlanContent,
+		PlanMode,
+		PlanOrigin,
+	} from "#lib/floorplans/content.ts";
 	import { ACCEPTED_FILES, type PlanDecoders } from "#lib/floorplans/import.ts";
 	import {
 		type OpenedPdf,
@@ -77,11 +81,15 @@
 	}
 
 	/** Each page becomes a plan, all in the same spot on the level shown. */
-	async function importPdfPages(pages: number[], dpi: number) {
+	async function importPdfPages(
+		pages: number[],
+		dpi: number,
+		mode: PlanMode | "auto",
+	) {
 		if (!pdf) return;
 		const opened = pdf;
 		try {
-			for (const page of pages) add(await pdfPage(opened, page, dpi));
+			for (const page of pages) add(await pdfPage(opened, page, dpi, mode));
 		} catch (e) {
 			error = (e as Error).message;
 		}

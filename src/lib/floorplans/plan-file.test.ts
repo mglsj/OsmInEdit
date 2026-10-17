@@ -244,7 +244,13 @@ describe("plan files, version 2: an archive of plans and the files they come fro
 	const page = (n: number): ArchivedPlan => ({
 		name: `Mall, page ${n}`,
 		size: { width: 595.28, height: 841.89 },
-		source: { kind: "pdf", file: "files/1.pdf", page: n, dpi: 150 },
+		source: {
+			kind: "pdf",
+			file: "files/1.pdf",
+			page: n,
+			dpi: 150,
+			mode: "vector",
+		},
 		transform,
 		fitKind: "projective",
 		controlPoints: [{ image: [10, 20], map: [-1.6954, 48.1369] }],

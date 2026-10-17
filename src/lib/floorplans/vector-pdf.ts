@@ -36,12 +36,62 @@ export type PdfOps = Record<
 	| "eoFillStroke"
 	| "closeFillStroke"
 	| "closeEOFillStroke"
+	| "endPath"
 	| "rawFillPath"
 	| "beginMarkedContent"
 	| "beginMarkedContentProps"
-	| "endMarkedContent",
+	| "endMarkedContent"
+	| "paintImageXObject"
+	| "paintInlineImageXObject"
+	| "paintImageMaskXObject"
+	| "paintImageXObjectRepeat",
 	number
 >;
+
+/** How a PDF page is drawn: from its paths, or rendered as an image. */
+export type PageMode = "vector" | "image";
+
+/** Images covering this share of a page or more make Auto render it as an image. */
+export const IMAGE_SHARE = 0.5;
+
+/**
+ * How Auto draws a page: from its paths, unless it has none or images cover at least half of
+ * it (a scan saved as a PDF). An image fills the unit square of its transform; overlaps and
+ * clipping aren't taken off.
+ */
+export function pdfPageKind(
+	list: OperatorList,
+	viewport: PageViewport,
+	{ OPS }: { readonly OPS: PdfOps },
+): PageMode {
+	let ctm: Matrix = [1, 0, 0, 1, 0, 0];
+	const saved: Matrix[] = [];
+	let images = 0;
+	let paths = 0;
+	const imageOps = new Set([
+		OPS.paintImageXObject,
+		OPS.paintInlineImageXObject,
+		OPS.paintImageMaskXObject,
+		OPS.paintImageXObjectRepeat,
+	]);
+	for (let i = 0; i < list.fnArray.length; i++) {
+		const fn = list.fnArray[i] ?? -1;
+		const args = (list.argsArray[i] ?? []) as unknown[];
+		if (fn === OPS.save) saved.push(ctm);
+		else if (fn === OPS.restore || fn === OPS.paintFormXObjectEnd)
+			ctm = saved.pop() ?? ctm;
+		else if (fn === OPS.transform) ctm = multiply(ctm, args as number[]);
+		else if (fn === OPS.paintFormXObjectBegin) {
+			saved.push(ctm);
+			const matrix = args[0] as number[] | null;
+			if (matrix) ctm = multiply(ctm, matrix);
+		} else if (fn === OPS.constructPath && args[0] !== OPS.endPath) paths++;
+		else if (imageOps.has(fn))
+			images += Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2]);
+	}
+	const share = images / (viewport.width * viewport.height);
+	return paths > 0 && share < IMAGE_SHARE ? "vector" : "image";
+}
 
 export interface PageViewport {
 	readonly width: number;

@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { describe, expect, it } from "vitest";
-import { extractPdfPage, type OperatorList } from "./vector-pdf.ts";
+import {
+	extractPdfPage,
+	type OperatorList,
+	pdfPageKind,
+} from "./vector-pdf.ts";
 
 /** A US-letter-landscape-like page, 300 × 200 pt: PDF y runs up, plan units down. */
 const page = { width: 300, height: 200, transform: [1, 0, 0, -1, 0, 200] };
@@ -245,5 +249,49 @@ describe("extractPdfPage on a PDF read by pdf.js", () => {
 			{ color: [255, 0, 0, 255], width: 0, layer: -1 },
 		]);
 		await task.destroy();
+	});
+});
+
+describe("pdfPageKind: how Auto draws a page", () => {
+	const kind = (list: OperatorList) => pdfPageKind(list, page, { OPS });
+	/** An image drawn over `w` × `h` points (images fill the unit square, transformed). */
+	const image = (w: number, h: number): [number, ...unknown[]][] => [
+		[OPS.save],
+		[OPS.transform, w, 0, 0, h, 0, 0],
+		[OPS.paintImageXObject, "img_p0_1", 10, 10],
+		[OPS.restore],
+	];
+
+	it("draws a page of paths as paths, its small images left out", () => {
+		expect(kind(ops(path(OPS.stroke, M, 0, 0, L, 10, 0)))).toBe("vector");
+		expect(
+			kind(ops(...image(30, 20), path(OPS.stroke, M, 0, 0, L, 10, 0))),
+		).toBe("vector");
+	});
+
+	it("renders a page mostly covered by images, a scan, as an image", () => {
+		expect(kind(ops(...image(300, 200)))).toBe("image");
+		expect(
+			kind(ops(...image(300, 200), path(OPS.stroke, M, 0, 0, L, 10, 0))),
+		).toBe("image");
+		// Half the page: image.
+		expect(
+			kind(ops(...image(150, 200), path(OPS.stroke, M, 0, 0, L, 10, 0))),
+		).toBe("image");
+		// Images inside a form XObject count too.
+		expect(
+			kind(
+				ops(
+					[OPS.paintFormXObjectBegin, [300, 0, 0, 200, 0, 0], [0, 0, 1, 1]],
+					[OPS.paintImageXObject, "img", 10, 10],
+					[OPS.paintFormXObjectEnd],
+					path(OPS.stroke, M, 0, 0, L, 10, 0),
+				),
+			),
+		).toBe("image");
+	});
+
+	it("renders a page without paths as an image", () => {
+		expect(kind(ops())).toBe("image");
 	});
 });

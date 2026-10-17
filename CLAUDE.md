@@ -79,7 +79,8 @@ runs the same commands.
   `plan-file.ts` plan files (version 2: a ZIP of `plans.json` and the source files; version 1
   JSON and 1.x read), `tiling.ts`, `import.ts` raster/SVG/PDF; vector plans (P4.2):
   `vector.ts` (`VectorContent`, `VectorBuilder`), `vector-pdf.ts` (pdf.js operator lists,
-  pure: pass pdf.js's `OPS`), `svg-path.ts` (pure), `vector-svg.ts` (`DOMParser`)),
+  pure: pass pdf.js's `OPS`; `pdfPageKind` for Auto; a plan's `source.mode` says how it is
+  drawn), `svg-path.ts` (pure), `vector-svg.ts` (`DOMParser`)),
   `map/floorplan-layers.ts` (vector plans through `map/vector-plan-layer.ts`, a custom
   WebGL layer, and `map/plan-matrix.ts`),
   `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),

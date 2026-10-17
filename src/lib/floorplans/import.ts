@@ -5,8 +5,14 @@
  */
 import { MessageError, msg } from "#lib/i18n/messages.ts";
 import type { PlanCodec } from "./codec.ts";
-import { type PlanContent, rasterContent, vectorContent } from "./content.ts";
+import {
+	type PlanContent,
+	type PlanMode,
+	rasterContent,
+	vectorContent,
+} from "./content.ts";
 import { MAX_IMAGE_SIZE } from "./pyramid.ts";
+import { extractPdfPage, pdfPageKind } from "./vector-pdf.ts";
 import { extractSvg } from "./vector-svg.ts";
 
 /** Longest side SVG drawings are rendered at: they have no resolution of their own. */
@@ -121,6 +127,10 @@ export interface PdfDocument {
 	thumbnail(page: number): Promise<string>;
 	/** Renders a page (from 1) at `dpi` dots per inch, measured in points. */
 	render(page: number, dpi: number): Promise<PlanContent>;
+	/** A page's paths, measured in points. */
+	vector(page: number): Promise<PlanContent>;
+	/** How Auto draws a page: from its paths, or as an image for a scan (`pdfPageKind`). */
+	pageMode(page: number): Promise<PlanMode>;
 	close(): void;
 }
 
@@ -140,6 +150,24 @@ async function openPdf(file: Blob, codec: PlanCodec): Promise<PdfDocument> {
 		throw new MessageError(msg("plan_import_pdf_unreadable"));
 	});
 	const urls: string[] = [];
+	/** The PDF's CAD layers (optional content groups), by id. */
+	let layers:
+		| Promise<Map<string, { name: string; visible: boolean }>>
+		| undefined;
+	const groups = () => {
+		layers ??= pdf
+			.getOptionalContentConfig()
+			.then(
+				(config) =>
+					new Map(
+						[...config].map(([id, group]) => [
+							id,
+							{ name: group.name ?? id, visible: group.visible },
+						]),
+					),
+			);
+		return layers;
+	};
 
 	async function draw(page: number, scale: number): Promise<HTMLCanvasElement> {
 		const pdfPage = await pdf.getPage(page);
@@ -182,6 +210,24 @@ async function openPdf(file: Blob, codec: PlanCodec): Promise<PdfDocument> {
 			return rasterContent(
 				await codec.fromRendering(await createImageBitmap(canvas)),
 				{ width, height },
+			);
+		},
+		async vector(page) {
+			const pdfPage = await pdf.getPage(page);
+			return vectorContent(
+				extractPdfPage(
+					await pdfPage.getOperatorList(),
+					pdfPage.getViewport({ scale: 1 }),
+					{ OPS: pdfjs.OPS, groups: await groups() },
+				),
+			);
+		},
+		async pageMode(page) {
+			const pdfPage = await pdf.getPage(page);
+			return pdfPageKind(
+				await pdfPage.getOperatorList(),
+				pdfPage.getViewport({ scale: 1 }),
+				{ OPS: pdfjs.OPS },
 			);
 		},
 		close() {

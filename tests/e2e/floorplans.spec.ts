@@ -136,6 +136,7 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 	// The first page is chosen to start with.
 	await expect(dialog.getByRole("checkbox", { name: "Page 1" })).toBeChecked();
 	await expect(dialog.getByLabel("Resolution (DPI)")).toHaveValue("150");
+	await dialog.getByRole("radio", { name: "Image" }).click();
 	await dialog.getByRole("checkbox", { name: "Page 1" }).click();
 	await dialog.getByRole("checkbox", { name: "Page 2" }).click();
 	await dialog.getByRole("button", { name: "Import" }).click();
@@ -148,6 +149,20 @@ test("imports the chosen page of a PDF at the chosen resolution", async ({
 		"plan, page 2",
 	);
 	await expectPlanDrawn(page, [0, 0, 255], 4 / 3);
+});
+
+test("imports a PDF page from its paths, measured in points", async ({
+	page,
+}) => {
+	await importPlan(page, "plan.pdf");
+	const dialog = page.getByRole("dialog", { name: "Import PDF pages" });
+	await dialog.getByRole("radio", { name: "Vector" }).click();
+	await dialog.getByRole("button", { name: "Import" }).click();
+	await expect(dialog).toBeHidden({ timeout: 20_000 });
+	// 4 × 3 inches: 288 × 216 points, no pixels.
+	await expect(planRows(page).first()).toContainText("288 × 216");
+	await expect(planRows(page).first()).not.toContainText("px");
+	await expectPlanDrawn(page, [255, 0, 0], 4 / 3);
 });
 
 test("imports several PDF pages as plans, all on the level shown", async ({
@@ -223,8 +238,9 @@ test("exports plans in an archive with their PDF once, read back drawn again", a
 	);
 	expect(version).toBe(2);
 	expect(plans.map((p: { source: unknown }) => p.source)).toEqual([
-		{ kind: "pdf", file: "files/1.pdf", page: 1, dpi: 150 },
-		{ kind: "pdf", file: "files/1.pdf", page: 2, dpi: 150 },
+		// Auto: the test PDF's pages are paths.
+		{ kind: "pdf", file: "files/1.pdf", page: 1, dpi: 150, mode: "vector" },
+		{ kind: "pdf", file: "files/1.pdf", page: 2, dpi: 150, mode: "vector" },
 	]);
 
 	// Imported back: both pages drawn again from the PDF, stored once more (a copy of its own).
@@ -234,7 +250,9 @@ test("exports plans in an archive with their PDF once, read back drawn again", a
 		buffer: bytes,
 	});
 	await expect(planRows(page)).toHaveCount(4, { timeout: 20_000 });
-	await expect(planRows(page).first()).toContainText("600 × 450 px");
+	// Drawn again from their paths, as they were.
+	await expect(planRows(page).first()).toContainText("288 × 216");
+	await expect(planRows(page).first()).not.toContainText("px");
 	await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(
 		"plan, page 2",
 	);

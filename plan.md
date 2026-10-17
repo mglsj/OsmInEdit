@@ -891,6 +891,11 @@ triangles, segments as instanced quads widened on screen, hairlines 1 device pix
 premultiplied blending, opacity), drawn by `FloorPlanLayers` in the plan stack. SVGs import as
 vectors unless they hold `<image>`s. Tested: the maths in Node, the layer's pixels in
 Chromium, FloorPlans with the memory store, an SVG plan drawn and reloaded in e2e.
+P4.2.2b: the PDF page dialog's "Draw as" Auto / Vector / Image (Resolution only for images);
+`pdfPageKind` (pure): Auto draws a page from its paths unless it has none or images cover at
+least half of it (`IMAGE_SHARE`); `PdfDocument.vector(page)` (with the PDF's CAD layers) and
+`pageMode(page)`; `PlanSource.mode` (`PlanMode`, SVG and PDF; unset: image) set at import,
+written to plan files and honoured when they're read (`readPlans` draws each page as saved).
 
 ### P5.3: Geometry editing — L
 

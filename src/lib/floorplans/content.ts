@@ -13,15 +13,20 @@ import type { VectorContent } from "./vector.ts";
  * the plan's content is drawn from it again when a plan file is read.
  */
 export type PlanSource =
-	| { readonly kind: "raster" | "svg"; readonly file: string }
+	| { readonly kind: "raster"; readonly file: string }
+	| { readonly kind: "svg"; readonly file: string; readonly mode?: PlanMode }
 	| {
 			readonly kind: "pdf";
 			readonly file: string;
 			/** From 1. */
 			readonly page: number;
-			/** Dots per inch it was rendered at. */
+			/** Dots per inch it is rendered at, as an image. */
 			readonly dpi: number;
+			readonly mode?: PlanMode;
 	  };
+
+/** How a drawing (PDF page, SVG) is drawn: from its paths, or as an image; image when unset. */
+export type PlanMode = "vector" | "image";
 
 /** A new plan's source, with its file (saved once per file id). */
 export interface PlanOrigin {

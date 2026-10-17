@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MessageError } from "#lib/i18n/messages.ts";
 import { fakeImage } from "#lib/state/testing/plan-store.ts";
-import { rasterContent } from "./content.ts";
+import { rasterContent, vectorContent } from "./content.ts";
 import { corners, place } from "./georef.ts";
 import type { PdfDocument, PlanDecoders } from "./import.ts";
 import { exportPlans } from "./plan-file.ts";
@@ -13,6 +13,18 @@ import {
 	writePlanFile,
 } from "./plan-io.ts";
 import { RENNES } from "./test-geometry.ts";
+import type { VectorContent } from "./vector.ts";
+
+/** An A4 page's paths: one line across it. */
+const paths: VectorContent = {
+	size: { width: 595.28, height: 841.89 },
+	segments: new Float32Array([0, 0, 595.28, 841.89]),
+	segmentStyles: new Uint32Array([0]),
+	triangles: new Float32Array([]),
+	triangleStyles: new Uint32Array([]),
+	styles: [{ color: [0, 0, 0, 255], width: 0, layer: -1 }],
+	layers: [],
+};
 
 /**
  * Photos are 400 × 300 px; SVG drawings 800 × 600 user units, rendered at 400 × 300 px; PDF
@@ -21,6 +33,7 @@ import { RENNES } from "./test-geometry.ts";
 function fakeDecoders() {
 	const pdfs: string[] = [];
 	const rendered: [number, number][] = [];
+	const drawn: number[] = [];
 	const decoders: PlanDecoders = {
 		raster: async () => rasterContent(fakeImage()),
 		svg: async () => rasterContent(fakeImage(), { width: 800, height: 600 }),
@@ -37,11 +50,17 @@ function fakeDecoders() {
 						height: 841.89,
 					});
 				},
+				vector: async (page) => {
+					drawn.push(page);
+					return vectorContent(paths);
+				},
+				// Page 1 is drawn, page 2 scanned.
+				pageMode: async (page) => (page === 1 ? "vector" : "image"),
 				close: () => {},
 			};
 		},
 	};
-	return { decoders, pdfs, rendered };
+	return { decoders, pdfs, rendered, drawn };
 }
 
 const file = (name: string, type: string, content = "x") =>
@@ -67,7 +86,7 @@ describe("openPlanFile: what a file picked for import gives", () => {
 		);
 		if (drawing.kind !== "plan") throw new Error("not a plan");
 		expect(drawing.content.size).toEqual({ width: 800, height: 600 });
-		expect(drawing.origin.source.kind).toBe("svg");
+		expect(drawing.origin.source).toMatchObject({ kind: "svg", mode: "image" });
 		expect(drawing.origin.source.file).not.toBe(photo.origin.source.file);
 	});
 
@@ -79,8 +98,8 @@ describe("openPlanFile: what a file picked for import gives", () => {
 		expect(opened.name).toBe("Mall");
 
 		const [one, two] = await Promise.all([
-			pdfPage(opened, 1, 150),
-			pdfPage(opened, 2, 300),
+			pdfPage(opened, 1, 150, "image"),
+			pdfPage(opened, 2, 300, "image"),
 		]);
 		expect(rendered).toEqual([
 			[1, 150],
@@ -93,8 +112,31 @@ describe("openPlanFile: what a file picked for import gives", () => {
 			file: one.origin.source.file,
 			page: 2,
 			dpi: 300,
+			mode: "image",
 		});
 		expect(two.origin.file).toBe(picked);
+	});
+
+	it("draws a page as chosen: its paths, its image, or as Auto finds it", async () => {
+		const { decoders, rendered, drawn } = fakeDecoders();
+		const opened = await openPlanFile(
+			file("Mall.pdf", "application/pdf"),
+			decoders,
+		);
+		if (opened.kind !== "pdf") throw new Error("not a PDF");
+		const vector = await pdfPage(opened, 2, 150, "vector");
+		expect(vector.content).toEqual({ size: paths.size, vector: paths });
+		expect(vector.origin.source).toMatchObject({ page: 2, mode: "vector" });
+		const auto = await Promise.all([
+			pdfPage(opened, 1, 150, "auto"),
+			pdfPage(opened, 2, 150, "auto"),
+		]);
+		expect(auto.map((p) => p.origin.source)).toMatchObject([
+			{ page: 1, mode: "vector" },
+			{ page: 2, mode: "image" },
+		]);
+		expect(drawn).toEqual([2, 1]);
+		expect(rendered).toEqual([[2, 150]]);
 	});
 
 	it("names a page after the file alone when it has one page", async () => {
@@ -108,7 +150,7 @@ describe("openPlanFile: what a file picked for import gives", () => {
 			...opened,
 			document: { ...opened.document, pageCount: 1 },
 		};
-		expect((await pdfPage(single, 1, 150)).name).toBe("Mall");
+		expect((await pdfPage(single, 1, 150, "image")).name).toBe("Mall");
 	});
 
 	it("reads a plan file, an archive or JSON from earlier versions", async () => {
@@ -176,7 +218,7 @@ describe("writePlanFile and readPlans: plan files, version 2", () => {
 	const fileOf = async (plan: ExportedPlan) => files.get(plan.source.file);
 
 	it("carries each plan with its file, a PDF once for its pages, drawn again when read", async () => {
-		const { decoders, pdfs, rendered } = fakeDecoders();
+		const { decoders, pdfs, rendered, drawn } = fakeDecoders();
 		const archive = await writePlanFile(
 			[
 				plan("a", "Mall, page 1", {
@@ -184,6 +226,7 @@ describe("writePlanFile and readPlans: plan files, version 2", () => {
 					file: "mall",
 					page: 1,
 					dpi: 150,
+					mode: "vector",
 				}),
 				plan("b", "Mall, page 2", {
 					kind: "pdf",
@@ -219,12 +262,14 @@ describe("writePlanFile and readPlans: plan files, version 2", () => {
 			visible: false,
 			color: "#16a34a",
 		});
-		// The PDF, opened once, its pages rendered at their DPI; shared again once imported.
+		// The PDF, opened once, its pages drawn again as they were: page 1 from its paths,
+		// page 2 (saved before modes, so an image) rendered at its DPI; shared again once
+		// imported.
 		expect(pdfs).toEqual(["%PDF"]);
-		expect(rendered).toEqual([
-			[1, 150],
-			[2, 200],
-		]);
+		expect(drawn).toEqual([1]);
+		expect(rendered).toEqual([[2, 200]]);
+		expect(one?.source).toMatchObject({ page: 1, mode: "vector" });
+		expect(one?.content.vector).toBe(paths);
 		expect(two?.source).toEqual({
 			kind: "pdf",
 			file: one?.source.file,
@@ -235,7 +280,7 @@ describe("writePlanFile and readPlans: plan files, version 2", () => {
 		expect(await one?.file.text()).toBe("%PDF");
 		expect(one?.file.type).toBe("application/pdf");
 		// Rendered at 400 px over 595.28 pt.
-		expect(one?.content.raster?.unit).toBeCloseTo(595.28 / 400, 9);
+		expect(two?.content.raster?.unit).toBeCloseTo(595.28 / 400, 9);
 		expect(drawing?.source.kind).toBe("svg");
 		expect(await drawing?.file.text()).toBe("<svg/>");
 		expect(drawing?.content.size).toEqual({ width: 800, height: 600 });

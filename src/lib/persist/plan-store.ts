@@ -35,6 +35,8 @@ export interface StoredPlan {
 	readonly opacity: number;
 	readonly level: string | null;
 	readonly visible: boolean;
+	/** Ids of the CAD layers not shown; plans saved before layers could be hidden have none. */
+	readonly hiddenLayers?: readonly string[];
 	/** `#rrggbb`; plans saved before colours existed have none. */
 	readonly color?: string;
 	/** Place in the layer stack, the building outlines included: lowest first. */

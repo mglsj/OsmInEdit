@@ -28,6 +28,7 @@ const plan: FloorPlan = {
 	level: "0",
 	visible: true,
 	color: "#2563eb",
+	hiddenLayers: [],
 };
 
 function linesOf(tool: Tool, pointer?: [number, number]) {

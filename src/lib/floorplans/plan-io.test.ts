@@ -222,13 +222,16 @@ describe("writePlanFile and readPlans: plan files, version 2", () => {
 		const { decoders, pdfs, rendered, drawn } = fakeDecoders();
 		const archive = await writePlanFile(
 			[
-				plan("a", "Mall, page 1", {
-					kind: "pdf",
-					file: "mall",
-					page: 1,
-					dpi: 150,
-					mode: "vector",
-				}),
+				{
+					...plan("a", "Mall, page 1", {
+						kind: "pdf",
+						file: "mall",
+						page: 1,
+						dpi: 150,
+						mode: "vector",
+					}),
+					hiddenLayers: ["232R"],
+				},
 				plan("b", "Mall, page 2", {
 					kind: "pdf",
 					file: "mall",
@@ -262,7 +265,9 @@ describe("writePlanFile and readPlans: plan files, version 2", () => {
 			level: "1",
 			visible: false,
 			color: "#16a34a",
+			hiddenLayers: ["232R"],
 		});
+		expect(two?.hiddenLayers).toBeUndefined();
 		// The PDF, opened once, its pages drawn again as they were: page 1 from its paths,
 		// page 2 (saved before modes, so an image) rendered at its DPI; shared again once
 		// imported.

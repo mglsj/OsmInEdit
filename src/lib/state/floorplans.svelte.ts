@@ -58,6 +58,8 @@ export interface FloorPlan {
 	readonly visible: boolean;
 	/** Colour of its frame, handles and marks: one of `PLAN_COLORS`, `#rrggbb`. */
 	readonly color: string;
+	/** Ids of the CAD layers (`VectorContent.layers`) not shown. */
+	readonly hiddenLayers: readonly string[];
 }
 
 /** The building outlines' place in the stack: how many plans are under them. */
@@ -212,7 +214,12 @@ export class FloorPlans {
 						kind: "raster",
 						file: fileOf(record),
 					};
-					const plan = { ...rest, source };
+					// Plans saved before layers could be hidden have none hidden.
+					const plan = {
+						...rest,
+						source,
+						hiddenLayers: rest.hiddenLayers ?? [],
+					};
 					if (size) return { plan: { ...plan, size }, resave: false };
 					const content = await this.#loadContent({ id: plan.id });
 					if (!content) return null;
@@ -299,10 +306,13 @@ export class FloorPlans {
 	/**
 	 * Adds an already placed plan (from a file) on top of the others, saved as it is and opened in
 	 * Edit, with `file`, its source's file, unless saved already. Without a colour, it gets one
-	 * no other plan has.
+	 * no other plan has; without hidden layers, the CAD layers its content has off are hidden.
 	 */
 	insert(
-		fields: Omit<FloorPlan, "id" | "color"> & { readonly color?: string },
+		fields: Omit<FloorPlan, "id" | "color" | "hiddenLayers"> & {
+			readonly color?: string;
+			readonly hiddenLayers?: readonly string[];
+		},
 		content: PlanContent,
 		file: Blob,
 	): void {
@@ -310,6 +320,11 @@ export class FloorPlans {
 			id: crypto.randomUUID(),
 			...fields,
 			color: fields.color ?? pickColor(this.plans.map((p) => p.color)),
+			hiddenLayers:
+				fields.hiddenLayers ??
+				(content.vector?.layers ?? []).flatMap((l) =>
+					l.visible ? [] : [l.id],
+				),
 		};
 		// Above the other plans: under the outlines if they are on top.
 		const outlinesOnTop = this.buildings.below === this.plans.length;
@@ -546,18 +561,31 @@ export class FloorPlans {
 
 	/** Shows or hides a plan, saved at once: not part of an edit session. */
 	setVisible(id: string, visible: boolean): void {
+		this.#setAtOnce(id, { visible });
+	}
+
+	/** Hides these CAD layers of a plan (by id) and shows the others, saved at once. */
+	setHiddenLayers(id: string, hiddenLayers: readonly string[]): void {
+		this.#setAtOnce(id, { hiddenLayers });
+	}
+
+	/** A change saved at once, outside any edit session: Cancel keeps it. */
+	#setAtOnce(
+		id: string,
+		changes: Partial<Pick<FloorPlan, "visible" | "hiddenLayers">>,
+	): void {
 		const plan = this.plans.find((p) => p.id === id);
 		if (!plan) return;
-		const shown = { ...plan, visible };
+		const changed = { ...plan, ...changes };
 		const before = this.#before;
 		if (id === this.editingId && before) {
-			// Cancel keeps it, and storage gets it without the changes still in Edit.
-			this.#before = this.dirty ? { ...before, visible } : shown;
+			// Storage gets it without the changes still in Edit.
+			this.#before = this.dirty ? { ...before, ...changes } : changed;
 			this.#save(this.#before);
 		} else {
-			this.#save(shown);
+			this.#save(changed);
 		}
-		this.plans = this.plans.map((p) => (p.id === id ? shown : p));
+		this.plans = this.plans.map((p) => (p.id === id ? changed : p));
 		this.#syncContent();
 	}
 
@@ -721,7 +749,9 @@ export class FloorPlans {
 	/** Changes the plan in Edit; locked plans are left alone. */
 	update(
 		id: string,
-		changes: Partial<Omit<FloorPlan, "id" | "size" | "visible">>,
+		changes: Partial<
+			Omit<FloorPlan, "id" | "size" | "visible" | "hiddenLayers">
+		>,
 	): void {
 		const plan = this.editing;
 		if (plan?.id === id) this.#replace({ ...plan, ...changes });

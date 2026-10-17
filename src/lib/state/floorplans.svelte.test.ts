@@ -771,3 +771,97 @@ describe("FloorPlans: content kept for the level shown", () => {
 		});
 	});
 });
+
+describe("FloorPlans: a vector plan's CAD layers", () => {
+	/** A drawing with the layers "7R" (Walls, shown) and "9R" (Furniture, off in the file). */
+	const drawing = vectorContent({
+		size: { width: 595, height: 842 },
+		segments: new Float32Array([0, 0, 595, 842, 0, 842, 595, 0]),
+		segmentStyles: new Uint32Array([0, 1]),
+		triangles: new Float32Array([]),
+		triangleStyles: new Uint32Array([]),
+		texts: [],
+		styles: [
+			{ color: [0, 0, 0, 255], width: 0, layer: 0 },
+			{ color: [0, 0, 0, 255], width: 0, layer: 1 },
+		],
+		layers: [
+			{ id: "7R", name: "Walls", visible: true },
+			{ id: "9R", name: "Furniture", visible: false },
+		],
+	});
+
+	it("starts with the layers its file has off hidden; others have none hidden", () => {
+		const floorplans = new FloorPlans();
+		floorplans.add(drawing, "drawing", view, "0", photo());
+		floorplans.add(image, "photo", view, "0", photo());
+		expect(floorplans.plans.map((p) => p.hiddenLayers)).toEqual([["9R"], []]);
+	});
+
+	it("hides and shows layers, saved at once, kept by Cancel", () => {
+		const { store, saved } = memoryStore();
+		const floorplans = new FloorPlans({ store });
+		floorplans.add(drawing, "drawing", view, "0", photo());
+		floorplans.done();
+		const id = idOf(floorplans, "drawing");
+		saved.length = 0;
+
+		floorplans.setHiddenLayers(id, ["7R", "9R"]);
+		expect(floorplans.plans[0]?.hiddenLayers).toEqual(["7R", "9R"]);
+		expect(saved).toEqual([
+			expect.objectContaining({ id, hiddenLayers: ["7R", "9R"] }),
+		]);
+
+		floorplans.edit(id);
+		floorplans.update(id, { opacity: 0.9 });
+		floorplans.setHiddenLayers(id, []);
+		// Saved without the change still in Edit.
+		expect(saved[1]).toMatchObject({ hiddenLayers: [], opacity: 0.5 });
+		floorplans.cancel();
+		expect(floorplans.plans[0]).toMatchObject({
+			hiddenLayers: [],
+			opacity: 0.5,
+		});
+	});
+
+	it("restores plans saved before layers could be hidden with none hidden", async () => {
+		const { store } = memoryStore();
+		const before = new FloorPlans({ store, codec: fakeCodec });
+		before.add(image, "photo", view, "0", photo());
+		before.done();
+		await settled();
+		const [stored] = await store.load();
+		if (!stored) throw new Error("not saved");
+		const { hiddenLayers: _, ...older } = stored;
+		await store.save(older);
+		const after = new FloorPlans({ store, codec: fakeCodec });
+		await after.restore();
+		expect(after.plans[0]?.hiddenLayers).toEqual([]);
+	});
+
+	it("takes the hidden layers a plan file gives, else those its content has off", () => {
+		const floorplans = new FloorPlans();
+		const fields = {
+			name: "drawing",
+			size: drawing.size,
+			source: { kind: "pdf", file: "f", page: 1, dpi: 150, mode: "vector" },
+			transform: place(
+				{ center: RENNES, metresPerPixel: 0.05, bearing: 0 },
+				595,
+				842,
+			),
+			controlPoints: [],
+			fitKind: "similarity",
+			opacity: 0.5,
+			level: "0",
+			visible: true,
+		} as const;
+		floorplans.insertPlans({
+			plans: [
+				{ ...fields, hiddenLayers: [], content: drawing, file: new Blob() },
+				{ ...fields, content: drawing, file: new Blob() },
+			],
+		});
+		expect(floorplans.plans.map((p) => p.hiddenLayers)).toEqual([[], ["9R"]]);
+	});
+});

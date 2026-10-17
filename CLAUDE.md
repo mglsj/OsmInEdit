@@ -83,7 +83,8 @@ runs the same commands.
   drawn), `svg-path.ts` (pure), `vector-svg.ts` (`DOMParser`)),
   `map/floorplan-layers.ts` (vector plans through `map/vector-plan-layer.ts`, a custom
   WebGL layer, and `map/plan-matrix.ts`; their text through `map/plan-labels.ts`),
-  `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),
+  `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools; a
+  plan's visibility and hidden CAD layers are saved at once, outside the edit session),
   `persist/plan-store.ts` (IndexedDB schema 4: settings, tiles, files, thumbnails, vectors; tested on
   fake-indexeddb; content loads for the shown level only, `FloorPlans.showLevel`; tests use
   `state/testing/plan-store.ts`), `ui/FloorPlansPanel.svelte` (`PlanFiles`, `PlanList`,

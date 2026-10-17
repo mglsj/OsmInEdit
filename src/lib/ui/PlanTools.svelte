@@ -4,8 +4,10 @@
 	import X from "@lucide/svelte/icons/x";
 	import * as Alert from "#lib/components/shadcn/alert/index.ts";
 	import { Button } from "#lib/components/shadcn/button/index.ts";
+	import { Checkbox } from "#lib/components/shadcn/checkbox/index.ts";
 	import * as Field from "#lib/components/shadcn/field/index.ts";
 	import { Input } from "#lib/components/shadcn/input/index.ts";
+	import { ScrollArea } from "#lib/components/shadcn/scroll-area/index.ts";
 	import { Slider } from "#lib/components/shadcn/slider/index.ts";
 	import * as ToggleGroup from "#lib/components/shadcn/toggle-group/index.ts";
 	import {
@@ -29,6 +31,7 @@
 	let { floorplans, toolMessage = null }: Props = $props();
 
 	let distance = $state<number>();
+	let layerQuery = $state("");
 	let angle = $state<number>(90);
 
 	/** Where the plan in Edit is, following it as it is dragged. */
@@ -65,6 +68,43 @@
 		const changes = Number.isFinite(value) ? change(value) : null;
 		if (changes) floorplans.setPosition(changes);
 		else event.currentTarget.value = String(shownValue);
+	}
+
+	/** The CAD layers of the plan in Edit, when it is drawn from paths that have some. */
+	const cadLayers = $derived.by(() => {
+		const plan = floorplans.editing;
+		return (plan && floorplans.contents.get(plan.id)?.vector?.layers) ?? [];
+	});
+	/** The layers whose name has what was typed in the search box. */
+	const listedLayers = $derived.by(() => {
+		const query = layerQuery.trim().toLocaleLowerCase();
+		return query
+			? cadLayers.filter((l) => l.name.toLocaleLowerCase().includes(query))
+			: cadLayers;
+	});
+
+	function setLayerShown(id: string, shown: boolean) {
+		const plan = floorplans.editing;
+		if (!plan) return;
+		const others = plan.hiddenLayers.filter((h) => h !== id);
+		floorplans.setHiddenLayers(plan.id, shown ? others : [...others, id]);
+	}
+
+	/** Shows or hides every layer listed, leaving the others as they are. */
+	function setListedShown(shown: boolean) {
+		const plan = floorplans.editing;
+		if (!plan) return;
+		const listed = new Set(listedLayers.map((l) => l.id));
+		const hidden = plan.hiddenLayers.filter((id) => !listed.has(id));
+		floorplans.setHiddenLayers(
+			plan.id,
+			shown
+				? hidden
+				: [
+						...plan.hiddenLayers,
+						...[...listed].filter((id) => !plan.hiddenLayers.includes(id)),
+					],
+		);
 	}
 
 	const tool = $derived(floorplans.tool);
@@ -165,6 +205,62 @@
 					floorplans.update(plan.id, { opacity })}
 			/>
 		</Field.Field>
+
+		{#if cadLayers.length > 0}
+			{@const hidden = new Set(plan.hiddenLayers)}
+			<Field.Set>
+				<Field.Legend variant="label">Layers</Field.Legend>
+				<Field.Description>
+					The drawing's CAD layers, {cadLayers.length - hidden.size} of
+					{cadLayers.length}
+					shown. Show all and Hide all act on the layers listed.
+				</Field.Description>
+				<Input
+					type="search"
+					placeholder="Find a layer"
+					aria-label="Find a layer"
+					autocomplete="off"
+					bind:value={layerQuery}
+				/>
+				<div class="flex gap-2">
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={listedLayers.length === 0}
+						onclick={() => setListedShown(true)}
+						>Show all</Button
+					>
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={listedLayers.length === 0}
+						onclick={() => setListedShown(false)}
+						>Hide all</Button
+					>
+				</div>
+				<ScrollArea class="*:data-[slot=scroll-area-viewport]:max-h-60">
+					<ul class="flex flex-col gap-2">
+						{#each listedLayers as layer (layer.id)}
+							{@const id = `plan-layer-${layer.id}`}
+							<li class="flex items-center gap-2">
+								<Checkbox
+									{id}
+									checked={!hidden.has(layer.id)}
+									onCheckedChange={(on) => setLayerShown(layer.id, on)}
+								/>
+								<Field.Label for={id} class="min-w-0 truncate font-normal"
+									>{layer.name}</Field.Label
+								>
+							</li>
+						{:else}
+							<li class="text-sm text-muted-foreground">
+								No layer has that name.
+							</li>
+						{/each}
+					</ul>
+				</ScrollArea>
+			</Field.Set>
+		{/if}
 
 		{#if position && shown}
 			<Field.Set>

@@ -225,6 +225,38 @@ test("draws a PDF's text as labels where the PDF has it", async ({ page }) => {
 	);
 });
 
+test("hides a PDF's CAD layers, its text with them", async ({ page }) => {
+	await importPlan(page, "layers.pdf");
+	const dialog = page.getByRole("dialog", { name: "Import PDF pages" });
+	await dialog.getByRole("radio", { name: "Vector" }).click();
+	await dialog.getByRole("button", { name: "Import" }).click();
+	await expect(dialog).toBeHidden({ timeout: 20_000 });
+
+	// The frame (Walls): a 4 pt black line 20 pt in from the page's left edge, at half opacity.
+	const { cx, cy, scale } = await initialLayout(page, 216);
+	const frame = { x: cx - (144 - 20) * scale, y: cy };
+	const label = {
+		x: cx - 48 * scale,
+		y: cy - 15 * scale,
+		width: 50 * scale,
+		height: 30 * scale,
+	};
+	await expectPixel(page, frame.x, frame.y, blend([0, 0, 0], 0.5, BACKGROUND));
+	await expect.poll(() => darkest(page, label)).toBeLessThan(170);
+
+	const layers = page.getByRole("group", { name: "Layers" });
+	await expect(layers.getByRole("checkbox")).toHaveCount(2);
+	await layers.getByRole("checkbox", { name: "Labels" }).click();
+	await expect.poll(() => darkest(page, label)).toBeGreaterThan(200);
+	await expectPixel(page, frame.x, frame.y, blend([0, 0, 0], 0.5, BACKGROUND));
+
+	await layers.getByRole("checkbox", { name: "Walls" }).click();
+	await expectPixel(page, frame.x, frame.y, BACKGROUND);
+	await layers.getByRole("button", { name: "Show all" }).click();
+	await expectPixel(page, frame.x, frame.y, blend([0, 0, 0], 0.5, BACKGROUND));
+	await expect.poll(() => darkest(page, label)).toBeLessThan(170);
+});
+
 test("imports several PDF pages as plans, all on the level shown", async ({
 	page,
 }) => {

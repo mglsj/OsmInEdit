@@ -70,6 +70,9 @@ interface Buffers {
 	readonly lines: WebGLVertexArrayObject;
 	readonly fills: WebGLVertexArrayObject;
 	readonly owned: WebGLBuffer[];
+	/** Each segment's and each fill vertex's colour, rewritten when layers are hidden. */
+	readonly lineColors: WebGLBuffer;
+	readonly fillColors: WebGLBuffer;
 	readonly segments: number;
 	readonly vertices: number;
 }
@@ -81,7 +84,9 @@ export class VectorPlanLayer implements CustomLayerInterface {
 	#content: VectorContent;
 	#transform: Transform;
 	#opacity: number;
+	#hidden: ReadonlySet<string>;
 	#map: MapLibreMap | undefined;
+	#gl: WebGL2RenderingContext | undefined;
 	#lineProgram: Program | undefined;
 	#fillProgram: Program | undefined;
 	#buffers: Buffers | undefined;
@@ -91,11 +96,13 @@ export class VectorPlanLayer implements CustomLayerInterface {
 		content: VectorContent,
 		transform: Transform,
 		opacity: number,
+		hidden: ReadonlySet<string> = new Set(),
 	) {
 		this.id = id;
 		this.#content = content;
 		this.#transform = transform;
 		this.#opacity = opacity;
+		this.#hidden = hidden;
 	}
 
 	setTransform(transform: Transform): void {
@@ -108,8 +115,33 @@ export class VectorPlanLayer implements CustomLayerInterface {
 		this.#map?.triggerRepaint();
 	}
 
+	/** Leaves out the paths of these CAD layers (by id). */
+	setHiddenLayers(hidden: ReadonlySet<string>): void {
+		this.#hidden = hidden;
+		const gl = this.#gl;
+		const buffers = this.#buffers;
+		if (!gl || !buffers) return;
+		const content = this.#content;
+		const shown = shownStyles(content, hidden);
+		gl.bindBuffer(gl.ARRAY_BUFFER, buffers.lineColors);
+		gl.bufferData(
+			gl.ARRAY_BUFFER,
+			colorsOf(content, content.segmentStyles, 1, shown),
+			gl.STATIC_DRAW,
+		);
+		gl.bindBuffer(gl.ARRAY_BUFFER, buffers.fillColors);
+		gl.bufferData(
+			gl.ARRAY_BUFFER,
+			colorsOf(content, content.triangleStyles, 3, shown),
+			gl.STATIC_DRAW,
+		);
+		gl.bindBuffer(gl.ARRAY_BUFFER, null);
+		this.#map?.triggerRepaint();
+	}
+
 	onAdd(map: MapLibreMap, gl: WebGL2RenderingContext): void {
 		this.#map = map;
+		this.#gl = gl;
 		this.#lineProgram = program(
 			gl,
 			LINE_VERTEX,
@@ -127,6 +159,7 @@ export class VectorPlanLayer implements CustomLayerInterface {
 			this.#content,
 			this.#lineProgram,
 			this.#fillProgram,
+			shownStyles(this.#content, this.#hidden),
 		);
 	}
 
@@ -142,6 +175,7 @@ export class VectorPlanLayer implements CustomLayerInterface {
 		}
 		this.#buffers = undefined;
 		this.#map = undefined;
+		this.#gl = undefined;
 	}
 
 	render(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): void {
@@ -229,15 +263,31 @@ function program(
 	};
 }
 
-/** Each style's colour, then each element's colour by its style (RGBA bytes). */
+/** Whether each style shows: not in a hidden layer. */
+function shownStyles(
+	content: VectorContent,
+	hidden: ReadonlySet<string>,
+): boolean[] {
+	return content.styles.map(
+		({ layer }) => layer < 0 || !hidden.has(content.layers[layer]?.id ?? ""),
+	);
+}
+
+const CLEAR = [0, 0, 0, 0] as const;
+
+/** Each element's colour by its style (RGBA bytes); clear for hidden styles. */
 function colorsOf(
 	content: VectorContent,
 	styles: Uint32Array,
 	repeat: number,
+	shown: readonly boolean[],
 ): Uint8Array {
 	const out = new Uint8Array(styles.length * repeat * 4);
 	for (let i = 0; i < styles.length; i++) {
-		const color = content.styles[styles[i] ?? 0]?.color ?? [0, 0, 0, 255];
+		const style = styles[i] ?? 0;
+		const color = shown[style]
+			? (content.styles[style]?.color ?? [0, 0, 0, 255])
+			: CLEAR;
 		for (let r = 0; r < repeat; r++) out.set(color, (i * repeat + r) * 4);
 	}
 	return out;
@@ -248,6 +298,7 @@ function upload(
 	content: VectorContent,
 	lines: Program,
 	fills: Program,
+	shown: readonly boolean[],
 ): Buffers {
 	const owned: WebGLBuffer[] = [];
 	const buffer = (data: AllowSharedBufferSource) => {
@@ -280,7 +331,7 @@ function upload(
 	buffer(content.segments);
 	attribute(lines.attributes.a_from, 2, gl.FLOAT, false, 16, 0, 1);
 	attribute(lines.attributes.a_to, 2, gl.FLOAT, false, 16, 8, 1);
-	buffer(colorsOf(content, content.segmentStyles, 1));
+	const lineColors = buffer(colorsOf(content, content.segmentStyles, 1, shown));
 	attribute(lines.attributes.a_color, 4, gl.UNSIGNED_BYTE, true, 0, 0, 1);
 	const widths = new Float32Array(segments);
 	content.segmentStyles.forEach((style, i) => {
@@ -294,10 +345,20 @@ function upload(
 	gl.bindVertexArray(fillArray);
 	buffer(content.triangles);
 	attribute(fills.attributes.a_position, 2, gl.FLOAT, false, 0, 0, 0);
-	buffer(colorsOf(content, content.triangleStyles, 3));
+	const fillColors = buffer(
+		colorsOf(content, content.triangleStyles, 3, shown),
+	);
 	attribute(fills.attributes.a_color, 4, gl.UNSIGNED_BYTE, true, 0, 0, 0);
 
 	gl.bindVertexArray(null);
 	gl.bindBuffer(gl.ARRAY_BUFFER, null);
-	return { lines: lineArray, fills: fillArray, owned, segments, vertices };
+	return {
+		lines: lineArray,
+		fills: fillArray,
+		owned,
+		lineColors,
+		fillColors,
+		segments,
+		vertices,
+	};
 }

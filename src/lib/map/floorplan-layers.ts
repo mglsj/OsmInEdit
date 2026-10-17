@@ -212,11 +212,13 @@ export class FloorPlanLayers {
 
 	#showVector(plan: FloorPlan, content: VectorContent): void {
 		const id = `${FLOORPLAN_PREFIX}${plan.id}-vector`;
+		const hidden = new Set(plan.hiddenLayers);
 		const layer = new VectorPlanLayer(
 			id,
 			content,
 			plan.transform,
 			plan.opacity,
+			hidden,
 		);
 		this.#map.addLayer(layer, this.#below());
 		const ids = [id];
@@ -225,7 +227,7 @@ export class FloorPlanLayers {
 			const labels = `${id}-labels`;
 			this.#map.addSource(labels, {
 				type: "geojson",
-				data: planLabels(content, plan.transform),
+				data: planLabels(content, plan.transform, hidden),
 			});
 			this.#map.addLayer(
 				planLabelLayer(labels, labels, plan.opacity),
@@ -245,13 +247,16 @@ export class FloorPlanLayers {
 		if (shown.vector) {
 			const { content, layer } = shown.vector;
 			const labels = shown.ids[1];
-			if (plan.transform !== shown.plan.transform) {
-				layer.setTransform(plan.transform);
-				if (labels) {
-					this.#map
-						.getSource<GeoJSONSource>(labels)
-						?.setData(planLabels(content, plan.transform));
-				}
+			const moved = plan.transform !== shown.plan.transform;
+			const hiddenChanged = plan.hiddenLayers !== shown.plan.hiddenLayers;
+			if (moved) layer.setTransform(plan.transform);
+			if (hiddenChanged) layer.setHiddenLayers(new Set(plan.hiddenLayers));
+			if (labels && (moved || hiddenChanged)) {
+				this.#map
+					.getSource<GeoJSONSource>(labels)
+					?.setData(
+						planLabels(content, plan.transform, new Set(plan.hiddenLayers)),
+					);
 			}
 			if (plan.opacity !== shown.plan.opacity) {
 				layer.setOpacity(plan.opacity);

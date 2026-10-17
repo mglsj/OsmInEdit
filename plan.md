@@ -911,6 +911,12 @@ CAD layers' text left out) and `planLabelLayer` (dark text, light halo, turned w
 can't exceed; opacity 0 under 6 px, fading in over the zoom level before; never hidden by
 collisions, never hiding OSM labels). `FloorPlanLayers` adds the labels right above their plan
 and moves them with it. MapLibre draws glyphs locally when the glyph server fails (e2e).
+P4.2.3c: `FloorPlan.hiddenLayers` (CAD layer ids): a new plan starts with the layers its file
+has off hidden (a plan file's own list wins); changed in a Layers section of the plan's tools
+(a checkbox a layer, a search box, Show all and Hide all acting on the layers listed), saved at
+once like the plan's eye (Cancel keeps it), stored (plans saved before have none hidden) and
+written to plan files. `VectorPlanLayer.setHiddenLayers` rewrites only the colour buffers
+(hidden paths clear); the labels of hidden layers are left out. P4.2.3 done.
 
 ### P5.3: Geometry editing — L
 

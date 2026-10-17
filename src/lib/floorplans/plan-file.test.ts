@@ -258,6 +258,7 @@ describe("plan files, version 2: an archive of plans and the files they come fro
 		opacity: 0.4,
 		visible: n === 1,
 		color: "#2563eb",
+		hiddenLayers: ["232R"],
 	});
 	const archive: PlanArchive = {
 		plans: [
@@ -336,6 +337,16 @@ describe("plan files, version 2: an archive of plans and the files they come fro
 				),
 			),
 		).toBe("plan_file_damaged");
+	});
+
+	it("keeps the CAD layers hidden as ids, left out when the file has none or damaged ones", () => {
+		const hidden = (value: unknown) =>
+			readPlanArchive(manifest({}, { hiddenLayers: value })).plans[0]
+				?.hiddenLayers;
+		expect(hidden(["7R", "9R"])).toEqual(["7R", "9R"]);
+		expect(hidden(undefined)).toBeUndefined();
+		expect(hidden("7R")).toBeUndefined();
+		expect(hidden(["7R", 9])).toBeUndefined();
 	});
 
 	it("refuses an archive that isn't a plan file", () => {

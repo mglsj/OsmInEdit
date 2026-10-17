@@ -68,18 +68,26 @@ const close = (actual: number[], expected: number[]) =>
  * A 400 × 300 unit plan over the whole map, one unit a CSS pixel: a red hairline across at
  * y 150.5, a green line 4 units wide down at x 300, a blue square from (20, 20) to (60, 60).
  */
-function plan() {
+function plan(layers?: { fill: string; lines: string }) {
 	const builder = new VectorBuilder();
 	builder.moveTo(20, 20);
 	builder.lineTo(60, 20);
 	builder.lineTo(60, 60);
 	builder.lineTo(20, 60);
 	builder.close();
-	builder.fill({ color: [0, 0, 255, 255], width: 0, layer: null });
+	builder.fill({
+		color: [0, 0, 255, 255],
+		width: 0,
+		layer: layers?.fill ?? null,
+	});
 	builder.clear();
 	builder.moveTo(0, 150.5);
 	builder.lineTo(400, 150.5);
-	builder.stroke({ color: [255, 0, 0, 255], width: 0, layer: null });
+	builder.stroke({
+		color: [255, 0, 0, 255],
+		width: 0,
+		layer: layers?.lines ?? null,
+	});
 	builder.clear();
 	builder.moveTo(300, 0);
 	builder.lineTo(300, 300);
@@ -129,5 +137,25 @@ describe("VectorPlanLayer (WebGL, in Chromium)", () => {
 		expect(close(await pixel(m, 40, 40), [255, 255, 255])).toBe(true);
 		layer.setOpacity(0.5);
 		expect(close(await pixel(m, 140, 40), [128, 128, 255])).toBe(true);
+	});
+
+	it("leaves out the paths of hidden CAD layers", async () => {
+		const m = await whiteMap();
+		const content = plan({ fill: "F", lines: "W" });
+		const layer = new VectorPlanLayer(
+			"plan",
+			content,
+			transform,
+			1,
+			new Set(["F"]),
+		);
+		m.addLayer(layer);
+		expect(close(await pixel(m, 40, 40), [255, 255, 255])).toBe(true);
+		expect(close(await pixel(m, 100, 150), [255, 0, 0])).toBe(true);
+		layer.setHiddenLayers(new Set(["W"]));
+		expect(close(await pixel(m, 40, 40), [0, 0, 255])).toBe(true);
+		expect(close(await pixel(m, 100, 150), [255, 255, 255])).toBe(true);
+		// Paths outside any layer always show.
+		expect(close(await pixel(m, 299, 100), [0, 255, 0])).toBe(true);
 	});
 });

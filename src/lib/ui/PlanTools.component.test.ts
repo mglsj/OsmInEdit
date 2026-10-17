@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { rasterContent } from "#lib/floorplans/content.ts";
+import { rasterContent, vectorContent } from "#lib/floorplans/content.ts";
 import {
 	type Pixel,
 	positionOf,
@@ -168,5 +168,63 @@ describe("PlanTools", () => {
 		await userEvent.keyboard("{Enter}");
 		expect(plan().transform).toBe(before);
 		await expect.element(latitude).toHaveValue(48.1368);
+	});
+});
+
+describe("PlanTools: a vector plan's CAD layers", () => {
+	/** A drawing in Edit with the layers Walls, Doors and Furniture (off in its file). */
+	function renderLayers() {
+		const floorplans = new FloorPlans();
+		floorplans.add(
+			vectorContent({
+				size: { width: 400, height: 300 },
+				segments: new Float32Array(),
+				segmentStyles: new Uint32Array(),
+				triangles: new Float32Array(),
+				triangleStyles: new Uint32Array(),
+				styles: [],
+				texts: [],
+				layers: [
+					{ id: "1R", name: "Walls", visible: true },
+					{ id: "2R", name: "Doors", visible: true },
+					{ id: "3R", name: "Furniture", visible: false },
+				],
+			}),
+			"Drawing",
+			{ center: RENNES, heightMetres: 25 },
+			"0",
+			{ source: { kind: "svg", file: "f", mode: "vector" }, file: new Blob() },
+		);
+		render(PlanTools, { props: { floorplans, toolMessage: null } });
+		const hidden = () => floorplans.editing?.hiddenLayers;
+		const layers = page.getByRole("group", { name: "Layers" });
+		return { hidden, layers };
+	}
+
+	it("lists the layers, shown ones checked, and hides or shows one at a time", async () => {
+		const { hidden, layers } = renderLayers();
+		await expect
+			.element(layers.getByRole("checkbox", { name: "Walls" }))
+			.toBeChecked();
+		await expect
+			.element(layers.getByRole("checkbox", { name: "Furniture" }))
+			.not.toBeChecked();
+		await layers.getByRole("checkbox", { name: "Walls" }).click();
+		expect(hidden()).toEqual(["3R", "1R"]);
+		await layers.getByRole("checkbox", { name: "Furniture" }).click();
+		expect(hidden()).toEqual(["1R"]);
+	});
+
+	it("finds layers by name; Show all and Hide all act on those listed", async () => {
+		const { hidden, layers } = renderLayers();
+		await layers.getByRole("searchbox", { name: "Find a layer" }).fill("oo");
+		await expect.poll(() => layers.getByRole("checkbox").all()).toHaveLength(1);
+		await layers.getByRole("button", { name: "Hide all" }).click();
+		expect(hidden()).toEqual(["3R", "2R"]);
+		await layers.getByRole("searchbox", { name: "Find a layer" }).fill("");
+		await layers.getByRole("button", { name: "Show all" }).click();
+		expect(hidden()).toEqual([]);
+		await layers.getByRole("button", { name: "Hide all" }).click();
+		expect(hidden()).toEqual(["1R", "2R", "3R"]);
 	});
 });

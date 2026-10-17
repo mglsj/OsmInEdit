@@ -71,6 +71,8 @@ export interface ArchivedPlan {
 	readonly opacity: number;
 	readonly visible: boolean;
 	readonly color?: string;
+	/** Ids of the CAD layers not shown; files from before have none. */
+	readonly hiddenLayers?: readonly string[];
 }
 
 export interface PlanArchive {
@@ -173,6 +175,10 @@ function readArchivedPlan(value: unknown): ArchivedPlan {
 		opacity: opacityOf(value.opacity, 0.5),
 		visible: value.visible !== false,
 		...colorOf(value.color),
+		...(Array.isArray(value.hiddenLayers) &&
+		value.hiddenLayers.every((id) => typeof id === "string")
+			? { hiddenLayers: value.hiddenLayers as string[] }
+			: {}),
 	};
 }
 

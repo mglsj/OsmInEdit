@@ -29,7 +29,7 @@ rewritten from OsmInEdit 1.0.16 (React 16, Leaflet, 2019). Legacy code: commit `
 | R0    | Fixes and fast feedback (review)           | Done        |
 | R1    | Foundations for editing (review)           | Done        |
 | R2    | Floor plan content model (review)          | Done        |
-| P4.2  | Vector and light raster floor plans        | Not started |
+| P4.2  | Vector and light raster floor plans        | In progress |
 | P5.3  | Geometry editing                           | Not started |
 | P5.4  | Autosave and conflicts                     | Not started |
 | P6    | Parity and polish                          | Not started |
@@ -863,6 +863,26 @@ the plan 100 px, a drag back updates the field.
    and image-heavy PDFs.
 5. **Plan vertices for snapping**: an rbush of plan vertices in plan units, queried through
    the inverse transform; used by P5.3's snapping.
+
+Decided ✔: parts in the order above (vector first); the PDF page dialog offers Auto / Vector /
+Image (Auto: vector for pages mostly made of paths, image when images cover most of the page;
+images in a vector page drawn as a light raster under the lines); the PDF's own colours, hairlines
+(width 0, as in CAD exports) one device pixel wide, other widths scaled with zoom; text as
+MapLibre labels at their places, turned with the plan, sized with zoom, hidden when too small.
+The user's A3 CAD PDF: 155 CAD layers, all lines hairlines, 1,300–2,250 text items a page.
+
+Done ✅: P4.2.1 (extraction and storage, not drawn yet): `floorplans/vector.ts`
+(`VectorContent`: segments and triangles as Float32 in plan units with a style index each;
+styles `{color RGBA, width, layer}` shared; the CAD layers used, in the file's order;
+`VectorBuilder` flattens curves within 0.1 plan units by Wang's formula and fills with earcut,
+rings nested by containment as holes), `vector-pdf.ts` (pdf.js operator lists: transform
+through save/restore and form XObjects, RGB colours, CA/ca, widths scaled by the transform,
+optional content per path; clips, transparent and pattern paint, shadings, images and text
+left out), `svg-path.ts` (path data with arcs, transform lists, basic shapes, inherited
+styles; pure) and `vector-svg.ts` (`DOMParser`, viewBox and preserveAspectRatio, `<use>`,
+colours read by a canvas). On the user's heaviest page: 219,000 segments, 1,400 triangles,
+58 layers, 4.4 MB, 350 ms after pdf.js's 2.4 s parse. Store schema 4: `vectors`
+(`loadVector`, `saveVector`, deleted with the plan).
 
 ### P5.3: Geometry editing — L
 

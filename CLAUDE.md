@@ -77,9 +77,12 @@ runs the same commands.
   transforms map plan units; a plan's `source` names the file it came from, stored once by
   file id (a PDF shared by its pages); `georef.ts` transforms fitted in Web Mercator,
   `plan-file.ts` plan files (version 2: a ZIP of `plans.json` and the source files; version 1
-  JSON and 1.x read), `tiling.ts`, `import.ts` raster/SVG/PDF), `map/floorplan-layers.ts`,
+  JSON and 1.x read), `tiling.ts`, `import.ts` raster/SVG/PDF; vector plans (P4.2):
+  `vector.ts` (`VectorContent`, `VectorBuilder`), `vector-pdf.ts` (pdf.js operator lists,
+  pure: pass pdf.js's `OPS`), `svg-path.ts` (pure), `vector-svg.ts` (`DOMParser`)),
+  `map/floorplan-layers.ts`,
   `state/floorplans.svelte.ts` (`FloorPlans`: plans, edit sessions, alignment tools),
-  `persist/plan-store.ts` (IndexedDB schema 3: settings, tiles, files, thumbnails; tested on
+  `persist/plan-store.ts` (IndexedDB schema 4: settings, tiles, files, thumbnails, vectors; tested on
   fake-indexeddb; content loads for the shown level only, `FloorPlans.showLevel`; tests use
   `state/testing/plan-store.ts`), `ui/FloorPlansPanel.svelte` (`PlanFiles`, `PlanList`,
   `PlanTools`). Pixels go through a `PlanCodec`

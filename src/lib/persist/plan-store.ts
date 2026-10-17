@@ -4,11 +4,11 @@
  * and read only for the plans shown, thumbnails are read for the list. Nothing leaves the
  * user's browser.
  *
- * Schema 3: `plans` (settings), `rasters` (a plan's raster: unit, size, the tiles of each
+ * Schema 4: `plans` (settings), `rasters` (a plan's raster: unit, size, the tiles of each
  * pyramid level), `tiles` (`[plan, level, x, y]` → the encoded tile), `originals` (the files
  * plans were imported from, by file id: a PDF once for all its pages; a plan saved without a
  * `source` has its file under its own id), `thumbnails`, `settings` (the building outlines'
- * place). `images` holds the whole images of schemas 1 and 2 until each plan is converted, the
+ * place), `vectors` (a vector plan's paths, added in schema 4). `images` holds the whole images of schemas 1 and 2 until each plan is converted, the
  * first time its content loads.
  */
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
@@ -19,6 +19,7 @@ import type {
 	TransformKind,
 } from "#lib/floorplans/georef.ts";
 import type { Tile } from "#lib/floorplans/tiling.ts";
+import type { VectorContent } from "#lib/floorplans/vector.ts";
 
 /** A plan's settings: everything but its content. */
 export interface StoredPlan {
@@ -81,6 +82,9 @@ export interface PlanStore {
 		id: string,
 		content: Extract<StoredContent, { kind: "raster" }>,
 	): Promise<void>;
+	/** A plan's vector content; undefined when it has none. */
+	loadVector(id: string): Promise<VectorContent | undefined>;
+	saveVector(id: string, content: VectorContent): Promise<void>;
 	/** Saves a file plans were imported from, by its id. */
 	saveFile(id: string, file: Blob): Promise<void>;
 	loadFile(id: string): Promise<Blob | undefined>;
@@ -116,6 +120,7 @@ interface Schema extends DBSchema {
 	originals: { key: string; value: Blob };
 	thumbnails: { key: string; value: Blob };
 	settings: { key: string; value: StoredBuildings };
+	vectors: { key: string; value: VectorContent };
 	/** Schemas 1 and 2: whole images, until converted. */
 	images: { key: string; value: Blob };
 }
@@ -128,7 +133,13 @@ export function fileOf(plan: StoredPlan): string {
 /** Every tile key of a plan: arrays sort after numbers, so `[id, []]` is past them all. */
 const tilesOf = (id: string) => IDBKeyRange.bound([id], [id, []]);
 
-const CONTENT_STORES = ["rasters", "tiles", "thumbnails", "images"] as const;
+const CONTENT_STORES = [
+	"rasters",
+	"tiles",
+	"thumbnails",
+	"images",
+	"vectors",
+] as const;
 
 export class IndexedDbPlanStore implements PlanStore {
 	readonly #name: string;
@@ -139,10 +150,10 @@ export class IndexedDbPlanStore implements PlanStore {
 	}
 
 	#open(): Promise<IDBPDatabase<Schema>> {
-		this.#db ??= openDB<Schema>(this.#name, 3, {
+		this.#db ??= openDB<Schema>(this.#name, 4, {
 			// Each store is made if missing, whatever version the database says it is at:
 			// version 2 added "settings", version 3 the content stores. "images" stays for the
-			// plans not converted yet.
+			// plans not converted yet; version 4 added "vectors".
 			upgrade(db) {
 				const stores = db.objectStoreNames;
 				if (!stores.contains("plans")) {
@@ -155,6 +166,7 @@ export class IndexedDbPlanStore implements PlanStore {
 					"tiles",
 					"originals",
 					"thumbnails",
+					"vectors",
 				] as const) {
 					if (!stores.contains(store)) db.createObjectStore(store);
 				}
@@ -232,6 +244,14 @@ export class IndexedDbPlanStore implements PlanStore {
 		await Promise.all([...writes, tx.done]);
 	}
 
+	async loadVector(id: string): Promise<VectorContent | undefined> {
+		return (await this.#open()).get("vectors", id);
+	}
+
+	async saveVector(id: string, content: VectorContent): Promise<void> {
+		await (await this.#open()).put("vectors", content, id);
+	}
+
 	async saveFile(id: string, file: Blob): Promise<void> {
 		await (await this.#open()).put("originals", file, id);
 	}
@@ -288,8 +308,8 @@ export class IndexedDbPlanStore implements PlanStore {
 		await Promise.all([
 			plans.delete(id),
 			tx.objectStore("tiles").delete(tilesOf(id)),
-			...(["rasters", "thumbnails", "images"] as const).map((store) =>
-				tx.objectStore(store).delete(id),
+			...(["rasters", "thumbnails", "images", "vectors"] as const).map(
+				(store) => tx.objectStore(store).delete(id),
 			),
 			...(others.some((plan) => fileOf(plan) === file)
 				? []

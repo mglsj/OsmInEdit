@@ -1,6 +1,7 @@
 /** Floor plan tests: a store in memory and a codec without a browser. */
 import type { PlanCodec } from "#lib/floorplans/codec.ts";
 import type { PlanImage } from "#lib/floorplans/content.ts";
+import type { VectorContent } from "#lib/floorplans/vector.ts";
 import {
 	fileOf,
 	type PlanStore,
@@ -15,6 +16,7 @@ export function memoryStore() {
 	const contents = new Map<string, StoredContent>();
 	const thumbnails = new Map<string, Blob>();
 	const files = new Map<string, Blob>();
+	const vectors = new Map<string, VectorContent>();
 	/** Every plan saved, in order. */
 	const saved: StoredPlan[] = [];
 	let buildings: StoredBuildings | undefined;
@@ -24,6 +26,10 @@ export function memoryStore() {
 		saveContent: async (id, content) => {
 			contents.set(id, content);
 			if (content.thumbnail) thumbnails.set(id, content.thumbnail);
+		},
+		loadVector: async (id) => vectors.get(id),
+		saveVector: async (id, content) => {
+			vectors.set(id, content);
 		},
 		saveFile: async (id, file) => {
 			files.set(id, file);
@@ -37,6 +43,7 @@ export function memoryStore() {
 		delete: async (id) => {
 			const deleting = plans.get(id);
 			plans.delete(id);
+			vectors.delete(id);
 			const file = deleting ? fileOf(deleting) : id;
 			if (![...plans.values()].some((p) => fileOf(p) === file)) {
 				files.delete(file);
@@ -53,7 +60,7 @@ export function memoryStore() {
 			buildings = b;
 		},
 	};
-	return { store, plans, contents, files, saved };
+	return { store, plans, contents, files, vectors, saved };
 }
 
 /** A bitmap stand-in: its size, and whether it was closed. */

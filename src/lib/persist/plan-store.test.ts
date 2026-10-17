@@ -3,6 +3,7 @@ import { openDB } from "idb";
 import { afterEach, describe, expect, it } from "vitest";
 import { place } from "#lib/floorplans/georef.ts";
 import { RENNES } from "#lib/floorplans/test-geometry.ts";
+import type { VectorContent } from "#lib/floorplans/vector.ts";
 import {
 	IndexedDbPlanStore,
 	type StoredContent,
@@ -75,7 +76,18 @@ const content: StoredContent = {
 	thumbnail: new Blob(["thumb"]),
 };
 
-describe("IndexedDbPlanStore (schema 3)", () => {
+/** One red hairline across an A4 page, in the CAD layer "Walls". */
+const vector: VectorContent = {
+	size: { width: 595, height: 842 },
+	segments: new Float32Array([0, 0, 595, 842]),
+	segmentStyles: new Uint32Array([0]),
+	triangles: new Float32Array([]),
+	triangleStyles: new Uint32Array([]),
+	styles: [{ color: [255, 0, 0, 255], width: 0, layer: 0 }],
+	layers: [{ id: "7R", name: "Walls", visible: true }],
+};
+
+describe("IndexedDbPlanStore (schema 4)", () => {
 	it("restores plans without their content, in their order", async () => {
 		const store = freshStore();
 		await store.save(plan("b", 1));
@@ -141,6 +153,45 @@ describe("IndexedDbPlanStore (schema 3)", () => {
 		await store.saveFile("a", new Blob(["png"]));
 		await store.delete("a");
 		expect(await store.loadFile("a")).toBeUndefined();
+	});
+
+	it("keeps a plan's vector content, its arrays as they were, deleted with it", async () => {
+		const store = freshStore();
+		await store.save(plan("a", 0));
+		await store.saveVector("a", vector);
+		const loaded = await store.loadVector("a");
+		expect(loaded).toEqual(vector);
+		expect(loaded?.segments).toBeInstanceOf(Float32Array);
+		await store.delete("a");
+		expect(await store.loadVector("a")).toBeUndefined();
+	});
+
+	it("upgrades a version 3 database: its plans and content stay, vectors are added", async () => {
+		name = `plans-test-${count++}`;
+		const v3 = await openDB(name, 3, {
+			upgrade(db) {
+				db.createObjectStore("plans", { keyPath: "id" });
+				for (const store of [
+					"images",
+					"settings",
+					"rasters",
+					"tiles",
+					"originals",
+					"thumbnails",
+				]) {
+					db.createObjectStore(store);
+				}
+			},
+		});
+		await v3.put("plans", plan("a", 0));
+		await v3.put("originals", new Blob(["%PDF"]), "a");
+		v3.close();
+
+		const store = new IndexedDbPlanStore(name);
+		expect((await store.load()).map((p) => p.id)).toEqual(["a"]);
+		expect(await text(await store.loadFile("a"))).toBe("%PDF");
+		await store.saveVector("a", vector);
+		expect((await store.loadVector("a"))?.styles).toEqual(vector.styles);
 	});
 
 	it("upgrades a version 2 database: its plans load, their images as legacy content", async () => {
